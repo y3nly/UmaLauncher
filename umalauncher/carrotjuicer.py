@@ -146,8 +146,21 @@ class CarrotJuicer:
         return lang
 
     def to_json(self, packet, out_name="packet.json"):
-        with open(util.get_relative(out_name), 'w', encoding='utf-8') as f:
+        packets_dir = os.path.join(util.get_relative(""), "packets")
+        os.makedirs(packets_dir, exist_ok=True)
+
+        out_path = os.path.join(packets_dir, out_name)
+
+        with open(out_path, 'w', encoding='utf-8') as f:
             f.write(json.dumps(packet, indent=4, ensure_ascii=False))
+
+    def to_txt(self, data, out_name=('packet.json',)):
+        packets_dir = os.path.join(util.get_relative(''), 'races')
+        os.makedirs(packets_dir, exist_ok=True)
+        out_path = os.path.join(packets_dir, out_name)
+
+        with open(out_path, 'w', encoding='utf-8') as f:
+            f.write(data)
 
     def open_helper(self):
         if self.should_stop:
@@ -276,6 +289,21 @@ class CarrotJuicer:
                 return
 
             data = data['data']
+
+            if self.threader.settings['save_race_ packets']:
+                if data.get('race_scenario') or data.get('room_info'):
+                    race_array = (
+                            data.get('race_horse_data_array')
+                            or data.get('race_start_info', {}).get('race_horse_data')
+                    )
+                    scenario = (
+                            data.get('race_scenario')
+                            or data.get('room_info', {}).get('race_scenario')
+                    )
+                    if race_array and scenario:
+                        content = json.dumps(race_array) + '\n' + scenario
+                        filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S_race_in.txt")
+                        self.to_txt(content, filename)
 
             # Detect leaving the initial loading screen
             # if data.get('common_define'):

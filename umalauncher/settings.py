@@ -45,6 +45,13 @@ class DefaultSettings(se.NewSettings):
             se.SettingType.BOOL,
             hidden=True
         ),
+        "save_race_packets": se.Setting(
+            "Save packets.",
+            "Save incoming race packets to text. (For debugging purposes)",
+            False,
+            se.SettingType.BOOL,
+            hidden=False
+        ),
         "discord_rich_presence": se.Setting(
             "Discord rich presence",
             "Display your current status in Discord.",
