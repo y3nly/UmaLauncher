@@ -331,6 +331,7 @@ class HelperTable():
             bond_gains_useful = [0]
             partner_count = 0
             useful_partner_count = 0
+            num_hints = len(command.get('tips_event_partner_array', []))
             for training_partner_id in command.get('training_partner_array', []):
                 partner_count += 1
 
@@ -368,7 +369,7 @@ class HelperTable():
 
             unity_partner_count = 0
             useful_unity_partner_count = 0
-            spirit_explosion_partner_count = 0
+            spirit_burst_partner_count = 0
             if 'team_data_set' in data:
                 for partner in command.get('guide_event_partner_array', []):
                     # find partner in the evaluation_info_array
@@ -380,8 +381,9 @@ class HelperTable():
 
                     unity_partner_count += 1
                 for _ in command.get('soul_event_partner_array', []):
+                    # TODO: Should a spirit burst parner be considered a useful partner?
                     unity_partner_count += 1
-                    spirit_explosion_partner_count += 1
+                    spirit_burst_partner_count += 1
 
             total_bond = sum(bond_gains_total)
             useful_bond = sum(bond_gains_useful)
@@ -533,6 +535,7 @@ class HelperTable():
                 'failure_rate': failure_rate,
                 'gained_stats': gained_stats,
                 'gained_skillpt': gained_skillpt,
+                'num_hints': num_hints,
                 'total_bond': total_bond,
                 'useful_bond': useful_bond,
                 'gained_energy': gained_energy,
@@ -546,7 +549,7 @@ class HelperTable():
                 'onsen_points_gain': onsen_points_gain,
                 'unity_partner_count': unity_partner_count,
                 'useful_unity_partner_count': useful_unity_partner_count,
-                'spirit_explosion_partner_count': spirit_explosion_partner_count,
+                'spirit_burst_partner_count': spirit_burst_partner_count,
             }
 
         # Simplify everything down to a dict with only the keys we care about.

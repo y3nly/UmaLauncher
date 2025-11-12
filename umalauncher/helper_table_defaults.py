@@ -673,6 +673,46 @@ class UsefulPartnerCountRow(hte.Row):
         return cells
 
 
+class HintCountSettings(se.NewSettings):
+    _settings = {
+        "highlight_max": se.Setting(
+            "Highlight max",
+            "Highlights the facility with the most skill hints available.",
+            True,
+            se.SettingType.BOOL
+        ),
+        "highlight_max_color": se.Setting(
+            "Highlight max color",
+            "The color to use to highlight the facility with the most skill hints available.",
+            "#90EE90",
+            se.SettingType.COLOR
+        ),
+    }
+
+
+class HintCountRow(hte.Row):
+    long_name = "Skill hint count"
+    short_name = "Skill Hints"
+    description = "Shows the total number of skill hints available at each facility."
+
+    def __init__(self):
+        super().__init__()
+        self.settings = HintCountSettings()
+
+    def _generate_cells(self, game_state) -> list[hte.Cell]:
+        cells = [hte.Cell(self.short_name, title=self.description)]
+
+        highest_hint_count = max(command['num_hints'] for command in game_state.values())
+
+        for command in game_state.values():
+            if self.settings.highlight_max.value and highest_hint_count > 0 and command['num_hints'] == highest_hint_count:
+                cells.append(hte.Cell(command['num_hints'], bold=True, color=self.settings.highlight_max_color.value))
+            else:
+                cells.append(hte.Cell(command['num_hints']))
+
+        return cells
+
+
 class UnityTrainingCountSettings(se.NewSettings):
     _settings = {
         "highlight_max": se.Setting(
@@ -689,13 +729,13 @@ class UnityTrainingCountSettings(se.NewSettings):
         ),
         "highlight_burst_color": se.Setting(
             "Highlight burst color",
-            "The color to use to highlight facilities with a Spirit Explosion Unity Training partner(s).",
+            "The color to use to highlight facilities with a Spirit Burst Unity Training partner(s).",
             "#1777E0",
             se.SettingType.COLOR
         ),
         "highlight_max_burst_color": se.Setting(
             "Highlight max burst color",
-            "The color to use to highlight the facility with the most Spirit Explosion Unity Training partner(s).",
+            "The color to use to highlight the facility with the most Spirit Burst Unity Training partner(s).",
             "#0070FF",
             se.SettingType.COLOR
         ),
@@ -717,13 +757,13 @@ class UsefulUnityTrainingCountSettings(se.NewSettings):
         ),
         "highlight_burst_color": se.Setting(
             "Highlight burst color",
-            "The color to use to highlight facilities with a Spirit Explosion Unity Training partner(s).",
+            "The color to use to highlight facilities with a Spirit Burst Unity Training partner(s).",
             "#1777E0",
             se.SettingType.COLOR
         ),
         "highlight_max_burst_color": se.Setting(
             "Highlight max burst color",
-            "The color to use to highlight the facility with the most Spirit Explosion Unity Training partner(s).",
+            "The color to use to highlight the facility with the most Spirit Burst Unity Training partner(s).",
             "#0070FF",
             se.SettingType.COLOR
         ),
@@ -732,7 +772,7 @@ class UsefulUnityTrainingCountSettings(se.NewSettings):
 
 class UnityTrainingCountRow(hte.Row):
     long_name = "Unity Training partner count"
-    short_name = "Unity<br>Training"
+    short_name = "Unity"
     description = "[Scenario-specific] Shows the number of Unity Training partners on each facility."
 
     def __init__(self):
@@ -747,7 +787,7 @@ class UnityTrainingCountRow(hte.Row):
 
 
         highest_unity_partner_count = max(command['unity_partner_count'] for command in game_state.values())
-        highest_spirit_explosion_partner_count = max(command['spirit_explosion_partner_count'] for command in game_state.values())
+        highest_spirit_burst_partner_count = max(command['spirit_burst_partner_count'] for command in game_state.values())
 
         for command in game_state.values():
             bold = False
@@ -756,12 +796,12 @@ class UnityTrainingCountRow(hte.Row):
             if self.settings.highlight_max.value and highest_unity_partner_count > 0 and command['unity_partner_count'] == highest_unity_partner_count:
                 bold = True
                 color = self.settings.highlight_max_color.value
-            # spirit explosion overrides highlight
-            if command['spirit_explosion_partner_count'] > 0:
+            # spirit burst overrides highlight
+            if command['spirit_burst_partner_count'] > 0:
                 bold = True
                 color = self.settings.highlight_burst_color.value
-            # max spirit explosion overrides spirit explosion
-            if self.settings.highlight_max.value and highest_spirit_explosion_partner_count > 0 and command['spirit_explosion_partner_count'] == highest_spirit_explosion_partner_count:
+            # max spirit burst overrides spirit burst
+            if self.settings.highlight_max.value and highest_spirit_burst_partner_count > 0 and command['spirit_burst_partner_count'] == highest_spirit_burst_partner_count:
                 bold = True
                 color = self.settings.highlight_max_burst_color.value
             cells.append(hte.Cell(command['unity_partner_count'], bold=bold, color=color))
@@ -771,7 +811,7 @@ class UnityTrainingCountRow(hte.Row):
 class UsefulUnityTrainingCountRow(hte.Row):
     long_name = "Useful Unity Training partner count"
     short_name = "Useful Unity"
-    description = "[Scenario-specific] Shows the number of useful Unity Training partners on each facility."
+    description = "[Scenario-specific] Shows the number of useful Unity Training partners on each facility. Useful Unity Training partners are any that haven't already had a Spirit Burst."
 
     def __init__(self):
         super().__init__()
@@ -785,7 +825,7 @@ class UsefulUnityTrainingCountRow(hte.Row):
 
 
         highest_unity_partner_count = max(command['useful_unity_partner_count'] for command in game_state.values())
-        highest_spirit_explosion_partner_count = max(command['spirit_explosion_partner_count'] for command in game_state.values())
+        highest_spirit_burst_partner_count = max(command['spirit_burst_partner_count'] for command in game_state.values())
 
         for command in game_state.values():
             bold = False
@@ -794,12 +834,12 @@ class UsefulUnityTrainingCountRow(hte.Row):
             if self.settings.highlight_max.value and highest_unity_partner_count > 0 and command['useful_unity_partner_count'] == highest_unity_partner_count:
                 bold = True
                 color = self.settings.highlight_max_color.value
-            # spirit explosion overrides highlight
-            if command['spirit_explosion_partner_count'] > 0:
+            # spirit burst overrides highlight
+            if command['spirit_burst_partner_count'] > 0:
                 bold = True
                 color = self.settings.highlight_burst_color.value
-            # max spirit explosion overrides spirit explosion
-            if self.settings.highlight_max.value and highest_spirit_explosion_partner_count > 0 and command['spirit_explosion_partner_count'] == highest_spirit_explosion_partner_count:
+            # max spirit burst overrides spirit burst
+            if self.settings.highlight_max.value and highest_spirit_burst_partner_count > 0 and command['spirit_burst_partner_count'] == highest_spirit_burst_partner_count:
                 bold = True
                 color = self.settings.highlight_max_burst_color.value
             cells.append(hte.Cell(command['useful_unity_partner_count'], bold=bold, color=color))
@@ -1317,6 +1357,7 @@ class RowTypes(Enum):
     LEVEL = LevelRow
     PARTNER_COUNT = PartnerCountRow
     USEFUL_PARTNER_COUNT = UsefulPartnerCountRow
+    SKILL_HINT_COUNT = HintCountRow
     RAINBOW_COUNT = RainbowCountRow
     AOHARU_USEFUL_UNITY_PARTNER_COUNT = UsefulUnityTrainingCountRow
     AOHARU_UNITY_PARTNER_COUNT = UnityTrainingCountRow

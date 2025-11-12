@@ -41,6 +41,7 @@ class CarrotJuicer:
     helper_table = None
     should_stop = False
     last_browser_rect = None
+    browser_topmost = False
     reset_browser = False
     helper_url = None
     last_training_id = None
@@ -168,10 +169,15 @@ class CarrotJuicer:
         self.close_browser()
 
         start_pos = self.threader.settings["browser_position"]
+        topmost = self.threader.settings["browser_topmost"]
         if not start_pos:
             start_pos = self.get_browser_reset_position()
         
         self.browser = horsium.BrowserWindow(self.helper_url, self.threader, rect=start_pos, run_at_launch=setup_helper_page)
+        self.browser_topmost = topmost
+        if topmost:
+            self.browser.set_topmost(True)
+
 
     def get_browser_reset_position(self):
         game_rect, _ = self.threader.windowmover.window.get_rect()
@@ -211,6 +217,7 @@ class CarrotJuicer:
 
     def save_last_browser_rect(self):
         self.save_rect(self.last_browser_rect, "browser_position")
+        self.threader.settings["browser_topmost"] = self.browser_topmost
     
     def save_skill_window_rect(self):
         if self.skill_browser:
@@ -318,12 +325,14 @@ class CarrotJuicer:
 
             # Close whatever popup is open
             if self.browser and self.browser.alive():
-                self.browser.execute_script(
-                    # Janky way to get open event popups
-                    """
-                    document.querySelectorAll("div[id^='event-viewer-'] button[class^='sc-'][aria-expanded=true], div[class^='compatibility_result_box_'] button[class^='sc-'][aria-expanded=true]").forEach(e => { e.click()});
-                    """
-                )
+                # Don't close event popups if the response is the choice outcomes
+                if "choice_reward_array" not in data:
+                    self.browser.execute_script(
+                        # Janky way to get open event popups
+                        """
+                        document.querySelectorAll("div[id^='event-viewer-'] button[class^='sc-'][aria-expanded=true], div[class^='compatibility_result_box_'] button[class^='sc-'][aria-expanded=true]").forEach(e => { e.click()});
+                        """
+                    )
                 gametora_close_ad_banner(self.browser)
 
             # Run ended
@@ -734,6 +743,10 @@ class CarrotJuicer:
         logger.info(f"Event element: {ranked_elements[0][2]}")
         return ranked_elements[0][1]
 
+    def set_browser_topmost(self, is_topmost):
+        self.browser_topmost = is_topmost
+        logger.debug( f"Setting browser topmost to {is_topmost}" )
+        self.browser.set_topmost(is_topmost)
 
     def run_with_catch(self):
         try:
@@ -963,6 +976,31 @@ def setup_helper_page(browser: horsium.BrowserWindow):
     ul_skills.style = "position: fixed; right: 50px; top: 0; width: 3.5rem; height: 1.6rem; background-color: var(--c-bg-main); text-align: center; z-index: 101; line-height: 1.5rem; border-left: 2px solid var(--c-topnav); border-bottom: 2px solid var(--c-topnav); border-right: 2px solid var(--c-topnav); border-bottom-left-radius: 0.5rem; border-bottom-right-radius: 0.5rem; cursor: pointer; transition: top 0.5s ease 0s;";
     ul_skills.textContent = "Skills";
     window.UL_OVERLAY.appendChild(ul_skills);
+    
+    var ul_topmost_div = document.createElement("div");
+    ul_topmost_div.classList.add("ul-overlay-button");
+    ul_topmost_div.style = "position: fixed; right: 108px; top: 0; width: 9rem; height: 1.6rem; background-color: var(--c-bg-main); text-align: center; z-index: 101; line-height: 1.5rem; border-left: 2px solid var(--c-topnav); border-bottom: 2px solid var(--c-topnav); border-right: 2px solid var(--c-topnav); border-bottom-left-radius: 0.5rem; border-bottom-right-radius: 0.5rem; transition: top 0.5s ease 0s;";
+    ul_topmost_div.id = "ul-topmost-div"
+    
+    var ul_topmost = document.createElement("input");
+    ul_topmost.id = "ul-topmost";
+    ul_topmost.type = "checkbox";
+    ul_topmost.checked = """ +
+    str(browser.threader.settings["browser_topmost"]).lower()
+    + """;
+    ul_topmost.style = "cursor: pointer;"
+    ul_topmost.classList.add("ul-overlay-button");
+    
+    var ul_topmost_label = document.createElement("label");
+    ul_topmost_label.setAttribute("for", "ul-topmost");
+    ul_topmost_label.textContent = "Always on top";
+    ul_topmost_label.id = "ul-topmost-label"
+    ul_topmost_label.style = "cursor: pointer;"
+    
+    ul_topmost_div.appendChild(ul_topmost);
+    ul_topmost_div.appendChild(ul_topmost_label);
+    window.UL_OVERLAY.appendChild(ul_topmost_div);
+    
 
     window.hide_overlay = function() {
         window.UL_DATA.expanded = false;
@@ -1042,6 +1080,12 @@ def setup_helper_page(browser: horsium.BrowserWindow):
 
     ul_skills.addEventListener("click", window.await_skill_window);
 
+    // Always on top toggle
+    window.await_topmost = function() {
+        var checkbox = document.getElementById("ul-topmost");
+        fetch('http://127.0.0.1:3150/topmost', { method: 'POST', body: checkbox.checked, headers: { 'Content-Type': 'text/plain'  } } );
+    }
+    ul_topmost.addEventListener("click", window.await_topmost);
     
     window.send_screen_rect = function() {
         let rect = {
