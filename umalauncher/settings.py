@@ -46,7 +46,7 @@ class DefaultSettings(se.NewSettings):
             hidden=True
         ),
         "save_race_packets": se.Setting(
-            "Save packets.",
+            "Save race packets.",
             "Save incoming race packets to text. (For debugging purposes)",
             False,
             se.SettingType.BOOL,

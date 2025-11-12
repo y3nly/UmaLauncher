@@ -297,7 +297,7 @@ class CarrotJuicer:
 
             data = data['data']
 
-            if self.threader.settings['save_race_ packets']:
+            if self.threader.settings['save_race_packets']:
                 if data.get('race_scenario') or data.get('room_info'):
                     race_array = (
                             data.get('race_horse_data_array')
