@@ -180,6 +180,8 @@ class CarrotJuicer:
 
 
     def get_browser_reset_position(self):
+        if self.threader.windowmover.window is None:
+            return None
         game_rect, _ = self.threader.windowmover.window.get_rect()
         workspace_rect = self.threader.windowmover.window.get_workspace_rect()
         left_side = abs(workspace_rect[0] - game_rect[0])
@@ -217,7 +219,8 @@ class CarrotJuicer:
 
     def save_last_browser_rect(self):
         self.save_rect(self.last_browser_rect, "browser_position")
-        self.threader.settings["browser_topmost"] = self.browser_topmost
+        if self.threader.settings["browser_topmost"] != self.browser_topmost:
+            self.threader.settings["browser_topmost"] = self.browser_topmost
     
     def save_skill_window_rect(self):
         if self.skill_browser:
@@ -814,8 +817,7 @@ class CarrotJuicer:
                 if self.skill_browser:
                     if self.skill_browser.alive():
                         # Update skill window.
-                        # self.update_skill_window()
-                        pass
+                        self.update_skill_window()
                     else:
                         self.save_skill_window_rect()
 
@@ -1212,21 +1214,22 @@ def gametora_close_ad_banner(browser: horsium.BrowserWindow):
             }
             """)
 
-    # Close the top support cards thing, super jank
-    browser.execute_script("""
-                    let a = document.querySelector("[id^='styles_page-main_']");
-                    if( a != null ){
-                        let b = a.children[1]; //First element is top ad
-                        if( b != null )
-                        {
-                            let c = b.children[b.childElementCount - 1]; //Last element is the support cards thing
-                            if( c != null )
+    if 'training-event-helper' in browser.url:
+        # Close the top support cards thing, super jank
+        browser.execute_script("""
+                        let a = document.querySelector("[id^='styles_page-main_']");
+                        if( a != null ){
+                            let b = a.children[1]; //First element is top ad
+                            if( b != null )
                             {
-                                c.style.display = "none";
+                                let c = b.children[b.childElementCount - 1]; //Last element is the support cards thing
+                                if( c != null )
+                                {
+                                    c.style.display = "none";
+                                }
                             }
                         }
-                    }
-                    """)
+                        """)
 
 
 
