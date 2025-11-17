@@ -43,7 +43,7 @@ class DefaultSettings(se.NewSettings):
             "Save incoming/outgoing packets to json. (For debugging purposes)",
             False,
             se.SettingType.BOOL,
-            hidden=True
+            hidden=False
         ),
         "save_race_packets": se.Setting(
             "Save race packets.",
