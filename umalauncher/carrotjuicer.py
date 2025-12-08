@@ -9,6 +9,7 @@ from datetime import datetime
 from inspect import trace
 
 import msgpack
+import select
 from loguru import logger
 from msgpack import Unpacker
 from selenium.common.exceptions import NoSuchWindowException
@@ -174,9 +175,7 @@ class CarrotJuicer:
             start_pos = self.get_browser_reset_position()
         
         self.browser = horsium.BrowserWindow(self.helper_url, self.threader, rect=start_pos, run_at_launch=setup_helper_page)
-        self.browser_topmost = topmost
-        if topmost:
-            self.browser.set_topmost(True)
+        self.set_browser_topmost(topmost)
 
 
     def get_browser_reset_position(self):
@@ -817,7 +816,8 @@ class CarrotJuicer:
                 if self.skill_browser:
                     if self.skill_browser.alive():
                         # Update skill window.
-                        self.update_skill_window()
+                        # self.update_skill_window()
+                        pass
                     else:
                         self.save_skill_window_rect()
 
@@ -838,8 +838,14 @@ class CarrotJuicer:
                 else:
                     logger.debug("Waiting for message...")
                     try:
-                        message = self.sock.recv(self.MAX_BUFFER_SIZE)
-                        logger.debug(f"Received {len(message)} bytes of data")
+                        ready = select.select([self.sock], [], [], 0.5)
+                        if ready[0]:
+                            message = self.sock.recv(self.MAX_BUFFER_SIZE)
+                            logger.debug(f"Received {len(message)} bytes of data")
+                        else:
+                            # No data available, keep waiting
+                            # TODO: is there a better way to do this than busy waiting?
+                            continue
                     except Exception as e:
                         #TODO: kill the socket in a "good" way that doesn't throw an exception here
                         logger.error(f"Socket interrupted: {e}\n{traceback.format_exc()}")
