@@ -83,11 +83,29 @@ def chromium_setup(service, options_class, driver_class, profile, helper_url, se
     options.add_experimental_option("useAutomationExtension", False) # Disable browser being controlled warning
     options.add_experimental_option("excludeSwitches", ["enable-automation"]) # Disable browser being controlled warning
     options.add_argument("--disable-web-security") # Disable CORS protections
-    
+
     if not settings['enable_browser_override']:
         options.add_argument("--app=" + helper_url)
 
     browser = driver_class(service=service, options=options)
+
+    # List of patterns to block
+    blocked_urls = [
+        "*://*.google-analytics.com/*",
+        "*://*.analytics.google.com/*",
+        "*://*.googletagmanager.com/*",
+        "*://*.googleadservices.com/*",
+        "*://*.doubleclick.net/*",
+        "*://*.googlesyndication.com/*",
+        "*.js",
+    ]
+
+    # Execute the CDP command
+    browser.execute_cdp_cmd("Network.enable", {})
+    browser.execute_cdp_cmd(
+        "Network.setBlockedURLs",
+        {"urls": blocked_urls}
+    )
     
     if settings['enable_browser_override']:
         browser.get(helper_url)

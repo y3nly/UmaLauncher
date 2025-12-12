@@ -1209,7 +1209,6 @@ def gametora_dark_mode(browser: horsium.BrowserWindow):
         browser.execute_script("""document.querySelector("[class^='tooltips_tooltip_']").querySelector("[class^='filters_toggle_button_']").childNodes[0].querySelector("input").click()""")
     browser.execute_script("""document.querySelector("[class^='styles_header_settings_']").click()""")
 
-
 def gametora_remove_cookies_banner(browser: horsium.BrowserWindow):
     # Hide the cookies banner
     browser.execute_script("""
@@ -1225,14 +1224,14 @@ def gametora_remove_cookies_banner(browser: horsium.BrowserWindow):
 def gametora_close_ad_banner(browser: horsium.BrowserWindow):
     # Close the ad banner at the bottom
     browser.execute_script("""
-            if( window.removeBannerAdId == null ) {
-                window.removeBannerAdId = setInterval( function() {
-                    if( document.getElementsByClassName("publift-widget-sticky_footer-container")[0] != null ){
-                        document.getElementsByClassName("publift-widget-sticky_footer-container")[0].classList.add("closed")
-                    }
-                }, 5 * 1000);
-            }
-            """)
+    if (!window._adblockObserver) {
+        window._adblockObserver = new MutationObserver(() => {
+            document.querySelectorAll('.publift-widget-sticky_footer-container')
+                .forEach(e => e.remove());
+        });
+        window._adblockObserver.observe(document.body, { childList: true, subtree: true });
+    }
+    """)
 
     if 'training-event-helper' in browser.url:
         # Close the top support cards thing, super jank
@@ -1251,14 +1250,13 @@ def gametora_close_ad_banner(browser: horsium.BrowserWindow):
                         }
                         """)
 
-
-
+    browser.execute_script("document.querySelector('.top-ad')?.remove();")
+    browser.execute_script("document.querySelector('.incontent-ad-mobile')?.remove();")
 
 def setup_gametora(browser: horsium.BrowserWindow):
     gametora_dark_mode(browser)
     gametora_remove_cookies_banner(browser)
     gametora_close_ad_banner(browser)
-
 
 def set_gametora_server_to_jp(browser):
     logger.info( "Setting GameTora page to the Japan server")
