@@ -1222,17 +1222,6 @@ def gametora_remove_cookies_banner(browser: horsium.BrowserWindow):
             """)
 
 def gametora_close_ad_banner(browser: horsium.BrowserWindow):
-    # Close the ad banner at the bottom
-    browser.execute_script("""
-    if (!window._adblockObserver) {
-        window._adblockObserver = new MutationObserver(() => {
-            document.querySelectorAll('.publift-widget-sticky_footer-container')
-                .forEach(e => e.remove());
-        });
-        window._adblockObserver.observe(document.body, { childList: true, subtree: true });
-    }
-    """)
-
     if 'training-event-helper' in browser.url:
         # Close the top support cards thing, super jank
         browser.execute_script("""
@@ -1250,8 +1239,26 @@ def gametora_close_ad_banner(browser: horsium.BrowserWindow):
                         }
                         """)
 
-    browser.execute_script("document.querySelector('.top-ad')?.remove();")
-    browser.execute_script("document.querySelector('.incontent-ad-mobile')?.remove();")
+    browser.execute_script("""
+    if (!window.__gtAdBlocker) {
+        window.__gtAdBlocker = true;
+
+        const removeAds = () => {
+            document.querySelectorAll(
+                '.top-ad, .footer-ad, ' +
+                '.publift-widget-sticky_footer-container, ' +
+                '[class*="publift"]'
+            ).forEach(e => e.remove());
+        };
+
+        // Run once immediately
+        removeAds();
+
+        // Watch for dynamic injection
+        const observer = new MutationObserver(removeAds);
+        observer.observe(document.body, { childList: true, subtree: true });
+    }
+    """)
 
 def setup_gametora(browser: horsium.BrowserWindow):
     gametora_dark_mode(browser)
