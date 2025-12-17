@@ -301,14 +301,16 @@ class CarrotJuicer:
             data = data['data']
 
             if self.threader.settings['save_race_packets']:
-                if data.get('race_scenario') or data.get('room_info'):
+                if data.get('race_scenario') or data.get('room_info') or data.get('race_result_info'):
                     race_array = (
                             data.get('race_horse_data_array')
                             or data.get('race_start_info', {}).get('race_horse_data')
+                            or data.get('race_result_info', {}).get('race_horse_data_array')
                     )
                     scenario = (
                             data.get('race_scenario')
                             or data.get('room_info', {}).get('race_scenario')
+                            or data.get('race_result_info', {}).get('race_scenario')
                     )
                     if race_array and scenario:
                         content = json.dumps(race_array) + '\n' + scenario
