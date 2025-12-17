@@ -182,6 +182,9 @@ def chromium_setup(service, options_class, driver_class, profile, helper_url, se
 
         "*://*.google-analytics.com/*",
         "*://google-analytics.com/*",
+
+        "*://*.ay.delivery/*",
+        "*://ay.delivery/*",
     ]
 
     # Execute the CDP command
