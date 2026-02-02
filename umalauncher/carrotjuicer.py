@@ -6,7 +6,6 @@ import traceback
 import math
 import json
 from datetime import datetime
-from inspect import trace
 
 import msgpack
 import select
@@ -752,20 +751,25 @@ class CarrotJuicer:
 
                 if not base_path:
                     logger.error("Packet intercept enabled but no game path found")
-                    util.show_error_box("Uma Launcher: No game install path found.", "Ensure you have the game installed.")
+                    util.show_error_box("Uma Launcher: No game install path found.",
+                                        "Ensure you have the game installed.")
                     return
 
             if 'IS_UL_GLOBAL' in os.environ:
                 port = self.threader.settings["carrotblender_port"]
                 ip_address = self.threader.settings["carrotblender_host"]
                 try:
-                    self.sock = socket.socket( socket.AF_INET, socket.SOCK_DGRAM )
-                    self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.threader.settings["carrotblender_max_buffer_size"])
-                    logger.info(f"Max buffer size: {self.sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)}" )
-                    self.sock.bind( (ip_address, port) )
+                    self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF,
+                                         self.threader.settings["carrotblender_max_buffer_size"])
+                    logger.info(f"Max buffer size: {self.sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)}")
+                    self.sock.bind((ip_address, port))
                 except socket.error as message:
                     util.show_warning_box("Uma Launcher: Error initializing CarrotJuicer.",
-                                        f"Could not bind to {ip_address}:{port}")
+                                          f"Could not bind to {ip_address}:{port}")
+
+            # [NEW] Trackers for Smart Focus
+            last_target_state = None
 
             chunks_left = 0
             while not self.should_stop:
@@ -799,11 +803,8 @@ class CarrotJuicer:
                     self.previous_skills_list = self.skills_list
                     self.update_skill_window()
 
-
                 if self.skill_browser:
                     if self.skill_browser.alive():
-                        # Update skill window.
-                        # self.update_skill_window()
                         pass
                     else:
                         self.save_skill_window_rect()
@@ -830,47 +831,41 @@ class CarrotJuicer:
                             message = self.sock.recv(self.MAX_BUFFER_SIZE)
                             logger.debug(f"Received {len(message)} bytes of data")
                         else:
-                            # No data available, keep waiting
-                            # TODO: is there a better way to do this than busy waiting?
                             continue
                     except Exception as e:
-                        #TODO: kill the socket in a "good" way that doesn't throw an exception here
                         logger.error(f"Socket interrupted: {e}\n{traceback.format_exc()}")
                         continue
                     if message == b'':
-                        # Shouldn't happen
                         logger.error(f"Socket read no data!")
                         continue
                     if len(message) < 2:
-                        logger.error( f"Invalid message (invalid length): {message.hex()}")
+                        logger.error(f"Invalid message (invalid length): {message.hex()}")
                         continue
                     msg_type = message[0]
                     msg_len = 0
                     if msg_type != 4:
                         msg_len = message[1] * 256 + message[2]
                         if len(message) < msg_len:
-                            logger.error( f"Invalid message (incomplete): {message.hex()}")
+                            logger.error(f"Invalid message (incomplete): {message.hex()}")
                             continue
-                        message = message[3:msg_len+3]
+                        message = message[3:msg_len + 3]
 
-                    if msg_type == 0:# Data (full)
+                    if msg_type == 0:
                         logger.debug(f"Processing data: {message.hex()}")
                         self.encrypted_data = message
-                    elif msg_type == 1: # Key
+                    elif msg_type == 1:
                         logger.debug(f"Processing key: {message.hex()}")
                         self.key = message
-                    elif msg_type == 2: # IV
+                    elif msg_type == 2:
                         logger.debug(f"Processing IV: {message.hex()}")
                         self.iv = message
 
-                        # TODO: check chunks_left to see if we dropped one or more
                         if self.key is not None and self.iv is not None and self.encrypted_data is not None and self.encrypted_data != b'':
                             try:
                                 unpacked = unpack(self.encrypted_data, self.key, self.iv)
                                 logger.debug("Unpacked message:")
                                 logger.debug(unpacked)
                                 self.handle_response(unpacked, is_json=True)
-                                # TODO: we could probably keep the key as it shouldn't change
                                 self.key = None
                                 self.iv = None
                                 self.encrypted_data = None
@@ -881,24 +876,24 @@ class CarrotJuicer:
                                 self.iv = None
                                 self.encrypted_data = None
                         else:
-                            logger.warning( f"Ignoring message: data, key and/or IV is not set!")
-                    elif msg_type == 3: # Request (unencrypted msgpack)
+                            logger.warning(f"Ignoring message: data, key and/or IV is not set!")
+                    elif msg_type == 3:
                         logger.debug(f"Processing request: {message.hex()}")
                         logger.debug(f"Unpacked request: {msgpack.unpackb(message[4:])}")
-                        self.handle_request( message, is_json=True)
-                    elif msg_type == 4: # Data (multipart header)
+                        self.handle_request(message, is_json=True)
+                    elif msg_type == 4:
                         chunks_left = message[1]
                         self.encrypted_data = b''
                         logger.debug(f"Got multipart response header with {chunks_left} chunks")
-                    elif msg_type == 5: # Data (multipart chunk)
+                    elif msg_type == 5:
                         if chunks_left < 1:
-                            logger.error( "Got unexpected multipart message chunk!")
+                            logger.error("Got unexpected multipart message chunk!")
                             continue
                         chunks_left -= 1
                         logger.debug(f"Got chunk of size {msg_len}: {message.hex()}")
                         self.encrypted_data += message
                     else:
-                        logger.error( f"Invalid message (invalid type): {message.hex()}")
+                        logger.error(f"Invalid message (invalid type): {message.hex()}")
                         continue
 
         except NoSuchWindowException:
@@ -917,16 +912,12 @@ class CarrotJuicer:
 
         return
 
-
     def stop(self):
         self.should_stop = True
         if self.sock is not None:
             logger.info("Stopping CarrotBlender socket")
             self.sock.shutdown(socket.SHUT_RDWR)
             self.sock.close()
-
-
-
 
 def setup_helper_page(browser: horsium.BrowserWindow):
     browser.execute_script("""
