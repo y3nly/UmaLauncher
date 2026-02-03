@@ -83,116 +83,11 @@ def chromium_setup(service, options_class, driver_class, profile, helper_url, se
     options.add_experimental_option("useAutomationExtension", False) # Disable browser being controlled warning
     options.add_experimental_option("excludeSwitches", ["enable-automation"]) # Disable browser being controlled warning
     options.add_argument("--disable-web-security") # Disable CORS protections
-
+    
     if not settings['enable_browser_override']:
         options.add_argument("--app=" + helper_url)
 
     browser = driver_class(service=service, options=options)
-
-    # List of patterns to block
-    blocked_urls = [
-        # Header bidding / prebid
-        "*://*.presage.io/*",
-        "*://presage.io/*",
-
-        "*://*.prebid.media.net/*",
-        "*://prebid.media.net/*",
-
-        "*://*.a-mo.net/*",
-        "*://a-mo.net/*",
-
-        "*://*.onetag-sys.com/*",
-        "*://onetag-sys.com/*",
-
-        "*://*.33across.com/*",
-        "*://33across.com/*",
-
-        "*://*.rubiconproject.com/*",
-        "*://rubiconproject.com/*",
-
-        "*://*.openx.net/*",
-        "*://openx.net/*",
-
-        "*://*.adnxs.com/*",
-        "*://adnxs.com/*",
-
-        "*://*.gumgum.com/*",
-        "*://gumgum.com/*",
-
-        "*://*.media.net/*",
-        "*://media.net/*",
-
-        "*://*.richaudience.com/*",
-        "*://richaudience.com/*",
-
-        "*://*.connectad.io/*",
-        "*://connectad.io/*",
-
-        "*://*.kueezrtb.com/*",
-        "*://kueezrtb.com/*",
-
-        "*://*.cootlogix.com/*",
-        "*://cootlogix.com/*",
-
-        "*://*.ingage.tech/*",
-        "*://ingage.tech/*",
-
-        "*://*.marphezis.com/*",
-        "*://marphezis.com/*",
-
-        # Ad delivery / tracking
-        "*://*.doubleclick.net/*",
-        "*://doubleclick.net/*",
-
-        "*://*.googlesyndication.com/*",
-        "*://googlesyndication.com/*",
-
-        "*://*.btloader.com/*",
-        "*://btloader.com/*",
-
-        "*://*.ad-delivery.net/*",
-        "*://ad-delivery.net/*",
-
-        "*://*.inmobi.com/*",
-        "*://inmobi.com/*",
-
-        "*://*.intentiq.com/*",
-        "*://intentiq.com/*",
-
-        "*://*.cloudflareinsights.com/*",
-        "*://cloudflareinsights.com/*",
-
-        "*://*.fuseplatform.net/*",
-        "*://fuseplatform.net/*",
-
-        "*://*.amazon-adsystem.com/*",
-        "*://amazon-adsystem.com/*",
-
-        "*://*.adsrvr.org/*",
-        "*://adsrvr.org/*",
-
-        "*://*.servenobid.com/*",
-        "*://servenobid.com/*",
-
-        "*://*.criteo.com/*",
-        "*://criteo.com/*",
-
-        "*://*.adtrafficquality.google/*",
-        "*://adtrafficquality.google/*",
-
-        "*://*.google-analytics.com/*",
-        "*://google-analytics.com/*",
-
-        "*://*.ay.delivery/*",
-        "*://ay.delivery/*",
-    ]
-
-    # Execute the CDP command
-    browser.execute_cdp_cmd("Network.enable", {})
-    browser.execute_cdp_cmd(
-        "Network.setBlockedURLs",
-        {"urls": blocked_urls}
-    )
     
     if settings['enable_browser_override']:
         browser.get(helper_url)
