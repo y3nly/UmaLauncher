@@ -148,8 +148,21 @@ class CarrotJuicer:
         return lang
 
     def to_json(self, packet, out_name="packet.json"):
-        with open(util.get_relative(out_name), 'w', encoding='utf-8') as f:
+        packets_dir = os.path.join(util.get_relative(""), "packets")
+        os.makedirs(packets_dir, exist_ok=True)
+
+        out_path = os.path.join(packets_dir, out_name)
+
+        with open(out_path, 'w', encoding='utf-8') as f:
             f.write(json.dumps(packet, indent=4, ensure_ascii=False))
+
+    def to_txt(self, data, out_name=('packet.json',)):
+        packets_dir = os.path.join(util.get_relative(''), 'races')
+        os.makedirs(packets_dir, exist_ok=True)
+        out_path = os.path.join(packets_dir, out_name)
+
+        with open(out_path, 'w', encoding='utf-8') as f:
+            f.write(data)
 
     def open_helper(self):
         if self.should_stop:
@@ -285,6 +298,23 @@ class CarrotJuicer:
                 return
 
             data = data['data']
+
+            if self.threader.settings['save_race_packets']:
+                if data.get('race_scenario') or data.get('room_info') or data.get('race_result_info'):
+                    race_array = (
+                            data.get('race_horse_data_array')
+                            or data.get('race_start_info', {}).get('race_horse_data')
+                            or data.get('race_result_info', {}).get('race_horse_data_array')
+                    )
+                    scenario = (
+                            data.get('race_scenario')
+                            or data.get('room_info', {}).get('race_scenario')
+                            or data.get('race_result_info', {}).get('race_scenario')
+                    )
+                    if race_array and scenario:
+                        content = json.dumps(race_array) + '\n' + scenario
+                        filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S_race_in.txt")
+                        self.to_txt(content, filename)
 
             # Detect leaving the initial loading screen
             # if data.get('common_define'):
@@ -1172,7 +1202,6 @@ def gametora_dark_mode(browser: horsium.BrowserWindow):
         browser.execute_script("""document.querySelector("[class^='tooltips_tooltip_']").querySelector("[class^='filters_toggle_button_']").childNodes[0].querySelector("input").click()""")
     browser.execute_script("""document.querySelector("[class^='styles_header_settings_']").click()""")
 
-
 def gametora_remove_cookies_banner(browser: horsium.BrowserWindow):
     # Hide the cookies banner
     browser.execute_script("""
@@ -1186,17 +1215,6 @@ def gametora_remove_cookies_banner(browser: horsium.BrowserWindow):
             """)
 
 def gametora_close_ad_banner(browser: horsium.BrowserWindow):
-    # Close the ad banner at the bottom
-    browser.execute_script("""
-            if( window.removeBannerAdId == null ) {
-                window.removeBannerAdId = setInterval( function() {
-                    if( document.getElementsByClassName("publift-widget-sticky_footer-container")[0] != null ){
-                        document.getElementsByClassName("publift-widget-sticky_footer-container")[0].classList.add("closed")
-                    }
-                }, 5 * 1000);
-            }
-            """)
-
     if 'training-event-helper' in browser.url:
         # Close the top support cards thing, super jank
         browser.execute_script("""
@@ -1214,14 +1232,31 @@ def gametora_close_ad_banner(browser: horsium.BrowserWindow):
                         }
                         """)
 
+    browser.execute_script("""
+    if (!window.__gtAdBlocker) {
+        window.__gtAdBlocker = true;
 
+        const removeAds = () => {
+            document.querySelectorAll(
+                '.top-ad, .footer-ad, ' +
+                '.publift-widget-sticky_footer-container, ' +
+                '[class*="publift"]'
+            ).forEach(e => e.remove());
+        };
 
+        // Run once immediately
+        removeAds();
+
+        // Watch for dynamic injection
+        const observer = new MutationObserver(removeAds);
+        observer.observe(document.body, { childList: true, subtree: true });
+    }
+    """)
 
 def setup_gametora(browser: horsium.BrowserWindow):
     gametora_dark_mode(browser)
     gametora_remove_cookies_banner(browser)
     gametora_close_ad_banner(browser)
-
 
 def set_gametora_server_to_jp(browser):
     logger.info( "Setting GameTora page to the Japan server")
