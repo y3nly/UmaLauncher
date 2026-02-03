@@ -768,9 +768,6 @@ class CarrotJuicer:
                     util.show_warning_box("Uma Launcher: Error initializing CarrotJuicer.",
                                           f"Could not bind to {ip_address}:{port}")
 
-            # [NEW] Trackers for Smart Focus
-            last_target_state = None
-
             chunks_left = 0
             while not self.should_stop:
 
