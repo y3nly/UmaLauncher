@@ -261,6 +261,7 @@ class BrowserWindow:
         self.run_at_launch = run_at_launch
         self.browser_name = "Auto"
         self.latest_error = ""
+        self.last_foreground_hwnd = None
         
         self.ensure_tab_open()
 
@@ -420,22 +421,99 @@ class BrowserWindow:
             logger.warning("Could not get browser PID!")
             return None
 
-    # TODO: It'd be nice to be able to do this without resorting to the win32 API
+    def get_helper_hwnd(self):
+        target_title = "Training Event Helper | Uma Musume | GameTora"
+        return win32gui.FindWindow(None, target_title)
+
+    def get_game_hwnd(self):
+        return win32gui.FindWindow("UnityWndClass", "Umamusume")
+
     def set_topmost(self, is_topmost):
-        hwnd = util.get_window_handle_from_pid( self.get_browser_pid() )
-        if hwnd is None:
-            logger.error("Could not find window handle for browser PID.")
-            return
-        rect = util.get_window_rect(hwnd)
-        # GetWindowRect returns (left, top, right, bottom), but we want (x, y, width, height)
-        # TODO does this need flags?
-        if is_topmost:
-            logger.info( "Enabling always on top")
-            win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1], 0)
-        else:
-            logger.info( "Disabling always on top")
-            win32gui.SetWindowPos(hwnd, win32con.HWND_NOTOPMOST, rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1], 0)
+        """
+        Updates the setting, but forces the window to be NOTOPMOST in Windows.
+        We now handle the 'On Top' visual manually in enforce_z_order.
+        """
         self.settings["browser_topmost"] = is_topmost
+        # if save_setting:
+        #     self.settings["browser_topmost"] = is_topmost
+        #
+        # # Always strip the system 'TopMost' flag so it doesn't float over other apps (like Chrome).
+        # # We will handle the "On Top of Game" layering manually in the loop.
+        # hwnd = self._get_helper_hwnd()
+        # if hwnd:
+        #     flags = win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE
+        #     win32gui.SetWindowPos(hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0, flags)
+
+    def enforce_z_order(self):
+        """
+        Manages Z-Order.
+        1. Auto-Restore: Restores window when switching TO the game (unless coming from the helper).
+        2. Overlay Mode: Forces TopMost if Active; Forces BOTTOM if Inactive.
+        """
+        try:
+            helper_hwnd = self.get_helper_hwnd()
+            game_hwnd = self.get_game_hwnd()
+
+            if not helper_hwnd or not game_hwnd:
+                return
+
+            foreground_hwnd = win32gui.GetForegroundWindow()
+            is_minimized = win32gui.IsIconic(helper_hwnd)
+
+            # Transition Detection
+            # We need to capture the previous state locally before we update self.last_foreground_hwnd
+            previous_hwnd = self.last_foreground_hwnd
+            just_switched_to_game = (foreground_hwnd == game_hwnd) and (previous_hwnd != game_hwnd)
+            focus_changed = (previous_hwnd != foreground_hwnd)
+
+            # Update Global Tracker
+            self.last_foreground_hwnd = foreground_hwnd
+
+            # Trigger: Switched TO Game, Helper is Hidden, AND we didn't just come from the Helper.
+            if just_switched_to_game and is_minimized and (previous_hwnd != helper_hwnd):
+                win32gui.ShowWindow(helper_hwnd, win32con.SW_RESTORE)
+                # Important: Mark as not minimized immediately so logic below runs correctly this frame
+                is_minimized = False
+
+            if is_minimized:
+                return
+
+            flags = win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE
+
+            current_ex_style = win32gui.GetWindowLong(helper_hwnd, win32con.GWL_EXSTYLE)
+            is_currently_topmost = (current_ex_style & win32con.WS_EX_TOPMOST) != 0
+
+            is_overlay_mode = self.settings["browser_topmost"]
+
+            # "Game Context" = Playing Game OR Using Helper
+            is_context_active = (foreground_hwnd == game_hwnd) or (foreground_hwnd == helper_hwnd)
+
+            if is_overlay_mode:
+                if is_context_active:
+                    # User is playing: Force ON TOP
+                    # We force this update if focus just changed OR if it's not currently topmost
+                    if focus_changed or not is_currently_topmost:
+                        win32gui.SetWindowPos(helper_hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0, flags)
+                else:
+                    # User Alt-Tabbed: Force TO BOTTOM
+                    # We send this command if we were previously TopMost OR if we just switched apps.
+                    if focus_changed or is_currently_topmost:
+                        # 1. Remove TopMost flag
+                        win32gui.SetWindowPos(helper_hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0, flags)
+                        # 2. Slam to Bottom of Stack (Ensure Chrome covers it)
+                        win32gui.SetWindowPos(helper_hwnd, win32con.HWND_BOTTOM, 0, 0, 0, 0, flags)
+
+            else:
+                # 1. Ensure NOT TopMost
+                if is_currently_topmost:
+                    win32gui.SetWindowPos(helper_hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0, flags)
+
+                # 2. If Playing, snap BEHIND Game
+                if foreground_hwnd == game_hwnd:
+                    win32gui.SetWindowPos(helper_hwnd, game_hwnd, 0, 0, 0, 0, flags)
+
+        except Exception:
+            pass
 
     @ensure_focus
     def execute_script(self, *args, **kwargs):
