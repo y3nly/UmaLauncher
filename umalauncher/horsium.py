@@ -376,6 +376,7 @@ class BrowserWindow:
         # only want to do this for the training-event-helper
         if 'training-event-helper' in self.url:
             self.set_topmost(self.settings["browser_topmost"])
+            self.stop_taskbar_flash()
 
     def ensure_focus(func):
         def wrapper(self, *args, **kwargs):
@@ -512,6 +513,21 @@ class BrowserWindow:
                 if foreground_hwnd == game_hwnd:
                     win32gui.SetWindowPos(helper_hwnd, game_hwnd, 0, 0, 0, 0, flags)
 
+        except Exception:
+            pass
+
+    def stop_taskbar_flash(self):
+        """
+        Stops the taskbar entry from blinking/flashing (orange alert).
+        """
+        try:
+            hwnd = self.get_helper_hwnd()
+            if not hwnd:
+                return
+
+            # FLASHW_STOP = 0
+            # Arguments: (hwnd, flags, count, timeout)
+            win32gui.FlashWindowEx(hwnd, 0, 0, 0)
         except Exception:
             pass
 
