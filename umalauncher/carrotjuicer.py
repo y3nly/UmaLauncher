@@ -723,7 +723,7 @@ class CarrotJuicer:
         # 1. Run simulation
         results = self.run_simulation(util.get_asset("_assets/umasim-cli.exe"), mock_payload)
 
-        # 2. Pre-process 5-Number Summaries for Box Plots
+        # 2. Pre-process Statistical Data for the Box Plot
         sim_summary = {}
         global_min = 0.0
         global_max = 0.0
@@ -738,48 +738,56 @@ class CarrotJuicer:
                     if not times:
                         continue
 
-                    t_min = min(times)
-                    t_max = max(times)
-                    t_mean = statistics.mean(times)
-                    stdev = statistics.stdev(times) if len(times) > 1 else 0
+                    saved_times = [base_avg - t for t in times]
 
-                    # Fast calculation for whiskers (5th and 95th percentiles) and IQR
-                    if len(times) >= 20:
-                        pcts = statistics.quantiles(times, n=20)
-                        t_p5, t_q1, t_med, t_q3, t_p95 = pcts[0], pcts[4], pcts[9], pcts[14], pcts[18]
+                    s_mean = statistics.mean(saved_times)
+                    s_stdev = statistics.stdev(saved_times) if len(saved_times) > 1 else 0
+
+                    if len(saved_times) >= 20:
+                        pcts = statistics.quantiles(saved_times, n=20)
+                        s_p5, s_q1, s_med, s_q3, s_p95 = pcts[0], pcts[4], pcts[9], pcts[14], pcts[18]
                     else:
-                        t_p5 = t_q1 = t_med = t_q3 = t_p95 = t_mean
+                        s_p5 = s_q1 = s_med = s_q3 = s_p95 = s_mean
 
-                    s_mean = base_avg - t_mean
+                    iqr = s_q3 - s_q1
+                    lower_bound = s_q1 - (1.5 * iqr)
+                    upper_bound = s_q3 + (1.5 * iqr)
 
-                    # Invert the logic! (Slowest time = Minimum time saved)
+                    outliers = [round(x, 3) for x in saved_times if x < lower_bound or x > upper_bound]
+
                     data_obj = {
                         "saved": round(s_mean, 4),
-                        "stdev": round(stdev, 4),
-                        "min": round(base_avg - t_max, 4),  # Outlier Worst Case (e.g. Kakari fail)
-                        "wMin": round(base_avg - t_p95, 4),  # Left Whisker
-                        "q1": round(base_avg - t_q3, 4),  # Box Left
-                        "median": round(base_avg - t_med, 4),  # Median Tick
-                        "q3": round(base_avg - t_q1, 4),  # Box Right
-                        "wMax": round(base_avg - t_p5, 4),  # Right Whisker
-                        "max": round(base_avg - t_min, 4)  # Outlier Best Case
+                        "stdev": round(s_stdev, 4),
+                        "wMin": round(s_p5, 4),
+                        "q1": round(s_q1, 4),
+                        "median": round(s_med, 4),
+                        "q3": round(s_q3, 4),
+                        "wMax": round(s_p95, 4),
+                        "outliers": outliers
                     }
 
-                    # Track absolute global scale to align all graphs
-                    global_min = min(global_min, data_obj["min"])
-                    global_max = max(global_max, data_obj["max"])
+                    if outliers:
+                        global_min = min(global_min, min(outliers))
+                        global_max = max(global_max, max(outliers))
+
+                    global_min = min(global_min, data_obj["wMin"])
+                    global_max = max(global_max, data_obj["wMax"])
 
                     sim_summary[str(skill_id)] = data_obj
+
+        # Combine both lists so the UI unhides all relevant skills
+        acquired_list = getattr(self, "acquired_skills_list", [])
+        combined_display_list = acquired_list + self.skills_list
 
         # 3. Inject visual data into the browser
         self.skill_browser.execute_script(
             """
-            let skills_list = arguments[0];
+            let display_list = arguments[0];
             let sim_results = arguments[1] || {};
             let globalMin = arguments[2];
             let globalMax = arguments[3];
+            let acquired_list = arguments[4] || [];
 
-            // Add a 5% padding to the global scale so dots don't touch the absolute edge
             let range = globalMax - globalMin;
             if (range === 0) range = 1;
             let pad = range * 0.05; 
@@ -787,9 +795,8 @@ class CarrotJuicer:
             let scaleMax = globalMax + pad;
             let scaleRange = scaleMax - scaleMin;
 
-            // Helper to map values to a CSS percentage along the shared X-Axis
             let getPct = (val) => Math.max(0, Math.min(100, ((val - scaleMin) / scaleRange) * 100));
-            let zeroPct = getPct(0); // The Baseline reference line
+            let zeroPct = getPct(0); 
 
             let skill_elements = [];
             let skills_table = document.querySelector("[class^='skills_skill_table_']");
@@ -813,68 +820,100 @@ class CarrotJuicer:
                         skill_elements.push(row);
                         row.remove();
 
-                        let data = sim_results[skill_id.toString()]; 
+                        item.style.display = "flex";
+                        item.style.justifyContent = "space-between";
+                        item.style.alignItems = "center";
+                        item.style.gap = "15px";
 
-                        if (data) {
-                            let existingBadge = item.querySelector('.sim-data-badge');
+                        let existingBadge = item.querySelector('.sim-data-badge');
 
-                            let sign = data.saved > 0 ? "+" : "";
-                            let color = data.saved > 0 ? "#4ade80" : "#f87171"; // Green/Red
-                            let displayText = `Saved: ${sign}${data.saved.toFixed(3)}s (±${data.stdev.toFixed(3)}s)`;
-
-                            // Map the 5-number summary to CSS coordinates
-                            let minP = getPct(data.min);
-                            let wMinP = getPct(data.wMin);
-                            let q1P = getPct(data.q1);
-                            let medP = getPct(data.median);
-                            let q3P = getPct(data.q3);
-                            let wMaxP = getPct(data.wMax);
-                            let maxP = getPct(data.max);
-
-                            let boxHtml = `
-                                <div style="position: relative; width: 100%; height: 16px; margin-top: 6px; background: rgba(0,0,0,0.15); border-radius: 4px;">
-                                    <div style="position: absolute; left: ${zeroPct}%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.3); z-index: 1;"></div>
-
-                                    <div style="position: absolute; left: ${wMinP}%; width: ${q1P - wMinP}%; top: 50%; height: 2px; background: rgba(255,255,255,0.6); transform: translateY(-50%);"></div>
-
-                                    <div style="position: absolute; left: ${q1P}%; width: ${q3P - q1P}%; top: 3px; bottom: 3px; background: ${color}; border-radius: 2px; opacity: 0.85;"></div>
-
-                                    <div style="position: absolute; left: ${medP}%; top: 1px; bottom: 1px; width: 2px; background: white; z-index: 2; border-radius: 1px;"></div>
-
-                                    <div style="position: absolute; left: ${q3P}%; width: ${wMaxP - q3P}%; top: 50%; height: 2px; background: rgba(255,255,255,0.6); transform: translateY(-50%);"></div>
-
-                                    <div style="position: absolute; left: ${minP}%; top: 50%; width: 4px; height: 4px; background: #fca5a5; border-radius: 50%; transform: translate(-50%, -50%);" title="Worst Outlier"></div>
-                                    <div style="position: absolute; left: ${maxP}%; top: 50%; width: 4px; height: 4px; background: #86efac; border-radius: 50%; transform: translate(-50%, -50%);" title="Best Outlier"></div>
-                                </div>
-                            `;
-
-                            item.style.display = "flex";
-                            item.style.justifyContent = "space-between";
-                            item.style.alignItems = "center";
-                            item.style.gap = "15px";
-
+                        // --- ACQUIRED SKILLS UI ---
+                        if (acquired_list.includes(skill_id)) {
                             if (!existingBadge) {
                                 let badge = document.createElement("div");
                                 badge.className = "sim-data-badge";
                                 badge.style.padding = "6px 10px";
-                                badge.style.backgroundColor = "var(--c-bg-main-hover)"; 
-                                badge.style.border = `1px solid ${color}`;
-                                badge.style.color = color;
+                                badge.style.backgroundColor = "rgba(74, 222, 128, 0.1)"; 
+                                badge.style.border = "1px solid #4ade80";
+                                badge.style.color = "#4ade80";
                                 badge.style.borderRadius = "6px";
                                 badge.style.fontWeight = "bold";
                                 badge.style.fontSize = "0.9em";
                                 badge.style.display = "flex";
-                                badge.style.flexDirection = "column";
+                                badge.style.justifyContent = "center";
                                 badge.style.alignItems = "center";
                                 badge.style.flexShrink = "0"; 
                                 badge.style.minWidth = "180px"; 
+                                badge.style.height = "42px"; 
 
-                                badge.innerHTML = `<div>${displayText}</div>${boxHtml}`;
+                                badge.innerHTML = `✅ Already Acquired`;
                                 item.appendChild(badge);
-                            } else {
-                                existingBadge.style.border = `1px solid ${color}`;
-                                existingBadge.style.color = color;
-                                existingBadge.innerHTML = `<div>${displayText}</div>${boxHtml}`;
+                            }
+                        } 
+                        // --- UNACQUIRED SKILLS (HINTS) BOX PLOT UI ---
+                        else {
+                            let data = sim_results[skill_id.toString()]; 
+                            if (data) {
+                                let color = "";
+                                if (data.saved >= 0.1) {
+                                    color = "#4ade80"; 
+                                } else if (data.saved >= 0.03) {
+                                    color = "#86efac"; 
+                                } else if (data.saved > -0.03) {
+                                    color = "#9ca3af"; 
+                                } else {
+                                    color = "#f87171"; 
+                                }
+
+                                let sign = data.saved > 0 ? "+" : "";
+                                let displayText = `Saved: ${sign}${data.saved.toFixed(3)}s (±${data.stdev.toFixed(3)}s)`;
+
+                                let wMinP = getPct(data.wMin);
+                                let q1P = getPct(data.q1);
+                                let medP = getPct(data.median);
+                                let q3P = getPct(data.q3);
+                                let wMaxP = getPct(data.wMax);
+
+                                let outlierHtml = data.outliers.map(val => {
+                                    let p = getPct(val);
+                                    let dotColor = val > 0 ? "#86efac" : "#fca5a5";
+                                    return `<div style="position: absolute; left: ${p}%; top: 50%; width: 2px; height: 10px; background: ${dotColor}; opacity: 0.3; border-radius: 1px; transform: translate(-50%, -50%);"></div>`;
+                                }).join("");
+
+                                let boxHtml = `
+                                    <div style="position: relative; width: 100%; height: 16px; margin-top: 6px; background: rgba(0,0,0,0.15); border-radius: 4px;">
+                                        <div style="position: absolute; left: ${zeroPct}%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.3); z-index: 1;"></div>
+                                        <div style="position: absolute; left: ${wMinP}%; width: ${q1P - wMinP}%; top: 50%; height: 2px; background: rgba(255,255,255,0.6); transform: translateY(-50%);"></div>
+                                        <div style="position: absolute; left: ${q1P}%; width: ${q3P - q1P}%; top: 3px; bottom: 3px; background: ${color}; border-radius: 2px; opacity: 0.85;"></div>
+                                        <div style="position: absolute; left: ${medP}%; top: 1px; bottom: 1px; width: 2px; background: white; z-index: 2; border-radius: 1px;"></div>
+                                        <div style="position: absolute; left: ${q3P}%; width: ${wMaxP - q3P}%; top: 50%; height: 2px; background: rgba(255,255,255,0.6); transform: translateY(-50%);"></div>
+                                        ${outlierHtml}
+                                    </div>
+                                `;
+
+                                if (!existingBadge) {
+                                    let badge = document.createElement("div");
+                                    badge.className = "sim-data-badge";
+                                    badge.style.padding = "6px 10px";
+                                    badge.style.backgroundColor = "var(--c-bg-main-hover)"; 
+                                    badge.style.border = `1px solid ${color}`;
+                                    badge.style.color = color;
+                                    badge.style.borderRadius = "6px";
+                                    badge.style.fontWeight = "bold";
+                                    badge.style.fontSize = "0.9em";
+                                    badge.style.display = "flex";
+                                    badge.style.flexDirection = "column";
+                                    badge.style.alignItems = "center";
+                                    badge.style.flexShrink = "0"; 
+                                    badge.style.minWidth = "180px"; 
+
+                                    badge.innerHTML = `<div>${displayText}</div>${boxHtml}`;
+                                    item.appendChild(badge);
+                                } else {
+                                    existingBadge.style.border = `1px solid ${color}`;
+                                    existingBadge.style.color = color;
+                                    existingBadge.innerHTML = `<div>${displayText}</div>${boxHtml}`;
+                                }
                             }
                         }
                         break;
@@ -884,7 +923,7 @@ class CarrotJuicer:
 
             for (let i = 0; i < skill_elements.length; i++) {
                 const item = skill_elements[i];
-                item.style.display = "flex"; // Retain flexbox layout
+                item.style.display = "flex"; 
 
                 if (color_class) {
                     if (i % 2 === 0) {
@@ -895,7 +934,7 @@ class CarrotJuicer:
                 }
                 skills_table.appendChild(item);
             }
-            """, self.skills_list, sim_summary, global_min, global_max)  # Passing global scale bounds to JS!
+            """, combined_display_list, sim_summary, global_min, global_max, acquired_list)
 
     def run_simulation(self, exe_path, payload):
         json_payload = json.dumps(payload)
@@ -1377,7 +1416,7 @@ def setup_skill_window(browser: horsium.BrowserWindow):
         let navBg = document.querySelector("div[id^='styles_page-topnav-bg']");
         if (navBg) navBg.style.display = "none";
         
-        let rightNav = document.querySelector("input[class*='page-rightnav']");
+        let rightNav = document.querySelector("div[id^='page-rightnav']");
         if (rightNav) rightNav.style.display = "none";
 
         let pageWrapper = document.querySelector("div[class^='styles_page__']");
