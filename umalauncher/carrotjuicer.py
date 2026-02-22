@@ -74,6 +74,11 @@ class CarrotJuicer:
 
         self.skill_id_dict = mdb.get_skill_id_dict()
         self.status_name_dict = mdb.get_status_name_dict()
+        self.skill_costs_dict = mdb.get_skill_costs_dict()
+
+        self.acquired_skills_list = []
+        self.skill_hints = dict()
+        self.style = ''
 
         self.screen_state_handler = threader.screenstate
         self.restart_time()
@@ -427,29 +432,45 @@ class CarrotJuicer:
                     self.training_tracker = training_tracker.TrainingTracker(training_id, data['chara_info']['card_id'])
 
                 self.skills_list = []
+                self.acquired_skills_list = []
+                self.skill_hints = {}
+                self.style = data['chara_info']['race_running_style']
+
+                # Acquired skills
                 for skill_data in data['chara_info']['skill_array']:
-                    self.skills_list.append(skill_data['skill_id'])
+                    skill_id = skill_data['skill_id']
+                    self.acquired_skills_list.append(skill_id)
+                    self.skills_list.append(skill_id)
 
                 self.skills_list += mdb.get_card_inherent_skills(data['chara_info']['card_id'],
                                                                  data['chara_info']['talent_level'])
 
+                # Hints
                 for skill_tip in data['chara_info']['skill_tips_array']:
                     if skill_tip['rarity'] > 1:
-                        self.skills_list.append(self.skill_id_dict[(skill_tip['group_id'], skill_tip[
-                            'rarity'])])  # TODO: Check if level is correct. Check gold skills and purple skills.
+                        skill_id = self.skill_id_dict[(skill_tip['group_id'], skill_tip['rarity'])]
+                        white_id = mdb.determine_skill_id_from_group_id(skill_tip['group_id'], 1, self.skills_list)
+                        if white_id not in self.skills_list:
+                            self.skills_list.append(white_id)
                     else:
-                        self.skills_list.append(
-                            mdb.determine_skill_id_from_group_id(skill_tip['group_id'], skill_tip['rarity'],
-                                                                 self.skills_list))
+                        skill_id = mdb.determine_skill_id_from_group_id(skill_tip['group_id'], skill_tip['rarity'],
+                                                                        self.skills_list)
 
-                # self.skills_list.sort()
+                    self.skills_list.append(skill_id)
+                    self.skill_hints[skill_id] = skill_tip.get('level', 0)
+
                 self.skills_list = mdb.sort_skills_by_display_order(self.skills_list)
 
                 # Fix certain skills for GameTora
                 for i in range(len(self.skills_list)):
-                    cur_skill_id = self.skills_list[i]
-                    if 900000 <= cur_skill_id < 1000000:
-                        self.skills_list[i] = cur_skill_id - 800000
+                    old_id = self.skills_list[i]
+                    if 900000 <= old_id < 1000000:
+                        new_id = old_id - 800000
+                        self.skills_list[i] = new_id
+
+                        # Keep the hint dictionary synced if the ID changes
+                        if old_id in self.skill_hints:
+                            self.skill_hints[new_id] = self.skill_hints.pop(old_id)
 
                 logger.debug(f"Skills list: {self.skills_list}")
 
@@ -692,56 +713,87 @@ class CarrotJuicer:
     def update_skill_window(self):
         if self.should_stop:
             return
+
+        # Initialize or refocus the skill tracking browser
         if not self.skill_browser:
-            self.skill_browser = horsium.BrowserWindow("https://gametora.com/umamusume/skills", self.threader,
-                                                       rect=self.threader.settings['skills_position'],
-                                                       run_at_launch=setup_skill_window)
+            self.skill_browser = horsium.BrowserWindow(
+                "https://gametora.com/umamusume/skills",
+                self.threader,
+                rect=self.threader.settings['skills_position'],
+                run_at_launch=setup_skill_window
+            )
         else:
             self.skill_browser.ensure_tab_open()
 
         if self.browser and self.browser.alive():
             self.browser.execute_script("""window.skill_window_opened();""")
 
+        # Filter for unacquired skills to optimize simulation throughput
+        unacquired_skills_list = [s for s in self.skills_list if s not in self.acquired_skills_list]
+
+        STYLE_INTERNAL_MAP = {
+            1: "NIGE",
+            2: "SEN",
+            3: "SASI",
+            4: "OI"
+        }
+
+        # Define simulation parameters and environmental state
         mock_payload = {
             "baseSetting": {
                 "umaStatus": {
-                    "charaName": "Summer Maruzensky",
-                    "speed": 1200, "stamina": 600, "power": 1200, "guts": 800, "wisdom": 1200,
-                    "condition": "BEST", "style": "SEN",
+                    "charaName": "Place Holder",
+                    "speed": 1200, "stamina": 1200, "power": 1000, "guts": 400, "wisdom": 1200,
+                    "condition": "BEST", "style": STYLE_INTERNAL_MAP[self.style],
                     "distanceFit": "A", "surfaceFit": "A", "styleFit": "A",
                     "popularity": 1, "gateNumber": 1,
                 },
                 "track": {
-                    "location": 10008, "course": 10804, "condition": "GOOD", "gateCount": 9
+                    "location": 10006, "course": 10611, "condition": "GOOD", "gateCount": 9
                 }
             },
-            "acquiredSkillIds": [],
-            "unacquiredSkillIds": self.skills_list,
-            "iterations": 1000
+            "acquiredSkillIds": self.acquired_skills_list,
+            "unacquiredSkillIds": unacquired_skills_list,
+            "skillHints": self.skill_hints,
+            "iterations": 10000
         }
 
-        # 1. Run simulation
+        # Execute external simulation engine
         results = self.run_simulation(util.get_asset("_assets/umasim-cli.exe"), mock_payload)
 
-        # 2. Pre-process Statistical Data for the Box Plot
         sim_summary = {}
         global_min = 0.0
         global_max = 0.0
 
+        # Process statistical results and calculate cost-efficiency
         if results and "baselineTimes" in results and "candidateResults" in results:
             base_times = results["baselineTimes"]
 
             if len(base_times) > 0:
                 base_avg = statistics.mean(base_times)
+                skill_costs_dict = mdb.get_skill_costs_dict()
 
-                for skill_id, times in results["candidateResults"].items():
+                for skill_id_str, times in results["candidateResults"].items():
                     if not times:
                         continue
 
-                    saved_times = [base_avg - t for t in times]
+                    skill_id_int = int(skill_id_str)
 
+                    # Calculate net SP expenditure based on tiered hint discounts
+                    base_cost = skill_costs_dict.get(skill_id_str, 0)
+                    hint_level = self.skill_hints.get(skill_id_int, 0)
+
+                    effective_hint_level = min(hint_level, 5)
+                    discount_map = {0: 0, 1: 10, 2: 20, 3: 30, 4: 35, 5: 40}
+                    discount_percent = discount_map.get(effective_hint_level, 0)
+                    sp_cost = int(base_cost * (100 - discount_percent) / 100)
+
+                    # Derive relative time delta and distribution quartiles
+                    saved_times = [base_avg - t for t in times]
                     s_mean = statistics.mean(saved_times)
-                    s_stdev = statistics.stdev(saved_times) if len(saved_times) > 1 else 0
+
+                    # Efficiency calculation: Seconds Saved per 100 SP
+                    efficiency = (s_mean / max(sp_cost, 1)) * 100
 
                     if len(saved_times) >= 20:
                         pcts = statistics.quantiles(saved_times, n=20)
@@ -752,37 +804,33 @@ class CarrotJuicer:
                     iqr = s_q3 - s_q1
                     lower_bound = s_q1 - (1.5 * iqr)
                     upper_bound = s_q3 + (1.5 * iqr)
-
                     outliers = [round(x, 3) for x in saved_times if x < lower_bound or x > upper_bound]
 
                     data_obj = {
                         "saved": round(s_mean, 4),
-                        "stdev": round(s_stdev, 4),
                         "wMin": round(s_p5, 4),
                         "q1": round(s_q1, 4),
                         "median": round(s_med, 4),
                         "q3": round(s_q3, 4),
                         "wMax": round(s_p95, 4),
-                        "outliers": outliers
+                        "outliers": outliers,
+                        "sp_cost": sp_cost,
+                        "hint_level": hint_level,
+                        "efficiency": round(efficiency, 4)
                     }
 
-                    if outliers:
-                        global_min = min(global_min, min(outliers))
-                        global_max = max(global_max, max(outliers))
+                    # Maintain global bounds for uniform boxplot scaling
+                    global_min = min(global_min, data_obj["wMin"], *outliers) if outliers else min(global_min,
+                                                                                                   data_obj["wMin"])
+                    global_max = max(global_max, data_obj["wMax"], *outliers) if outliers else max(global_max,
+                                                                                                   data_obj["wMax"])
 
-                    global_min = min(global_min, data_obj["wMin"])
-                    global_max = max(global_max, data_obj["wMax"])
+                    sim_summary[skill_id_str] = data_obj
 
-                    sim_summary[str(skill_id)] = data_obj
-
-        # Combine both lists so the UI unhides all relevant skills
-        acquired_list = getattr(self, "acquired_skills_list", [])
-        combined_display_list = acquired_list + self.skills_list
-
-        # 3. Inject visual data into the browser
+        # Execute JavaScript injection with updated UI styling
         self.skill_browser.execute_script(
             """
-            let display_list = arguments[0];
+            let skills_list = arguments[0];
             let sim_results = arguments[1] || {};
             let globalMin = arguments[2];
             let globalMax = arguments[3];
@@ -801,140 +849,106 @@ class CarrotJuicer:
             let skill_elements = [];
             let skills_table = document.querySelector("[class^='skills_skill_table_']");
             let skill_rows = document.querySelectorAll("[class^='skills_table_desc_']");
-
             let stripes_element = document.querySelector("[class*='skills_stripes_']");
             let color_class = stripes_element ? [...stripes_element.classList].filter(item => item.startsWith("skills_stripes_"))[0] : null;
 
             if (!skills_table || skill_rows.length === 0) return;
 
+            // Set display to none for all original elements to begin filtering
             for (const item of skill_rows) {
                 if (item.parentNode) item.parentNode.style.display = "none";
             }
 
+            // Find matching elements, remove them, and prepend metrics badge
             for (const skill_id of skills_list) {
                 let skill_string = "(" + skill_id + ")";
-
                 for (const item of skill_rows) {
                     if (item.textContent.includes(skill_string)) {
                         let row = item.parentNode;
                         skill_elements.push(row);
                         row.remove();
 
-                        item.style.display = "flex";
-                        item.style.justifyContent = "space-between";
-                        item.style.alignItems = "center";
-                        item.style.gap = "15px";
+                        let existingBadge = row.querySelector('.sim-data-badge');
+                        if (existingBadge) existingBadge.remove();
 
-                        let existingBadge = item.querySelector('.sim-data-badge');
+                        let badge = document.createElement("div");
+                        badge.className = "sim-data-badge";
+                        badge.style.gridArea = "badge";
+                        badge.style.width = "180px";
+                        badge.style.height = "40px"; 
+                        badge.style.marginRight = "10px"; 
+                        badge.style.boxSizing = "border-box";
+                        badge.style.display = "flex";
+                        badge.style.flexDirection = "column";
+                        badge.style.justifyContent = "center";
 
-                        // --- ACQUIRED SKILLS UI ---
                         if (acquired_list.includes(skill_id)) {
-                            if (!existingBadge) {
-                                let badge = document.createElement("div");
-                                badge.className = "sim-data-badge";
-                                badge.style.padding = "6px 10px";
-                                badge.style.backgroundColor = "rgba(74, 222, 128, 0.1)"; 
-                                badge.style.border = "1px solid #4ade80";
-                                badge.style.color = "#4ade80";
-                                badge.style.borderRadius = "6px";
-                                badge.style.fontWeight = "bold";
-                                badge.style.fontSize = "0.9em";
-                                badge.style.display = "flex";
-                                badge.style.justifyContent = "center";
-                                badge.style.alignItems = "center";
-                                badge.style.flexShrink = "0"; 
-                                badge.style.minWidth = "180px"; 
-                                badge.style.height = "42px"; 
-
-                                badge.innerHTML = `✅ Already Acquired`;
-                                item.appendChild(badge);
-                            }
-                        } 
-                        // --- UNACQUIRED SKILLS (HINTS) BOX PLOT UI ---
-                        else {
+                            badge.style.padding = "2px 8px";
+                            badge.style.backgroundColor = "rgba(156, 163, 175, 0.1)"; 
+                            badge.style.border = "1px solid #9ca3af";
+                            badge.style.color = "#9ca3af";
+                            badge.style.borderRadius = "4px";
+                            badge.style.fontWeight = "bold";
+                            badge.style.alignItems = "center";
+                            badge.innerHTML = `Acquired`;
+                        } else {
                             let data = sim_results[skill_id.toString()]; 
                             if (data) {
-                                let color = "";
-                                if (data.saved >= 0.1) {
-                                    color = "#4ade80"; 
-                                } else if (data.saved >= 0.03) {
-                                    color = "#86efac"; 
-                                } else if (data.saved > -0.03) {
-                                    color = "#9ca3af"; 
-                                } else {
-                                    color = "#f87171"; 
-                                }
+                                // Threshold Logic (Efficiency-based)
+                                let color = "#9ca3af";
+                                let eff = data.efficiency;
+                                if (eff >= 0.04) color = "#4ade80";      
+                                else if (eff >= 0.02) color = "#86efac"; 
+                                else if (eff >= 0.01) color = "#bbf7d0"; 
+                                else if (eff <= -0.01) color = "#ca8a8a";                  
 
-                                let sign = data.saved > 0 ? "+" : "";
-                                let displayText = `Saved: ${sign}${data.saved.toFixed(3)}s (±${data.stdev.toFixed(3)}s)`;
+                                badge.style.padding = "2px 8px";
+                                badge.style.backgroundColor = "var(--c-bg-main-hover)"; 
+                                badge.style.border = `1px solid ${color}`;
+                                badge.style.color = color;
+                                badge.style.borderRadius = "4px";
+                                badge.style.fontWeight = "bold";
+                                badge.style.alignItems = "stretch";
 
-                                let wMinP = getPct(data.wMin);
-                                let q1P = getPct(data.q1);
-                                let medP = getPct(data.median);
-                                let q3P = getPct(data.q3);
-                                let wMaxP = getPct(data.wMax);
+                                let sign = data.saved > 0 ? "-" : (data.saved < 0 ? "+" : "");
+                                let absSaved = Math.abs(data.saved);
 
-                                let outlierHtml = data.outliers.map(val => {
-                                    let p = getPct(val);
-                                    let dotColor = val > 0 ? "#86efac" : "#fca5a5";
-                                    return `<div style="position: absolute; left: ${p}%; top: 50%; width: 2px; height: 10px; background: ${dotColor}; opacity: 0.3; border-radius: 1px; transform: translate(-50%, -50%);"></div>`;
-                                }).join("");
-
-                                let boxHtml = `
-                                    <div style="position: relative; width: 100%; height: 16px; margin-top: 6px; background: rgba(0,0,0,0.15); border-radius: 4px;">
+                                badge.innerHTML = `
+                                    <div style="display: flex; justify-content: space-between; font-size: 0.8em;">
+                                        <span>${sign}${absSaved.toFixed(3)}s (${eff.toFixed(3)})</span>
+                                        <span>Lv ${data.hint_level || 0} | ${data.sp_cost || "?"} SP</span>
+                                    </div>
+                                    <div style="position: relative; width: 100%; height: 16px; margin-top: 1px; background: rgba(0,0,0,0.15); border-radius: 4px;">
                                         <div style="position: absolute; left: ${zeroPct}%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.3); z-index: 1;"></div>
-                                        <div style="position: absolute; left: ${wMinP}%; width: ${q1P - wMinP}%; top: 50%; height: 2px; background: rgba(255,255,255,0.6); transform: translateY(-50%);"></div>
-                                        <div style="position: absolute; left: ${q1P}%; width: ${q3P - q1P}%; top: 3px; bottom: 3px; background: ${color}; border-radius: 2px; opacity: 0.85;"></div>
-                                        <div style="position: absolute; left: ${medP}%; top: 1px; bottom: 1px; width: 2px; background: white; z-index: 2; border-radius: 1px;"></div>
-                                        <div style="position: absolute; left: ${q3P}%; width: ${wMaxP - q3P}%; top: 50%; height: 2px; background: rgba(255,255,255,0.6); transform: translateY(-50%);"></div>
-                                        ${outlierHtml}
+                                        <div style="position: absolute; left: ${getPct(data.wMin)}%; width: ${getPct(data.q1) - getPct(data.wMin)}%; top: 50%; height: 2px; background: rgba(255,255,255,0.6); transform: translateY(-50%);"></div>
+                                        <div style="position: absolute; left: ${getPct(data.q1)}%; width: ${getPct(data.q3) - getPct(data.q1)}%; top: 1px; bottom: 1px; background: ${color}; border-radius: 1px; opacity: 0.85;"></div>
+                                        <div style="position: absolute; left: ${getPct(data.median)}%; top: 1px; bottom: 1px; width: 2px; background: white; z-index: 2;"></div>
+                                        <div style="position: absolute; left: ${getPct(data.q3)}%; width: ${getPct(data.wMax) - getPct(data.q3)}%; top: 50%; height: 2px; background: rgba(255,255,255,0.6); transform: translateY(-50%);"></div>
+                                        ${(data.outliers || []).map(val => `<div style="position: absolute; left: ${getPct(val)}%; top: 50%; width: 1px; height: 9px; background: ${val > 0 ? "#86efac" : "#ca8a8a"}; opacity: 0.5; border-radius: 1px; transform: translate(-50%, -50%);"></div>`).join("")}
                                     </div>
                                 `;
-
-                                if (!existingBadge) {
-                                    let badge = document.createElement("div");
-                                    badge.className = "sim-data-badge";
-                                    badge.style.padding = "6px 10px";
-                                    badge.style.backgroundColor = "var(--c-bg-main-hover)"; 
-                                    badge.style.border = `1px solid ${color}`;
-                                    badge.style.color = color;
-                                    badge.style.borderRadius = "6px";
-                                    badge.style.fontWeight = "bold";
-                                    badge.style.fontSize = "0.9em";
-                                    badge.style.display = "flex";
-                                    badge.style.flexDirection = "column";
-                                    badge.style.alignItems = "center";
-                                    badge.style.flexShrink = "0"; 
-                                    badge.style.minWidth = "180px"; 
-
-                                    badge.innerHTML = `<div>${displayText}</div>${boxHtml}`;
-                                    item.appendChild(badge);
-                                } else {
-                                    existingBadge.style.border = `1px solid ${color}`;
-                                    existingBadge.style.color = color;
-                                    existingBadge.innerHTML = `<div>${displayText}</div>${boxHtml}`;
-                                }
                             }
                         }
+                        row.prepend(badge);
                         break;
                     }
                 }
             }
 
+            // Restore table state with striped row styling and surgical grid override
             for (let i = 0; i < skill_elements.length; i++) {
                 const item = skill_elements[i];
-                item.style.display = "flex"; 
+                item.style.display = "grid";
+                item.style.gridTemplateAreas = '"badge image jpname desc more"';
+                item.style.gridTemplateColumns = "190px 40px 250px auto 70px";
 
                 if (color_class) {
-                    if (i % 2 === 0) {
-                        item.classList.add(color_class);
-                    } else {
-                        item.classList.remove(color_class);
-                    }
+                    if (i % 2 == 0) item.classList.add(color_class);
+                    else item.classList.remove(color_class);
                 }
                 skills_table.appendChild(item);
             }
-            """, combined_display_list, sim_summary, global_min, global_max, acquired_list)
+            """, self.skills_list, sim_summary, global_min, global_max, self.acquired_skills_list)
 
     def run_simulation(self, exe_path, payload):
         json_payload = json.dumps(payload)
