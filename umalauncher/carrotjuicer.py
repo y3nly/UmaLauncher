@@ -20,8 +20,11 @@ import helper_table
 import training_tracker
 import horsium
 import socket
+import subprocess
+import statistics
 
 from Cryptodome.Cipher import AES
+
 
 def unpack(data: bytes, key: bytes, iv: bytes) -> bytes:
     logger.debug(f"Unpacking:\nData: {data.hex()}\nKey: {key.hex()}\nIV: {iv.hex()}")
@@ -71,6 +74,11 @@ class CarrotJuicer:
 
         self.skill_id_dict = mdb.get_skill_id_dict()
         self.status_name_dict = mdb.get_status_name_dict()
+        self.skill_costs_dict = mdb.get_skill_costs_dict()
+
+        self.acquired_skills_list = []
+        self.skill_hints = dict()
+        self.style = ''
 
         self.screen_state_handler = threader.screenstate
         self.restart_time()
@@ -85,10 +93,8 @@ class CarrotJuicer:
                 logger.warning("Could not delete geckodriver.log because it is already in use!")
                 return
 
-
     def restart_time(self):
         self.start_time = math.floor(time.time() * 1000)
-
 
     def load_request(self, msg_path, is_json=False):
         if is_json:
@@ -118,7 +124,6 @@ class CarrotJuicer:
             logger.warning(f"Could not find request file: {msg_path}")
             return None
 
-
     def load_response(self, msg_path):
         try:
             with open(msg_path, "rb") as in_file:
@@ -137,7 +142,8 @@ class CarrotJuicer:
         d = packet_data['start_chara']
         supports = d['support_card_ids'] + [d['friend_support_card_info']['support_card_id']]
 
-        return util.create_gametora_helper_url(d['card_id'], d['scenario_id'], supports, self.get_gt_language(), "en" if 'IS_UL_GLOBAL' in os.environ else "ja")
+        return util.create_gametora_helper_url(d['card_id'], d['scenario_id'], supports, self.get_gt_language(),
+                                               "en" if 'IS_UL_GLOBAL' in os.environ else "ja")
 
     def get_gt_language(self):
         lang = "English"
@@ -173,10 +179,10 @@ class CarrotJuicer:
         topmost = self.threader.settings["browser_topmost"]
         if not start_pos:
             start_pos = self.get_browser_reset_position()
-        
-        self.browser = horsium.BrowserWindow(self.helper_url, self.threader, rect=start_pos, run_at_launch=setup_helper_page)
-        self.set_browser_topmost(topmost)
 
+        self.browser = horsium.BrowserWindow(self.helper_url, self.threader, rect=start_pos,
+                                             run_at_launch=setup_helper_page)
+        self.set_browser_topmost(topmost)
 
     def get_browser_reset_position(self):
         if self.threader.windowmover.window is None:
@@ -192,7 +198,6 @@ class CarrotJuicer:
             left_x = game_rect[2] + 5
             width = right_side
         return [left_x, workspace_rect[1], width, workspace_rect[3] - workspace_rect[1] + 6]
-
 
     def close_browser(self):
         if self.browser and self.browser.alive():
@@ -220,7 +225,7 @@ class CarrotJuicer:
         self.save_rect(self.last_browser_rect, "browser_position")
         if self.threader.settings["browser_topmost"] != self.browser_topmost:
             self.threader.settings["browser_topmost"] = self.browser_topmost
-    
+
     def save_skill_window_rect(self):
         if self.skill_browser:
             self.skill_browser.last_window_rect = self.last_skills_rect
@@ -233,7 +238,7 @@ class CarrotJuicer:
             self.skill_browser.close()
         self.close_browser()
         return
-    
+
     def add_response_to_tracker(self, data):
         should_track = self.threader.settings["track_trainings"]
         if self.previous_request:
@@ -243,11 +248,10 @@ class CarrotJuicer:
         if should_track:
             self.training_tracker.add_response(data)
 
-
     EVENT_ID_TO_POS_STRING = {
-        7005: 'レース勝利！', # (1st)
+        7005: 'レース勝利！',  # (1st)
         7006: 'レース入着',  # (2nd-5th)
-        7007: 'レース敗北'   # (6th or worse)
+        7007: 'レース敗北'  # (6th or worse)
     }
     EVENT_ID_TO_POS_STRING_GLB = {
         7005: 'Victory!',
@@ -277,13 +281,12 @@ class CarrotJuicer:
         else:
             return [f"{self.EVENT_ID_TO_POS_STRING[event_id]} ({grade_text})"]
 
-
     def handle_response(self, message, is_json=False):
         if is_json:
             data = message
         else:
             data = self.load_response(message)
-        
+
         if not data:
             return
 
@@ -318,14 +321,12 @@ class CarrotJuicer:
 
             # Detect leaving the initial loading screen
             # if data.get('common_define'):
-                # Game just started.
-
+            # Game just started.
 
             # New loading behavior?
             if 'single_mode_load_common' in data:
                 for key, value in data['single_mode_load_common'].items():
                     data[key] = value
-
 
             # Close whatever popup is open
             if self.browser and self.browser.alive():
@@ -354,27 +355,30 @@ class CarrotJuicer:
 
                     self.screen_state_handler.carrotjuicer_state = new_state
                 return
-            
+
             # Team Building
             if 'scout_ranking_state' in data:
                 if data.get("own_team_info") and data['own_team_info'].get('team_score') and self.screen_state_handler:
                     team_score = data['own_team_info'].get('team_score')
-                    leader_chara_id = data['own_team_info'].get('entry_chara_array',[{}])[0].get('trained_chara', {}).get('card_id')
+                    leader_chara_id = data['own_team_info'].get('entry_chara_array', [{}])[0].get('trained_chara',
+                                                                                                  {}).get('card_id')
 
                     if team_score and leader_chara_id:
                         logger.debug(f"Team score: {team_score}, leader chara id: {leader_chara_id}")
-                        self.screen_state_handler.carrotjuicer_state = screenstate_utils.make_scouting_state(self.screen_state_handler, team_score, leader_chara_id)
-            
+                        self.screen_state_handler.carrotjuicer_state = screenstate_utils.make_scouting_state(
+                            self.screen_state_handler, team_score, leader_chara_id)
+
             # League of Heroes
             if 'heroes_id' in data:
-                if data.get("own_team_info") and data['own_team_info']['team_name'] and data['own_team_info']['league_score'] and self.screen_state_handler:
+                if data.get("own_team_info") and data['own_team_info']['team_name'] and data['own_team_info'][
+                    'league_score'] and self.screen_state_handler:
                     self.screen_state_handler.carrotjuicer_state = screenstate_utils.make_league_of_heroes_state(
                         self.screen_state_handler,
                         data['own_team_info']['team_name'],
                         data['own_team_info']['league_score']
                     )
                 return
-            
+
             if data.get('stage1_grand_result'):
                 if self.screen_state_handler and \
                         self.screen_state_handler.screen_state and \
@@ -384,28 +388,29 @@ class CarrotJuicer:
                     tmp2 = screenstate_utils.ss.ScreenState(self.screen_state_handler)
                     tmp2.location = screenstate_utils.ss.Location.LEAGUE_OF_HEROES
                     tmp2.main = tmp.main
-                    tmp2.sub = screenstate_utils.get_league_of_heroes_substate(data['stage1_grand_result']['after_league_score'])
+                    tmp2.sub = screenstate_utils.get_league_of_heroes_substate(
+                        data['stage1_grand_result']['after_league_score'])
                     self.screen_state_handler.carrotjuicer_state = tmp2
                     return
-            
+
             # Claw Machine
             if 'collected_plushies' in data:
                 if self.screen_state_handler:
-                    self.screen_state_handler.carrotjuicer_state = screenstate_utils.make_claw_machine_state(data, self.threader.screenstate)
-            
+                    self.screen_state_handler.carrotjuicer_state = screenstate_utils.make_claw_machine_state(data,
+                                                                                                             self.threader.screenstate)
+
             # Race starts.
-            if self.training_tracker and 'race_scenario' in data and 'race_start_info' in data and data['race_scenario']:
+            if self.training_tracker and 'race_scenario' in data and 'race_start_info' in data and data[
+                'race_scenario']:
                 self.previous_race_program_id = data['race_start_info']['program_id']
                 # Currently starting a race. Add packet to training tracker.
                 logger.debug("Race packet received.")
                 self.add_response_to_tracker(data)
                 return
 
-
             # Update history
             if 'race_history' in data and data['race_history']:
                 self.previous_race_program_id = data['race_history'][-1]['program_id']
-
 
             # Gametora
             # limited_shop_info check is for edge case where chara_info is present when returning to home after training
@@ -416,36 +421,57 @@ class CarrotJuicer:
                 if 'start_time' in data['chara_info']:
                     training_id = data['chara_info']['start_time']
                 else:
-                    #TODO: fix this!
+                    # TODO: fix this!
                     logger.debug("No start_time, using strftime")
                     training_id = time.strftime("%Y-%m-%d %H:%M:%S")
-                if 'IS_UL_GLOBAL' not in os.environ and (not self.training_tracker or not self.training_tracker.training_id_matches(training_id)):
+                if 'IS_UL_GLOBAL' not in os.environ and (
+                        not self.training_tracker or not self.training_tracker.training_id_matches(training_id)):
                     # Update cached dicts first
                     mdb.update_mdb_cache()
 
                     self.training_tracker = training_tracker.TrainingTracker(training_id, data['chara_info']['card_id'])
 
                 self.skills_list = []
-                for skill_data in data['chara_info']['skill_array']:
-                    self.skills_list.append(skill_data['skill_id'])
-                
-                self.skills_list += mdb.get_card_inherent_skills(data['chara_info']['card_id'], data['chara_info']['talent_level'])
+                self.acquired_skills_list = []
+                self.skill_hints = {}
+                self.style = data['chara_info']['race_running_style']
 
+                # Acquired skills
+                for skill_data in data['chara_info']['skill_array']:
+                    skill_id = skill_data['skill_id']
+                    self.acquired_skills_list.append(skill_id)
+                    self.skills_list.append(skill_id)
+
+                self.skills_list += mdb.get_card_inherent_skills(data['chara_info']['card_id'],
+                                                                 data['chara_info']['talent_level'])
+
+                # Hints
                 for skill_tip in data['chara_info']['skill_tips_array']:
                     if skill_tip['rarity'] > 1:
-                        self.skills_list.append(self.skill_id_dict[(skill_tip['group_id'], skill_tip['rarity'])])  # TODO: Check if level is correct. Check gold skills and purple skills.
+                        skill_id = self.skill_id_dict[(skill_tip['group_id'], skill_tip['rarity'])]
+                        white_id = mdb.determine_skill_id_from_group_id(skill_tip['group_id'], 1, self.skills_list)
+                        if white_id not in self.skills_list:
+                            self.skills_list.append(white_id)
                     else:
-                        self.skills_list.append(mdb.determine_skill_id_from_group_id(skill_tip['group_id'], skill_tip['rarity'], self.skills_list))
+                        skill_id = mdb.determine_skill_id_from_group_id(skill_tip['group_id'], skill_tip['rarity'],
+                                                                        self.skills_list)
 
-                # self.skills_list.sort()
+                    self.skills_list.append(skill_id)
+                    self.skill_hints[skill_id] = skill_tip.get('level', 0)
+
                 self.skills_list = mdb.sort_skills_by_display_order(self.skills_list)
 
                 # Fix certain skills for GameTora
                 for i in range(len(self.skills_list)):
-                    cur_skill_id = self.skills_list[i]
-                    if 900000 <= cur_skill_id < 1000000:
-                        self.skills_list[i] = cur_skill_id - 800000
-                
+                    old_id = self.skills_list[i]
+                    if 900000 <= old_id < 1000000:
+                        new_id = old_id - 800000
+                        self.skills_list[i] = new_id
+
+                        # Keep the hint dictionary synced if the ID changes
+                        if old_id in self.skill_hints:
+                            self.skill_hints[new_id] = self.skill_hints.pop(old_id)
+
                 logger.debug(f"Skills list: {self.skills_list}")
 
                 # Add request to tracker
@@ -460,16 +486,20 @@ class CarrotJuicer:
                 # Training stats
                 if self.screen_state_handler:
                     if data.get('race_start_info', None):
-                        self.screen_state_handler.carrotjuicer_state = screenstate_utils.make_training_race_state(data, self.threader.screenstate)
+                        self.screen_state_handler.carrotjuicer_state = screenstate_utils.make_training_race_state(data,
+                                                                                                                  self.threader.screenstate)
                     else:
-                        self.screen_state_handler.carrotjuicer_state = screenstate_utils.make_training_state(data, self.threader.screenstate)
+                        self.screen_state_handler.carrotjuicer_state = screenstate_utils.make_training_state(data,
+                                                                                                             self.threader.screenstate)
 
-                if not self.browser or not self.browser.current_url().startswith(self.browser.url.split("?",1)[0]):
+                if not self.browser or not self.browser.current_url().startswith(self.browser.url.split("?", 1)[0]):
                     logger.info("GT tab not open, opening tab")
-                    self.helper_url = util.create_gametora_helper_url(outfit_id, scenario_id, supports, self.get_gt_language(), "en" if 'IS_UL_GLOBAL' in os.environ else "ja")
+                    self.helper_url = util.create_gametora_helper_url(outfit_id, scenario_id, supports,
+                                                                      self.get_gt_language(),
+                                                                      "en" if 'IS_UL_GLOBAL' in os.environ else "ja")
                     logger.debug(f"Helper URL: {self.helper_url}")
                     self.open_helper()
-                
+
                 self.update_helper_table(data)
 
             if 'unchecked_event_array' in data and data['unchecked_event_array']:
@@ -486,7 +516,8 @@ class CarrotJuicer:
                     # Event has choices
 
                     # If character is the trained character
-                    if event_data['event_contents_info']['support_card_id'] and event_data['event_contents_info']['support_card_id'] not in supports:
+                    if event_data['event_contents_info']['support_card_id'] and event_data['event_contents_info'][
+                        'support_card_id'] not in supports:
                         # Random support card event
                         logger.debug("Random support card detected")
 
@@ -524,8 +555,8 @@ class CarrotJuicer:
                             window.scrollBy({top: arguments[0].getBoundingClientRect().bottom - window.innerHeight + 32, left: 0, behavior: 'smooth'});
                         }
                         """,
-                        event_element
-                    )
+                                                event_element
+                                                )
 
                     # Check to see if you already have the status.
                     status_ids = data['chara_info']['chara_effect_id_array']
@@ -540,7 +571,8 @@ class CarrotJuicer:
                                     }
                                 });
                         } 
-                        """, event_element, [self.status_name_dict[i] for i in status_ids if i in self.status_name_dict])
+                        """, event_element, [self.status_name_dict[i] for i in status_ids if
+                                             i in self.status_name_dict])
 
             if 'reserved_race_array' in data and 'chara_info' not in data and self.last_helper_data:
                 # User changed reserved races
@@ -554,12 +586,14 @@ class CarrotJuicer:
             logger.error(data)
             exception_string = traceback.format_exc()
             logger.error(exception_string)
-            util.show_error_box("Uma Launcher: Error in response msgpack.", f"This should not happen. You may contact the developer about this issue.")
+            util.show_error_box("Uma Launcher: Error in response msgpack.",
+                                f"This should not happen. You may contact the developer about this issue.")
             # self.close_browser()
 
     def start_concert(self, music_id):
         logger.debug("Starting concert")
-        self.screen_state_handler.carrotjuicer_state = screenstate_utils.make_concert_state(music_id, self.threader.screenstate)
+        self.screen_state_handler.carrotjuicer_state = screenstate_utils.make_concert_state(music_id,
+                                                                                            self.threader.screenstate)
         return
 
     def handle_request(self, message, is_json=False):
@@ -610,7 +644,8 @@ class CarrotJuicer:
             logger.error(data)
             exception_string = traceback.format_exc()
             logger.error(exception_string)
-            util.show_error_box("Uma Launcher: Error in request msgpack.", f"This should not happen. You may contact the developer about this issue.")
+            util.show_error_box("Uma Launcher: Error in request msgpack.",
+                                f"This should not happen. You may contact the developer about this issue.")
             # self.close_browser()
 
     def remove_message(self, message_path):
@@ -631,11 +666,10 @@ class CarrotJuicer:
                 last_exception = e
                 tries += 1
                 time.sleep(1)
-        
+
         logger.warning(f"Failed to remove msgpack file: {message_path}.")
         logger.warning(''.join(traceback.format_tb(last_exception.__traceback__)))
         self.skipped_msgpacks.append(message_path)
-
 
     def process_message(self, message: str):
         if message in self.skipped_msgpacks:
@@ -663,10 +697,8 @@ class CarrotJuicer:
         self.remove_message(message)
         return
 
-
     def get_msgpack_batch(self, msg_path):
         return sorted(glob.glob(os.path.join(msg_path, "*.msgpack")), key=os.path.getmtime)
-
 
     def update_helper_table(self, data):
         helper_table = self.helper_table.create_helper_elements(data, self.last_helper_data)
@@ -676,60 +708,279 @@ class CarrotJuicer:
                 window.UL_DATA.overlay_html = arguments[0];
                 window.update_overlay();
                 """,
-                helper_table)
-
+                                        helper_table)
 
     def update_skill_window(self):
         if self.should_stop:
             return
+
+        # Initialize or refocus the skill tracking browser
         if not self.skill_browser:
-            self.skill_browser = horsium.BrowserWindow("https://gametora.com/umamusume/skills", self.threader, rect=self.threader.settings['skills_position'], run_at_launch=setup_skill_window)
+            self.skill_browser = horsium.BrowserWindow(
+                "https://gametora.com/umamusume/skills",
+                self.threader,
+                rect=self.threader.settings['skills_position'],
+                run_at_launch=setup_skill_window
+            )
         else:
             self.skill_browser.ensure_tab_open()
+
         if self.browser and self.browser.alive():
             self.browser.execute_script("""window.skill_window_opened();""")
-        
-        # Handle showing/hiding skills.
+
+        # Filter for unacquired skills to optimize simulation throughput
+        unacquired_skills_list = [s for s in self.skills_list if s not in self.acquired_skills_list]
+
+        STYLE_INTERNAL_MAP = {
+            1: "NIGE",
+            2: "SEN",
+            3: "SASI",
+            4: "OI"
+        }
+
+        # Define simulation parameters and environmental state
+        mock_payload = {
+            "baseSetting": {
+                "umaStatus": {
+                    "charaName": "Place Holder",
+                    "speed": 1200, "stamina": 1200, "power": 1000, "guts": 400, "wisdom": 1200,
+                    "condition": "BEST", "style": STYLE_INTERNAL_MAP[self.style],
+                    "distanceFit": "A", "surfaceFit": "A", "styleFit": "A",
+                    "popularity": 1, "gateNumber": 1,
+                },
+                "track": {
+                    "location": 10006, "course": 10611, "condition": "GOOD", "gateCount": 9
+                }
+            },
+            "acquiredSkillIds": self.acquired_skills_list,
+            "unacquiredSkillIds": unacquired_skills_list,
+            "skillHints": self.skill_hints,
+            "iterations": 2000
+        }
+
+        # Execute external simulation engine
+        results = self.run_simulation(util.get_asset("_assets/umasim-cli.exe"), mock_payload)
+
+        sim_summary = {}
+        global_min = 0.0
+        global_max = 0.0
+
+        # Process statistical results and calculate cost-efficiency
+        if results and "baselineTimes" in results and "candidateResults" in results:
+            base_times = results["baselineTimes"]
+
+            if len(base_times) > 0:
+                base_avg = statistics.mean(base_times)
+                skill_costs_dict = mdb.get_skill_costs_dict()
+
+                for skill_id_str, times in results["candidateResults"].items():
+                    if not times:
+                        continue
+
+                    skill_id_int = int(skill_id_str)
+
+                    # Calculate net SP expenditure based on tiered hint discounts
+                    base_cost = skill_costs_dict.get(skill_id_str, 0)
+                    hint_level = self.skill_hints.get(skill_id_int, 0)
+
+                    effective_hint_level = min(hint_level, 5)
+                    discount_map = {0: 0, 1: 10, 2: 20, 3: 30, 4: 35, 5: 40}
+                    discount_percent = discount_map.get(effective_hint_level, 0)
+                    sp_cost = int(base_cost * (100 - discount_percent) / 100)
+
+                    # Derive relative time delta and distribution quartiles
+                    saved_times = [base_avg - t for t in times]
+                    s_mean = statistics.mean(saved_times)
+
+                    # Efficiency calculation: Seconds Saved per 100 SP
+                    efficiency = (s_mean / max(sp_cost, 1)) * 100
+
+                    if len(saved_times) >= 20:
+                        pcts = statistics.quantiles(saved_times, n=20)
+                        s_p5, s_q1, s_med, s_q3, s_p95 = pcts[0], pcts[4], pcts[9], pcts[14], pcts[18]
+                    else:
+                        s_p5 = s_q1 = s_med = s_q3 = s_p95 = s_mean
+
+                    iqr = s_q3 - s_q1
+                    lower_bound = s_q1 - (1.5 * iqr)
+                    upper_bound = s_q3 + (1.5 * iqr)
+                    outliers = [round(x, 3) for x in saved_times if x < lower_bound or x > upper_bound]
+
+                    data_obj = {
+                        "saved": round(s_mean, 4),
+                        "wMin": round(s_p5, 4),
+                        "q1": round(s_q1, 4),
+                        "median": round(s_med, 4),
+                        "q3": round(s_q3, 4),
+                        "wMax": round(s_p95, 4),
+                        "outliers": outliers,
+                        "sp_cost": sp_cost,
+                        "hint_level": hint_level,
+                        "efficiency": round(efficiency, 4)
+                    }
+
+                    # Maintain global bounds for uniform boxplot scaling
+                    global_min = min(global_min, data_obj["wMin"], *outliers) if outliers else min(global_min,
+                                                                                                   data_obj["wMin"])
+                    global_max = max(global_max, data_obj["wMax"], *outliers) if outliers else max(global_max,
+                                                                                                   data_obj["wMax"])
+
+                    sim_summary[skill_id_str] = data_obj
+
+        # Execute JavaScript injection with updated UI styling
         self.skill_browser.execute_script(
             """
             let skills_list = arguments[0];
+            let sim_results = arguments[1] || {};
+            let globalMin = arguments[2];
+            let globalMax = arguments[3];
+            let acquired_list = arguments[4] || [];
+
+            let range = globalMax - globalMin;
+            if (range === 0) range = 1;
+            let pad = range * 0.05; 
+            let scaleMin = globalMin - pad;
+            let scaleMax = globalMax + pad;
+            let scaleRange = scaleMax - scaleMin;
+
+            let getPct = (val) => Math.max(0, Math.min(100, ((val - scaleMin) / scaleRange) * 100));
+            let zeroPct = getPct(0); 
+
             let skill_elements = [];
             let skills_table = document.querySelector("[class^='skills_skill_table_']");
             let skill_rows = document.querySelectorAll("[class^='skills_table_desc_']");
-            let color_class = [...document.querySelector("[class*='skills_stripes_']").classList].filter(item => item.startsWith("skills_stripes_"))[0];
+            let stripes_element = document.querySelector("[class*='skills_stripes_']");
+            let color_class = stripes_element ? [...stripes_element.classList].filter(item => item.startsWith("skills_stripes_"))[0] : null;
 
-            // Set display to none for all elements.
+            if (!skills_table || skill_rows.length === 0) return;
+
+            // Set display to none for all original elements to begin filtering
             for (const item of skill_rows) {
-                item.parentNode.style.display = "none";
+                if (item.parentNode) item.parentNode.style.display = "none";
             }
 
-            // Find the elements that match the skills list.
+            // Find matching elements, remove them, and prepend metrics badge
             for (const skill_id of skills_list) {
                 let skill_string = "(" + skill_id + ")";
-                let ele = null;
                 for (const item of skill_rows) {
                     if (item.textContent.includes(skill_string)) {
-                        skill_elements.push(item.parentNode);
-                        item.parentNode.remove();
+                        let row = item.parentNode;
+                        skill_elements.push(row);
+                        row.remove();
+
+                        let existingBadge = row.querySelector('.sim-data-badge');
+                        if (existingBadge) existingBadge.remove();
+
+                        let badge = document.createElement("div");
+                        badge.className = "sim-data-badge";
+                        badge.style.gridArea = "badge";
+                        badge.style.width = "180px";
+                        badge.style.height = "40px"; 
+                        badge.style.marginRight = "10px"; 
+                        badge.style.boxSizing = "border-box";
+                        badge.style.display = "flex";
+                        badge.style.flexDirection = "column";
+                        badge.style.justifyContent = "center";
+
+                        if (acquired_list.includes(skill_id)) {
+                            badge.style.padding = "2px 8px";
+                            badge.style.backgroundColor = "rgba(156, 163, 175, 0.1)"; 
+                            badge.style.border = "1px solid #9ca3af";
+                            badge.style.color = "#9ca3af";
+                            badge.style.borderRadius = "4px";
+                            badge.style.fontWeight = "bold";
+                            badge.style.alignItems = "center";
+                            badge.innerHTML = `Acquired`;
+                        } else {
+                            let data = sim_results[skill_id.toString()]; 
+                            if (data) {
+                                // Threshold Logic (Efficiency-based)
+                                let color = "#9ca3af";
+                                let eff = data.efficiency;
+                                if (eff >= 0.04) color = "#4ade80";      
+                                else if (eff >= 0.02) color = "#86efac"; 
+                                else if (eff >= 0.01) color = "#bbf7d0"; 
+                                else if (eff <= -0.01) color = "#ca8a8a";                  
+
+                                badge.style.padding = "2px 8px";
+                                badge.style.backgroundColor = "var(--c-bg-main-hover)"; 
+                                badge.style.border = `1px solid ${color}`;
+                                badge.style.color = color;
+                                badge.style.borderRadius = "4px";
+                                badge.style.fontWeight = "bold";
+                                badge.style.alignItems = "stretch";
+
+                                let sign = data.saved > 0 ? "-" : (data.saved < 0 ? "+" : "");
+                                let absSaved = Math.abs(data.saved);
+
+                                badge.innerHTML = `
+                                    <div style="display: flex; justify-content: space-between; font-size: 0.8em;">
+                                        <span>${sign}${absSaved.toFixed(3)}s (${eff.toFixed(3)})</span>
+                                        <span>Lv ${data.hint_level || 0} | ${data.sp_cost || "?"} SP</span>
+                                    </div>
+                                    <div style="position: relative; width: 100%; height: 16px; margin-top: 1px; background: rgba(0,0,0,0.15); border-radius: 4px;">
+                                        <div style="position: absolute; left: ${zeroPct}%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.3); z-index: 1;"></div>
+                                        <div style="position: absolute; left: ${getPct(data.wMin)}%; width: ${getPct(data.q1) - getPct(data.wMin)}%; top: 50%; height: 2px; background: rgba(255,255,255,0.6); transform: translateY(-50%);"></div>
+                                        <div style="position: absolute; left: ${getPct(data.q1)}%; width: ${getPct(data.q3) - getPct(data.q1)}%; top: 1px; bottom: 1px; background: ${color}; border-radius: 1px; opacity: 0.85;"></div>
+                                        <div style="position: absolute; left: ${getPct(data.median)}%; top: 1px; bottom: 1px; width: 2px; background: white; z-index: 2;"></div>
+                                        <div style="position: absolute; left: ${getPct(data.q3)}%; width: ${getPct(data.wMax) - getPct(data.q3)}%; top: 50%; height: 2px; background: rgba(255,255,255,0.6); transform: translateY(-50%);"></div>
+                                        ${(data.outliers || []).map(val => `<div style="position: absolute; left: ${getPct(val)}%; top: 50%; width: 1px; height: 9px; background: ${val > 0 ? "#86efac" : "#ca8a8a"}; opacity: 0.5; border-radius: 1px; transform: translate(-50%, -50%);"></div>`).join("")}
+                                    </div>
+                                `;
+                            }
+                        }
+                        row.prepend(badge);
                         break;
                     }
                 }
             }
 
-            // Reappend the elements in the correct order.
+            // Restore table state with striped row styling and surgical grid override
             for (let i = 0; i < skill_elements.length; i++) {
                 const item = skill_elements[i];
                 item.style.display = "grid";
+                item.style.gridTemplateAreas = '"badge image jpname desc more"';
+                item.style.gridTemplateColumns = "190px 40px 250px auto 70px";
 
-                if (i % 2 == 0) {
-                    item.classList.add(color_class);
-                } else {
-                    item.classList.remove(color_class);
+                if (color_class) {
+                    if (i % 2 == 0) item.classList.add(color_class);
+                    else item.classList.remove(color_class);
                 }
                 skills_table.appendChild(item);
             }
-            """, self.skills_list)
-    
+            """, self.skills_list, sim_summary, global_min, global_max, self.acquired_skills_list)
+
+    def run_simulation(self, exe_path, payload):
+        json_payload = json.dumps(payload)
+
+        try:
+            process = subprocess.run(
+                [exe_path, json_payload],
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                check=True
+            )
+
+            if process.stderr:
+                logger.debug(f"Sim Output: {process.stderr}")
+
+            return json.loads(process.stdout)
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Sim Crashed! Exit Code: {e.returncode}")
+            logger.error(f"Sim Error Output: {e.stderr}")
+            return {}  # Return empty dict instead of killing the app
+
+        except json.JSONDecodeError:
+            logger.error("Failed to parse JSON response!")
+            logger.error(f"Sim Output: {process.stdout}")  # process is bound here, this is safe
+            return {}
+
+        except FileNotFoundError:
+            logger.error(f"Could not find {exe_path}.")
+            return {}
+
     def determine_event_element(self, event_titles):
         ranked_elements = []
         for event_title in event_titles:
@@ -753,7 +1004,7 @@ class CarrotJuicer:
             if possible_elements:
                 possible_elements.sort(key=lambda x: x[0])
                 ranked_elements.append(possible_elements[0])
-        
+
         if not ranked_elements:
             return None
 
@@ -763,7 +1014,7 @@ class CarrotJuicer:
 
     def set_browser_topmost(self, is_topmost):
         self.browser_topmost = is_topmost
-        logger.debug( f"Setting browser topmost to {is_topmost}" )
+        logger.debug(f"Setting browser topmost to {is_topmost}")
         self.browser.set_topmost(is_topmost)
 
     def run_with_catch(self):
@@ -821,13 +1072,13 @@ class CarrotJuicer:
                         # self.browser.set_window_rect(self.get_browser_reset_position())
                 elif self.last_browser_rect:
                     self.save_last_browser_rect()
-                
-                self.reset_browser = False
 
+                self.reset_browser = False
 
                 # Skill window.
                 if self.open_skill_window:
                     self.open_skill_window = False
+                    self.previous_skills_list = self.skills_list
                     self.update_skill_window()
                 elif self.skill_browser and self.skill_browser.alive() and self.previous_skills_list != self.skills_list:
                     self.previous_skills_list = self.skills_list
@@ -949,6 +1200,7 @@ class CarrotJuicer:
             self.sock.shutdown(socket.SHUT_RDWR)
             self.sock.close()
 
+
 def setup_helper_page(browser: horsium.BrowserWindow):
     browser.execute_script("""
     if (window.UL_OVERLAY) {
@@ -1002,8 +1254,8 @@ def setup_helper_page(browser: horsium.BrowserWindow):
     ul_topmost.id = "ul-topmost";
     ul_topmost.type = "checkbox";
     ul_topmost.checked = """ +
-    str(browser.threader.settings["browser_topmost"]).lower()
-    + """;
+                           str(browser.threader.settings["browser_topmost"]).lower()
+                           + """;
     ul_topmost.style = "cursor: pointer;"
     ul_topmost.classList.add("ul-overlay-button");
     
@@ -1144,7 +1396,7 @@ def setup_helper_page(browser: horsium.BrowserWindow):
     browser.execute_script("""document.querySelector("[class^='filters_confirm_button_']").click()""")
 
     gametora_remove_cookies_banner(browser)
-    gametora_close_ad_banner( browser )
+    gametora_close_ad_banner(browser)
 
 
 def setup_skill_window(browser: horsium.BrowserWindow):
@@ -1173,25 +1425,32 @@ def setup_skill_window(browser: horsium.BrowserWindow):
 
     # Hide navigation and collapse the empty space it leaves behind
     browser.execute_script("""
-        // 1. Hide the Nav and its Background
         let navBar = document.querySelector("nav");
         if (navBar) navBar.style.display = "none";
 
         let navBg = document.querySelector("div[id^='styles_page-topnav-bg']");
         if (navBg) navBg.style.display = "none";
+        
+        let rightNav = document.querySelector("div[id*='page-rightnav']");
+        if (rightNav) rightNav.style.display = "none";
 
-        // 2. Override the CSS Grid so the empty row collapses
         let pageWrapper = document.querySelector("div[class^='styles_page__']");
         if (pageWrapper) {
             // Replacing fixed pixel heights with 'auto' tells the grid to shrink empty rows to 0px
             pageWrapper.style.gridTemplateRows = "auto auto 1fr"; 
+            pageWrapper.style.gridTemplateColumns = "[main-page] 1fr";
+            
+            pageWrapper.style.maxWidth = "none";
+            pageWrapper.style.width = "100%";
+            pageWrapper.style.padding = "0";
         }
 
-        // 3. Remove the top-padding that was making room for the sticky nav
         let mainContent = document.querySelector("main[id^='styles_page-main']");
         if (mainContent) {
             mainContent.style.paddingTop = "0px";
             mainContent.style.marginTop = "0px";
+            mainContent.style.width = "100%";
+            mainContent.style.maxWidth = "none";
         }
     """)
 
@@ -1214,7 +1473,6 @@ def setup_skill_window(browser: horsium.BrowserWindow):
             'highlightCheckbox',
             'showIdCheckbox',
             'showCondViewerCheckbox',
-            'showUniqueCharCheckbox',
             'alwaysShowAllCheckbox'
         ];
 
@@ -1229,16 +1487,20 @@ def setup_skill_window(browser: horsium.BrowserWindow):
     gametora_remove_cookies_banner(browser)
     gametora_close_ad_banner(browser)
 
+
 def gametora_dark_mode(browser: horsium.BrowserWindow):
     # Enable dark mode (the only reasonable color scheme)
     browser.execute_script("""document.querySelector("[class^='styles_header_settings_']").click()""")
     while not browser.execute_script("""return document.querySelector("[class^='filters_toggle_button_']");"""):
         time.sleep(0.25)
-    
-    dark_enabled = browser.execute_script("""return document.querySelector("[class^='tooltips_tooltip_']").querySelector("[class^='filters_toggle_button_']").childNodes[0].querySelector("input").checked;""")
+
+    dark_enabled = browser.execute_script(
+        """return document.querySelector("[class^='tooltips_tooltip_']").querySelector("[class^='filters_toggle_button_']").childNodes[0].querySelector("input").checked;""")
     if dark_enabled != browser.threader.settings["gametora_dark_mode"]:
-        browser.execute_script("""document.querySelector("[class^='tooltips_tooltip_']").querySelector("[class^='filters_toggle_button_']").childNodes[0].querySelector("input").click()""")
+        browser.execute_script(
+            """document.querySelector("[class^='tooltips_tooltip_']").querySelector("[class^='filters_toggle_button_']").childNodes[0].querySelector("input").click()""")
     browser.execute_script("""document.querySelector("[class^='styles_header_settings_']").click()""")
+
 
 def gametora_remove_cookies_banner(browser: horsium.BrowserWindow):
     # Hide the cookies banner
@@ -1251,6 +1513,7 @@ def gametora_remove_cookies_banner(browser: horsium.BrowserWindow):
                 }, 5 * 1000);
             }
             """)
+
 
 def gametora_close_ad_banner(browser: horsium.BrowserWindow):
     if 'training-event-helper' in browser.url:
@@ -1291,13 +1554,15 @@ def gametora_close_ad_banner(browser: horsium.BrowserWindow):
     }
     """)
 
+
 def setup_gametora(browser: horsium.BrowserWindow):
     gametora_dark_mode(browser)
     gametora_remove_cookies_banner(browser)
     gametora_close_ad_banner(browser)
 
+
 def set_gametora_server_to_jp(browser):
-    logger.info( "Setting GameTora page to the Japan server")
+    logger.info("Setting GameTora page to the Japan server")
     browser.execute_script("""
         let settings_button = document.querySelectorAll("[class^='styles_header_settings_']");
         if(settings_button.length > 0) {
@@ -1312,8 +1577,9 @@ def set_gametora_server_to_jp(browser):
         }, 1000);
         """)
 
+
 def is_gametora_jp(browser):
-    result = browser.execute_script( """
+    result = browser.execute_script("""
     let header = document.querySelectorAll("[class^='styles_header_text_']");
     if(header.length > 0)
     {
