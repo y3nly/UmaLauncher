@@ -755,7 +755,7 @@ class CarrotJuicer:
             "acquiredSkillIds": self.acquired_skills_list,
             "unacquiredSkillIds": unacquired_skills_list,
             "skillHints": self.skill_hints,
-            "iterations": 10000
+            "iterations": 2000
         }
 
         # Execute external simulation engine
