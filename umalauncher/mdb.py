@@ -291,6 +291,19 @@ def get_skill_name_dict(force=False):
 
     return SKILL_NAME_DICT
 
+SKILL_COSTS_DICT = {}
+def get_skill_costs_dict(force=False):
+    global SKILL_COSTS_DICT
+    if force or not SKILL_COSTS_DICT:
+        with Connection() as (_, cursor):
+            cursor.execute("SELECT id, need_skill_point FROM single_mode_skill_need_point")
+            rows = cursor.fetchall()
+
+        # Update the global cache
+        SKILL_COSTS_DICT.update({str(row[0]): row[1] for row in rows})
+
+    return SKILL_COSTS_DICT
+
 SKILL_HINT_NAME_DICT = {}
 def get_skill_hint_name_dict(force=False):
     global SKILL_HINT_NAME_DICT
@@ -683,7 +696,8 @@ UPDATE_FUNCS = [
     get_group_card_effect_ids,
     get_skill_id_dict,
     get_scouting_score_to_rank_dict,
-    get_single_mode_unique_chara_dict
+    get_single_mode_unique_chara_dict,
+    get_skill_costs_dict
 ]
 
 def has_carotene_table():
