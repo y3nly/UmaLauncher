@@ -1064,6 +1064,7 @@ class CarrotJuicer:
                 # Skill window.
                 if self.open_skill_window:
                     self.open_skill_window = False
+                    self.previous_skills_list = self.skills_list
                     self.update_skill_window()
                 elif self.skill_browser and self.skill_browser.alive() and self.previous_skills_list != self.skills_list:
                     self.previous_skills_list = self.skills_list
@@ -1416,19 +1417,26 @@ def setup_skill_window(browser: horsium.BrowserWindow):
         let navBg = document.querySelector("div[id^='styles_page-topnav-bg']");
         if (navBg) navBg.style.display = "none";
         
-        let rightNav = document.querySelector("div[id^='page-rightnav']");
+        let rightNav = document.querySelector("div[id*='page-rightnav']");
         if (rightNav) rightNav.style.display = "none";
 
         let pageWrapper = document.querySelector("div[class^='styles_page__']");
         if (pageWrapper) {
             // Replacing fixed pixel heights with 'auto' tells the grid to shrink empty rows to 0px
             pageWrapper.style.gridTemplateRows = "auto auto 1fr"; 
+            pageWrapper.style.gridTemplateColumns = "[main-page] 1fr";
+            
+            pageWrapper.style.maxWidth = "none";
+            pageWrapper.style.width = "100%";
+            pageWrapper.style.padding = "0";
         }
 
         let mainContent = document.querySelector("main[id^='styles_page-main']");
         if (mainContent) {
             mainContent.style.paddingTop = "0px";
             mainContent.style.marginTop = "0px";
+            mainContent.style.width = "100%";
+            mainContent.style.maxWidth = "none";
         }
     """)
 
