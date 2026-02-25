@@ -586,6 +586,10 @@ def assets_folder_images_to_dict(folder, size=None):
     img_dict = {}
 
     assets_folder = get_asset(folder)
+    if not os.path.exists(assets_folder):
+        logger.error(f"Could not find folder {folder}")
+        show_error_box_no_report( "Could not find assets folder", f"Could not find assets folder {folder}. Try restarting Uma Launcher if this is the first launch after an update. Otherwise, report this error to the developer.")
+        return img_dict
     for image_path in os.listdir(assets_folder):
         if not image_path.endswith(".png"):
             continue
@@ -656,7 +660,6 @@ def get_rmu_image_dict(force=False):
         logger.debug("Loading RMU images...")
         rmu_image_dict.update(assets_folder_images_to_dict("_assets/rmu"))
     return rmu_image_dict
-
 
 dreams_image_dict = {}
 def get_dreams_image_dict(force=False):
