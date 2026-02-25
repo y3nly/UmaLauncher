@@ -1115,6 +1115,30 @@ class OnsenSettings(se.NewSettings):
         ),
     }
 
+
+class DreamPointsSettings(se.NewSettings):
+    _settings = {
+        "highlight_max": se.Setting(
+            "Highlight max",
+            "Highlights the facility with the greatest DP gain.",
+            True,
+            se.SettingType.BOOL
+        ),
+        "highlight_max_color": se.Setting(
+            "Highlight max color",
+            "The color to use to highlight the facility with the greatest DP gain.",
+            "#90EE90",
+            se.SettingType.COLOR
+        ),
+        "hide_row_if_no_gain": se.Setting(
+            "Hide row if no DP gain",
+            "Hide this row if no DP can be gained from any training facilities.",
+            False,
+            se.SettingType.BOOL
+        ),
+    }
+
+
 class GFFVegetablesRow(hte.Row):
     long_name = "GFF Vegetable Gain"
     short_name = "Veggies"
@@ -1344,6 +1368,94 @@ class OnsenPointsDistributionRow(hte.Row):
         return super().to_tr(command_info)
 
 
+class DreamPointsRow(hte.Row):
+    long_name = "Beyond Dreams DP gain"
+    short_name = "DP Gain"
+    description = "[Scenario-specific] Displays the number of Dream Points gained for each training facility."
+
+
+    def __init__(self):
+        super().__init__()
+        self.settings = DreamPointsSettings()
+
+    def _generate_cells(self, game_state) -> list[hte.Cell]:
+        if list(game_state.values())[0]['scenario_id'] != 13:
+            return []
+
+        cells = [hte.Cell(self.short_name, title=self.description)]
+
+        has_ssr_casino_drive = list(game_state.values())[0]['has_ssr_casino_drive']
+        dp_sums = {}
+        for command_key, command_data in game_state.items():
+            point_sum = 0
+            for member in command_data['team_member_info_array']:
+                point_sum += (2 if has_ssr_casino_drive else 1) if member['gain_exp'] == 0 else 0
+            dp_sums[command_key] = point_sum
+        max_points = max(dp_sums.values())
+        if list(game_state.values())[0]['turn'] > 60:
+            return [] # Can't gain DP after the last Reflection/Strategy Meeting
+        if max_points == 0 and self.settings.hide_row_if_no_gain.value:
+            return [] # Don't show row if no DP gain
+
+        for command_key, command_data in game_state.items():
+            cell_text = f"{dp_sums[command_key]}"
+            if dp_sums[command_key] != 0 and dp_sums[command_key] == max_points and self.settings.highlight_max.value:
+                cells.append(hte.Cell(cell_text, bold=True, color=self.settings.highlight_max_color.value))
+            else:
+                cells.append(hte.Cell(cell_text))
+
+        return cells
+
+
+def generate_div(member):
+    cell_text = "<div style=\"display: flex; flex-direction: column; align-items: center; justify-content: center;\">"
+    chara_id = member['chara_id']
+    gain_xp = member['gain_exp']
+    chara_img = f"https://gametora.com/images/umamusume/characters/icons/chr_icon_{chara_id}.png"
+    gain_img = util.get_dreams_image_dict()[str(gain_xp)]  # TODO use the other PNG if the level is maxed
+    cell_text += f"<div style=\"display: flex; flex-direction: column; align-items: center; justify-content: center;\"><img src=\"{chara_img}\" height=\"36\" width=\"36\" style=\"margin-bottom: -2px\" />"
+    cell_text += f"""<img src=\"{gain_img}\"height=\"19\" width=\"19\" style=\"position: relative; top: -12px; right: -12px; margin-bottom: -10px\" /></div>"""
+    cell_text += "</div>"
+    return cell_text
+
+
+class DreamsPartnersRow(hte.Row):
+    long_name = "Beyond Dreams team member Dream Gauge gain"
+    short_name = "Dream Gauge"
+    description = "[Scenario-specific] Shows the Dream Gauge gain for each team member. Hidden in other scenarios."
+
+    def _generate_cells(self, game_state) -> list[hte.Cell]:
+        if list(game_state.values())[0]['scenario_id'] != 13:
+            return []
+
+        cells = [hte.Cell(self.short_name, title=self.description)]
+
+
+        for command_key, command_data in game_state.items():
+            cell_text = f"<div style=\"display: flex; align-items: center; justify-content: center; gap: 0.2rem;\">"
+            if len(command_data['team_member_info_array']) == 3:
+                divs = [generate_div(member) for member in command_data['team_member_info_array']]
+                cell_text += "<div>"
+                cell_text +=  divs[0]
+                cell_text += "<div style=\"display: flex; position: relative; top: -16px; margin-bottom:-16px; z-index:-1;\">" + divs[1] + divs[2] +  "</div>"
+                cell_text += "</div>"
+            else:
+                for member in command_data['team_member_info_array']:
+                    cell_text += generate_div(member)
+
+            cell_text += "</div>"
+            cells.append(hte.Cell(cell_text))
+
+
+        return cells
+
+    def to_tr(self, command_info):
+        if list(command_info.values())[0]['scenario_id'] != 13:
+            return ""
+
+        return super().to_tr(command_info)
+
+
 
 class RowTypes(Enum):
     CURRENT_STATS = CurrentStatsRow
@@ -1374,6 +1486,8 @@ class RowTypes(Enum):
     RMU_RESEARCH_DIST = RMUResearchDistributionRow
     DYI_POINTS_DIST = DYIPointsDistributionRow
     ONSEN_POINTS_DIST = OnsenPointsDistributionRow
+    DREAM_PARTNERS = DreamsPartnersRow
+    DP_GAIN = DreamPointsRow
 
 
 class DefaultPreset(hte.Preset):
@@ -1389,6 +1503,8 @@ class DefaultPreset(hte.Preset):
         RowTypes.AOHARU_UNITY_PARTNER_COUNT,
         RowTypes.DYI_POINTS_DIST,
         RowTypes.ONSEN_POINTS_DIST,
+        RowTypes.DREAM_PARTNERS,
+        RowTypes.DP_GAIN,
         RowTypes.CURRENT_STATS,
         RowTypes.GAINED_STATS,
         RowTypes.USEFUL_BOND,

@@ -247,6 +247,16 @@ class HelperTable():
             for command in data['onsen_data_set']['command_info_array']:
                 all_commands[command['command_id']]['dig_info_array'] = command['dig_info_array']
 
+        # Beyond Dreams (Breeder's Cup)
+        if 'breeders_data_set' in data:
+            for command in data['breeders_data_set']['command_info_array']:
+                all_commands[command['command_id']]['team_member_info_array'] = command['team_member_info_array']
+                all_commands[command['command_id']]['turn'] = data['chara_info']['turn']
+                for idx, member in enumerate(all_commands[command['command_id']]['team_member_info_array']):
+                    team_member = [x for x in data['breeders_data_set']['team_member_info_array'] if x['chara_id'] == member['chara_id']]
+                    all_commands[command['command_id']]['team_member_info_array'][idx]['rank'] = team_member[0]['rank']
+                    all_commands[command['command_id']]['team_member_info_array'][idx]['exp'] = team_member[0]['exp']
+
         # Aoharu
         if 'team_data_set' in data:
             for command in data['team_data_set']['command_info_array']:
@@ -310,6 +320,8 @@ class HelperTable():
             rainbow_count = 0
             arc_aptitude_gain = 0
             onsen_points_gain = 0
+            team_member_info_array = {}
+            turn = 0
 
             for param in command.get('params_inc_dec_info_array', []):
                 if param['target_type'] < 6:
@@ -545,6 +557,17 @@ class HelperTable():
                 if 'dig_info_array' in command:
                     onsen_points_gain += sum(dig_info['dig_value'] for dig_info in command['dig_info_array'])
 
+            # Beyond Dreams (Breeder's Cup)
+            has_ssr_casino_drive = False
+            if 'breeders_data_set' in data:
+                team_member_info_array = command['team_member_info_array']
+                turn = command['turn']
+                #rank_up_predict = command['rank_up_predict']
+                for card in data['chara_info']['support_card_array']:
+                    if card["support_card_id"] == 30290:
+                        has_ssr_casino_drive = True
+                        break
+
             command_info[command['command_id']] = {
                 'scenario_id': scenario_id,
                 'current_stats': current_stats,
@@ -569,6 +592,9 @@ class HelperTable():
                 'unity_partner_count': unity_partner_count,
                 'useful_unity_partner_count': useful_unity_partner_count,
                 'spirit_burst_partner_count': spirit_burst_partner_count,
+                'team_member_info_array': team_member_info_array,
+                'has_ssr_casino_drive': has_ssr_casino_drive,
+                'turn': turn
             }
 
         # Simplify everything down to a dict with only the keys we care about.

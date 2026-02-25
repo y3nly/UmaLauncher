@@ -1,4 +1,6 @@
 import enum
+import traceback
+
 from loguru import logger
 import gui
 import util
@@ -250,6 +252,9 @@ class Preset():
         if main_info['scenario_id'] == 6:
             sections = constants.DEFAULT_ARC_SECTIONS
 
+        if main_info['scenario_id'] == 13:
+            sections = constants.DEFAULT_DREAMS_SECTIONS
+
         tot_turns = sections[-1][0] - 1
         turn_len = 100. / tot_turns
         start_dist = 0.
@@ -325,7 +330,7 @@ class Preset():
                 try:
                     table.append(row.to_tr(command_info))
                 except KeyError as e:
-                    logger.error(f"Error generating table row: {e}")
+                    logger.error(f"Error generating table row: {e}\n{traceback.format_exc()}")
                     continue
 
         thead = f"<thead>{table[0]}</thead>"
