@@ -271,6 +271,7 @@ class CarrotJuicer:
             logger.error(f"Race grade not found for program id {self.previous_race_program_id}")
             return "RACE GRADE NOT FOUND"
 
+        # These aren't on Gametora anymore, but keep them around in case they update the page again.
         grade_text = ""
         if race_grade > 300:
             grade_text = "Pre/OP"
@@ -279,9 +280,9 @@ class CarrotJuicer:
         else:
             grade_text = "G1"
         if 'IS_UL_GLOBAL' in os.environ:
-            return [f"{self.EVENT_ID_TO_POS_STRING_GLB[event_id]} ({grade_text})"]
+            return [f"{self.EVENT_ID_TO_POS_STRING_GLB[event_id]} ({grade_text})", f"{self.EVENT_ID_TO_POS_STRING_GLB[event_id]}"]
         else:
-            return [f"{self.EVENT_ID_TO_POS_STRING[event_id]} ({grade_text})"]
+            return [f"{self.EVENT_ID_TO_POS_STRING[event_id]} ({grade_text})", f"{self.EVENT_ID_TO_POS_STRING[event_id]}"]
 
     def handle_response(self, message, is_json=False):
         if is_json:
@@ -521,13 +522,25 @@ class CarrotJuicer:
                     if event_data['event_contents_info']['support_card_id'] and event_data['event_contents_info'][
                         'support_card_id'] not in supports:
                         # Random support card event
-                        logger.debug("Random support card detected")
+                        logger.info("Random support card detected")
 
                         self.browser.execute_script("""document.getElementById("boxSupportExtra").click();""")
                         self.browser.execute_script(
                             """
-                            var cont = document.getElementById("30021").parentElement.parentElement;
-
+                                var cont = document.getElementById("30021").parentElement.parentElement.parentElement;
+                                var rSupportsCheckbox = cont.lastChild?.children[1]?.children[1]?.querySelector('input');
+                                var showUpcomingSupportsCheckbox = cont.lastChild?.children[1]?.children[1]?.querySelector('input');
+                                if( rSupportsCheckbox && !rSupportsCheckbox.checked ) {
+                                 rSupportsCheckbox.click(); 
+                                }
+                                if( showUpcomingSupportsCheckbox && !showUpcomingSupportsCheckbox.checked ) {
+                                 showUpcomingSupportsCheckbox.click(); 
+                                }
+                            """)
+                        self.browser.execute_script(
+                            """
+                            var cont = document.getElementById("30021").parentElement.parentElement.parentElement;
+                            
                             var ele = document.getElementById(arguments[0].toString());
 
                             if (ele) {
@@ -550,7 +563,7 @@ class CarrotJuicer:
                     event_element = self.determine_event_element(event_titles)
 
                     if not event_element:
-                        logger.info(f"Could not find event on GT page: {event_data['story_id']} : {event_titles}")
+                        logger.info(f"Could not find event on GT page: {event_data['story_id']} - {event_data['event_id']} : {event_titles}")
                     self.browser.execute_script("""
                         if (arguments[0]) {
                             arguments[0].click();
@@ -1435,6 +1448,7 @@ def setup_helper_page(browser: horsium.BrowserWindow):
 
     gametora_remove_cookies_banner(browser)
     gametora_close_ad_banner(browser)
+
 
 
 def setup_skill_window(browser: horsium.BrowserWindow):
