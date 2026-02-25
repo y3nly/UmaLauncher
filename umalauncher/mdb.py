@@ -457,11 +457,17 @@ def get_skill_id_dict(force=False):
     global SKILL_ID_DICT
     if force or not SKILL_ID_DICT:
         with Connection() as (_, cursor):
-            cursor.execute(
-                """SELECT id, group_id, rarity, unique_skill_id_1 FROM skill_data ORDER BY group_rate DESC;"""
-            )
-            rows = cursor.fetchall()
-        
+            try:
+                cursor.execute(
+                    """SELECT id, group_id, rarity, unique_skill_id_1 FROM skill_data ORDER BY group_rate DESC;"""
+                )
+                rows = cursor.fetchall()
+            except sqlite3.OperationalError as e:
+                logger.error(f"get_group_card_effect_ids failed: {e}\n{traceback.format_exc()}")
+                util.show_error_box_no_report("Error","Failed to read the master.mdb file.<br>Try restarting Uma Launcher after the game updates.<br>Uma Launcher will now close.")
+                if gui.THREADER:
+                    gui.THREADER.stop()
+                rows = []
         if rows:
             tmp = {}
             for row in rows:
