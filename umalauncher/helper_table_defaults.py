@@ -1412,7 +1412,7 @@ def generate_div(member):
     chara_id = member['chara_id']
     gain_xp = member['gain_exp']
     chara_img = f"https://gametora.com/images/umamusume/characters/icons/chr_icon_{chara_id}.png"
-    gain_img = util.get_dreams_image_dict()[str(gain_xp)]  # TODO
+    gain_img = util.get_dreams_image_dict()[str(gain_xp)]  # TODO use the other PNG if the level is maxed
     cell_text += f"<div style=\"display: flex; flex-direction: column; align-items: center; justify-content: center;\"><img src=\"{chara_img}\" height=\"36\" width=\"36\" style=\"margin-bottom: -2px\" />"
     cell_text += f"""<img src=\"{gain_img}\"height=\"19\" width=\"19\" style=\"position: relative; top: -12px; right: -12px; margin-bottom: -10px\" /></div>"""
     cell_text += "</div>"
