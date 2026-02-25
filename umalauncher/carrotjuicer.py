@@ -77,7 +77,6 @@ class CarrotJuicer:
         self.skill_costs_dict = mdb.get_skill_costs_dict()
         self.skill_conditions_dict = mdb.get_skill_conditions_dict()
 
-
         self.acquired_skills_list = []
         self.skill_hints = dict()
         self.style = ''
@@ -271,7 +270,6 @@ class CarrotJuicer:
             logger.error(f"Race grade not found for program id {self.previous_race_program_id}")
             return "RACE GRADE NOT FOUND"
 
-        # These aren't on Gametora anymore, but keep them around in case they update the page again.
         grade_text = ""
         if race_grade > 300:
             grade_text = "Pre/OP"
@@ -280,9 +278,9 @@ class CarrotJuicer:
         else:
             grade_text = "G1"
         if 'IS_UL_GLOBAL' in os.environ:
-            return [f"{self.EVENT_ID_TO_POS_STRING_GLB[event_id]} ({grade_text})", f"{self.EVENT_ID_TO_POS_STRING_GLB[event_id]}"]
+            return [f"{self.EVENT_ID_TO_POS_STRING_GLB[event_id]} ({grade_text})"]
         else:
-            return [f"{self.EVENT_ID_TO_POS_STRING[event_id]} ({grade_text})", f"{self.EVENT_ID_TO_POS_STRING[event_id]}"]
+            return [f"{self.EVENT_ID_TO_POS_STRING[event_id]} ({grade_text})"]
 
     def handle_response(self, message, is_json=False):
         if is_json:
@@ -522,25 +520,13 @@ class CarrotJuicer:
                     if event_data['event_contents_info']['support_card_id'] and event_data['event_contents_info'][
                         'support_card_id'] not in supports:
                         # Random support card event
-                        logger.info("Random support card detected")
+                        logger.debug("Random support card detected")
 
                         self.browser.execute_script("""document.getElementById("boxSupportExtra").click();""")
                         self.browser.execute_script(
                             """
-                                var cont = document.getElementById("30021").parentElement.parentElement.parentElement;
-                                var rSupportsCheckbox = cont.lastChild?.children[1]?.children[1]?.querySelector('input');
-                                var showUpcomingSupportsCheckbox = cont.lastChild?.children[1]?.children[1]?.querySelector('input');
-                                if( rSupportsCheckbox && !rSupportsCheckbox.checked ) {
-                                 rSupportsCheckbox.click(); 
-                                }
-                                if( showUpcomingSupportsCheckbox && !showUpcomingSupportsCheckbox.checked ) {
-                                 showUpcomingSupportsCheckbox.click(); 
-                                }
-                            """)
-                        self.browser.execute_script(
-                            """
-                            var cont = document.getElementById("30021").parentElement.parentElement.parentElement;
-                            
+                            var cont = document.getElementById("30021").parentElement.parentElement;
+
                             var ele = document.getElementById(arguments[0].toString());
 
                             if (ele) {
@@ -563,7 +549,7 @@ class CarrotJuicer:
                     event_element = self.determine_event_element(event_titles)
 
                     if not event_element:
-                        logger.info(f"Could not find event on GT page: {event_data['story_id']} - {event_data['event_id']} : {event_titles}")
+                        logger.info(f"Could not find event on GT page: {event_data['story_id']} : {event_titles}")
                     self.browser.execute_script("""
                         if (arguments[0]) {
                             arguments[0].click();
@@ -729,7 +715,6 @@ class CarrotJuicer:
         if self.should_stop:
             return
 
-        # Initialize or refocus the skill tracking browser
         if not self.skill_browser:
             self.skill_browser = horsium.BrowserWindow(
                 "https://gametora.com/umamusume/skills",
@@ -743,7 +728,6 @@ class CarrotJuicer:
         if self.browser and self.browser.alive():
             self.browser.execute_script("""window.skill_window_opened();""")
 
-        # Filter for unacquired skills to optimize simulation throughput
         unacquired_skills_list = [s for s in self.skills_list if s not in self.acquired_skills_list]
 
         STYLE_INTERNAL_MAP = {
@@ -753,13 +737,14 @@ class CarrotJuicer:
             4: "OI"
         }
 
-        # Define simulation parameters and environmental state
+        total_iterations = 2000
+
         mock_payload = {
             "baseSetting": {
                 "umaStatus": {
                     "charaName": "Place Holder",
                     "speed": 1200, "stamina": 1200, "power": 1000, "guts": 400, "wisdom": 1200,
-                    "condition": "BEST", "style": STYLE_INTERNAL_MAP.get(self.style, "NIGE"),
+                    "condition": "BEST", "style": STYLE_INTERNAL_MAP[self.style],
                     "distanceFit": "A", "surfaceFit": "A", "styleFit": "A",
                     "popularity": 1, "gateNumber": 1,
                 },
@@ -770,30 +755,29 @@ class CarrotJuicer:
             "acquiredSkillIds": self.acquired_skills_list,
             "unacquiredSkillIds": unacquired_skills_list,
             "skillHints": self.skill_hints,
-            "iterations": 2000
+            "iterations": total_iterations
         }
 
-        # Execute external simulation engine
         results = self.run_simulation(util.get_asset("_assets/umasim-cli.exe"), mock_payload)
 
         sim_summary = {}
         global_min = 0.0
         global_max = 0.0
 
-        # Pre-process condition strings for ALL skills
-        conditions_payload = {}
-        for s_id in self.skills_list:
-            conditions_payload[str(s_id)] = self.skill_conditions_dict.get(s_id, "Guaranteed")
-
         if results and "baselineStats" in results and "candidates" in results:
-            for skill_id_str, candidate_result in results["candidates"].items():
+            skill_costs_dict = mdb.get_skill_costs_dict()
+
+            for skill_id_str, candidate_data in results["candidates"].items():
+                if not candidate_data:
+                    continue
+
                 skill_id_int = int(skill_id_str)
-                time_saved_stats = candidate_result.get("timeSavedStats", {})
+                time_saved_stats = candidate_data.get("timeSavedStats", {})
 
                 if not time_saved_stats:
                     continue
 
-                base_cost = self.skill_costs_dict.get(skill_id_str, 0)
+                base_cost = skill_costs_dict.get(skill_id_str, 0)
                 hint_level = self.skill_hints.get(skill_id_int, 0)
 
                 effective_hint_level = min(hint_level, 5)
@@ -801,32 +785,39 @@ class CarrotJuicer:
                 discount_percent = discount_map.get(effective_hint_level, 0)
                 sp_cost = int(base_cost * (100 - discount_percent) / 100)
 
-                raw_mean = time_saved_stats.get("mean", 0.0)
-                s_mean = -raw_mean
+                s_mean = time_saved_stats.get("mean", 0.0)
+                saved_mean_display = -s_mean
 
-                efficiency = (s_mean / max(sp_cost, 1)) * 100
+                efficiency = (saved_mean_display / max(sp_cost, 1)) * 100
 
-                val_min = time_saved_stats.get("min", 0.0)
-                val_max = time_saved_stats.get("max", 0.0)
-                frequencies = time_saved_stats.get("frequencies", [])
+                freqs = time_saved_stats.get("frequencies", [])
+                max_freq = max(freqs) if freqs else 1
 
                 data_obj = {
-                    "saved": round(s_mean, 4),
-                    "wMin": val_min,
-                    "wMax": val_max,
+                    "saved": round(saved_mean_display, 4),
+                    "mean": s_mean,
                     "binMin": time_saved_stats.get("binMin", 0.0),
-                    "binWidth": time_saved_stats.get("binWidth", 0.0),
-                    "frequencies": frequencies,
-                    "maxFreq": max(frequencies) if frequencies else 1,
+                    "binWidth": time_saved_stats.get("binWidth", 1.0),
+                    "frequencies": freqs,
+                    "maxFreq": max_freq,
+                    "vMax": total_iterations,
+                    "min": time_saved_stats.get("min", 0.0),
+                    "max": time_saved_stats.get("max", 0.0),
                     "sp_cost": sp_cost,
                     "hint_level": hint_level,
                     "efficiency": round(efficiency, 4)
                 }
 
-                global_min = min(global_min, val_min)
-                global_max = max(global_max, val_max)
+                global_min = min(global_min, data_obj["min"])
+                global_max = max(global_max, data_obj["max"])
 
                 sim_summary[skill_id_str] = data_obj
+
+        all_conditions = {}
+        for skill_id in self.skills_list:
+            cond = self.skill_conditions_dict.get(int(skill_id), "") or self.skill_conditions_dict.get(str(skill_id),
+                                                                                                       "")
+            all_conditions[str(skill_id)] = cond
 
         self.skill_browser.execute_script(
             """
@@ -835,7 +826,26 @@ class CarrotJuicer:
             let globalMin = arguments[2];
             let globalMax = arguments[3];
             let acquired_list = arguments[4] || [];
-            let conditions_map = arguments[5] || {};
+            let all_conditions = arguments[5] || {};
+
+            function formatCondition(cond) {
+                if (!cond) return "";
+                return cond.replace(/([a-zA-Z_]+)|(==|>=|<=|!=|>|<|=|&|!)|(\\b\\d+(?:\\.\\d+)?\\b)/g, function(match, word, op, num) {
+                    if (word) {
+                        if (word === 'OR') {
+                            return `<span style="color: #d65d8a;">${word}</span>`;
+                        }
+                        return `<span style="color: #73c991;">${word}</span>`;
+                    }
+                    if (op) {
+                        return `<span style="color: #60a5fa;">${op}</span>`;
+                    }
+                    if (num) {
+                        return `<span style="color: #c084fc;">${num}</span>`;
+                    }
+                    return match;
+                });
+            }
 
             let range = globalMax - globalMin;
             if (range === 0) range = 1;
@@ -843,27 +853,9 @@ class CarrotJuicer:
             let scaleMin = globalMin - pad;
             let scaleMax = globalMax + pad;
             let scaleRange = scaleMax - scaleMin;
+
             let getPct = (val) => Math.max(0, Math.min(100, ((val - scaleMin) / scaleRange) * 100));
             let zeroPct = getPct(0); 
-
-            // Bulletproof Syntax Highlighting
-            let highlightCondition = (text) => {
-                if (!text || text === "Guaranteed") return `<span style="color: #9ca3af; font-style: italic;">Guaranteed</span>`;
-
-                // 1. Safely parse Key (Yellow), Operator (Blue), and Value (Purple)
-                let res = text.replace(/([a-zA-Z0-9_]+)\s*(==|!=|<=|>=|<|>)\s*(-?[0-9.]+)/g, (match, p1, p2, p3) => {
-                    let safeOp = p2.replace('<', '&lt;').replace('>', '&gt;');
-                    return `<span style="color: #34d399;">${p1}</span><span style="color: #60a5fa; font-weight: bold;">${safeOp}</span><span style="color: #a78bfa;">${p3}</span>`;
-                });
-
-                // 2. Highlight standalone '&' (Blue)
-                res = res.replace(/&(?!(lt;|gt;|amp;))/g, '<span style="color: #60a5fa; font-weight: bold;"> &amp; </span>');
-
-                // 3. Highlight OR (Pink)
-                res = res.replace(/ OR /g, '<span style="color: #f472b6; font-weight: bold;"> OR </span>');
-
-                return res;
-            };
 
             let skill_elements = [];
             let skills_table = document.querySelector("[class^='skills_skill_table_']");
@@ -885,36 +877,31 @@ class CarrotJuicer:
                         skill_elements.push(row);
                         row.remove();
 
-                        let descCell = row.querySelector("[class^='skills_table_desc_']");
-                        let moreBtn = row.querySelector("[class*='skills_more_']");
-                        if (moreBtn) moreBtn.remove();
-                        if (descCell) descCell.innerHTML = "";
-
-                        // Uniform condition injection with standard font size
-                        let rawCond = conditions_map[skill_id.toString()] || "Guaranteed";
-                        if (descCell) {
-                            descCell.innerHTML = `
-                                <div style="padding: 4px 0;">
-                                    <div style="word-break: break-word; font-family: monospace; color: var(--c-text-main); line-height: 1.4;">
-                                        ${highlightCondition(rawCond)}
-                                    </div>
-                                </div>
-                            `;
-                        }
-
                         let existingBadge = row.querySelector('.sim-data-badge');
                         if (existingBadge) existingBadge.remove();
 
                         let badge = document.createElement("div");
                         badge.className = "sim-data-badge";
                         badge.style.gridArea = "badge";
-                        badge.style.width = "180px";
-                        badge.style.height = "40px"; 
+                        badge.style.width = "180px"; 
+                        badge.style.height = "40px";
                         badge.style.marginRight = "10px"; 
                         badge.style.boxSizing = "border-box";
-                        badge.style.display = "flex";
-                        badge.style.flexDirection = "column";
-                        badge.style.justifyContent = "center";
+                        badge.style.display = "block";
+
+                        let condRaw = all_conditions[skill_id.toString()] || "";
+                        let condHtml = `<div style="color: #d1d5db; font-family: monospace; white-space: pre-wrap; line-height: 1.2;">${formatCondition(condRaw)} <span style="color: #6b7280; font-size: 0.85em;">(${skill_id})</span></div>`;
+
+                        if (row.children.length >= 3) {
+                            let descCell = row.children[2];
+                            if (descCell) {
+                                descCell.innerHTML = condHtml;
+                            }
+                        }
+
+                        if (row.children.length >= 4) {
+                            row.children[3].style.display = "none";
+                        }
 
                         if (acquired_list.includes(skill_id)) {
                             badge.style.padding = "2px 8px";
@@ -923,7 +910,9 @@ class CarrotJuicer:
                             badge.style.color = "#9ca3af";
                             badge.style.borderRadius = "4px";
                             badge.style.fontWeight = "bold";
+                            badge.style.display = "flex";
                             badge.style.alignItems = "center";
+                            badge.style.justifyContent = "center";
                             badge.innerHTML = `Acquired`;
                         } else {
                             let data = sim_results[skill_id.toString()]; 
@@ -935,46 +924,61 @@ class CarrotJuicer:
                                 else if (eff >= 0.01) color = "#bbf7d0"; 
                                 else if (eff <= -0.01) color = "#ca8a8a";                  
 
-                                badge.style.padding = "2px 8px";
-                                badge.style.backgroundColor = "var(--c-bg-main-hover)"; 
-                                badge.style.border = `1px solid ${color}`;
-                                badge.style.color = color;
-                                badge.style.borderRadius = "4px";
-                                badge.style.fontWeight = "bold";
-                                badge.style.alignItems = "stretch";
-
                                 let sign = data.saved > 0 ? "-" : (data.saved < 0 ? "+" : "");
                                 let absSaved = Math.abs(data.saved);
 
-                                let freqs = data.frequencies || [];
-                                let maxFreq = data.maxFreq || 1;
-                                let bMin = data.binMin;
-                                let bWid = data.binWidth;
+                                let histogramHtml = '';
+                                if (data.frequencies && data.frequencies.length > 0) {
+                                    let bMin = data.binMin;
+                                    let bWid = data.binWidth;
 
-                                let barsHtml = freqs.map((freq, i) => {
-                                    if (freq === 0) return "";
-                                    let binStart = bMin + i * bWid;
-                                    let binEnd = binStart + bWid;
-                                    let binCenter = binStart + (bWid / 2);
+                                    for (let j = 0; j < data.frequencies.length; j++) {
+                                        let freq = data.frequencies[j];
+                                        if (freq === 0) continue;
 
-                                    let pStart = getPct(binStart);
-                                    let pEnd = getPct(binEnd);
-                                    let pWidth = pEnd - pStart;
-                                    let pHeight = (freq / maxFreq) * 100;
+                                        let hPct = (freq / data.vMax) * 100;
+                                        hPct = Math.min(hPct, 100);
 
-                                    let barColor = binCenter < 0 ? color : "#ca8a8a"; 
+                                        let leftEdge = bMin + (j * bWid);
+                                        let rightEdge = leftEdge + bWid;
 
-                                    return `<div style="position: absolute; left: ${pStart}%; width: ${pWidth}%; height: ${pHeight}%; bottom: 0; background: ${barColor}; opacity: 0.85; border-radius: 1px 1px 0 0;"></div>`;
-                                }).join("");
+                                        let xLeft = getPct(leftEdge);
+                                        let xWidth = getPct(rightEdge) - xLeft;
+
+                                        let barColor;
+                                        if (leftEdge <= 0 && rightEdge > 0) {
+                                            barColor = '#9ca3af';
+                                        } else if (rightEdge <= 0) {
+                                            barColor = '#86efac';
+                                        } else {
+                                            barColor = '#fca5a5';
+                                        }
+
+                                        histogramHtml += `<div style="position: absolute; left: ${xLeft}%; width: ${xWidth}%; bottom: 0; height: ${hPct}%; background-color: ${barColor}; opacity: 0.85;"></div>`;
+                                    }
+
+                                    let meanX = getPct(data.mean);
+
+                                    histogramHtml += `<div style="position: absolute; left: ${zeroPct}%; top: 0; bottom: 0; width: 0px; border-left: 1px dashed white; z-index: 2;"></div>`;
+                                    histogramHtml += `<div style="position: absolute; left: ${meanX}%; top: 0; bottom: 0; width: 0px; border-left: 1px dashed #60a5fa; z-index: 3;"></div>`;
+                                }
 
                                 badge.innerHTML = `
-                                    <div style="display: flex; justify-content: space-between; font-size: 0.8em;">
-                                        <span>${sign}${absSaved.toFixed(3)}s (${eff.toFixed(3)})</span>
-                                        <span>Lv ${data.hint_level || 0} | ${data.sp_cost || "?"} SP</span>
-                                    </div>
-                                    <div style="position: relative; width: 100%; height: 16px; margin-top: 2px; background: rgba(0,0,0,0.15); border-radius: 4px; display: flex; align-items: flex-end;">
-                                        <div style="position: absolute; left: ${zeroPct}%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.3); z-index: 1;"></div>
-                                        ${barsHtml}
+                                    <div style="position: relative; width: 100%; height: 100%; background: var(--c-bg-main-hover); border: 1px solid ${color}; border-radius: 4px; overflow: hidden;">
+                                        ${histogramHtml}
+
+                                        <div style="position: absolute; top: 1px; left: 4px; font-size: 0.7em; color: rgba(255,255,255,0.9); z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">
+                                            Lv ${data.hint_level || 0} | ${data.sp_cost || "?"} SP
+                                        </div>
+
+                                        <div style="position: absolute; bottom: 0px; left: 4px; font-size: 0.55em; color: rgba(200,200,200,0.9); z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">
+                                            Peak: ${data.maxFreq}
+                                        </div>
+
+                                        <div style="position: absolute; top: 2px; right: 4px; font-size: 0.75em; text-align: right; line-height: 1.15; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">
+                                            <div style="font-weight: bold; color: ${color};">${sign}${absSaved.toFixed(3)}s</div>
+                                            <div style="color: ${color}; font-weight: bold; font-size: 0.9em;">(${eff.toFixed(3)})</div>
+                                        </div>
                                     </div>
                                 `;
                             }
@@ -989,9 +993,7 @@ class CarrotJuicer:
                 const item = skill_elements[i];
                 item.style.display = "grid";
                 item.style.gridTemplateAreas = '"badge image jpname desc"';
-                item.style.gridTemplateColumns = "190px 40px 250px 1fr";
-                item.style.padding = "2px";
-                item.style.alignItems = "center";
+                item.style.gridTemplateColumns = "190px 40px 250px auto";
 
                 if (color_class) {
                     if (i % 2 == 0) item.classList.add(color_class);
@@ -999,18 +1001,20 @@ class CarrotJuicer:
                 }
                 skills_table.appendChild(item);
             }
-            """, self.skills_list, sim_summary, global_min, global_max, self.acquired_skills_list, conditions_payload)
+            """, self.skills_list, sim_summary, global_min, global_max, self.acquired_skills_list, all_conditions)
 
     def run_simulation(self, exe_path, payload):
         json_payload = json.dumps(payload)
 
         try:
+            command = [exe_path, json_payload]
+
             process = subprocess.run(
-                [exe_path, json_payload],
-                capture_output=True,
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                encoding='utf-8',
-                check=True
+                encoding='utf-8'
             )
 
             if process.stderr:
@@ -1448,7 +1452,6 @@ def setup_helper_page(browser: horsium.BrowserWindow):
 
     gametora_remove_cookies_banner(browser)
     gametora_close_ad_banner(browser)
-
 
 
 def setup_skill_window(browser: horsium.BrowserWindow):
