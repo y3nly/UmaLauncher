@@ -252,6 +252,9 @@ class Preset():
         if main_info['scenario_id'] == 6:
             sections = constants.DEFAULT_ARC_SECTIONS
 
+        if main_info['scenario_id'] == 13:
+            sections = constants.DEFAULT_DREAMS_SECTIONS
+
         tot_turns = sections[-1][0] - 1
         turn_len = 100. / tot_turns
         start_dist = 0.

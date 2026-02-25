@@ -467,7 +467,7 @@ class CarrotJuicer:
                             """
                                 var cont = document.getElementById("30021").parentElement.parentElement.parentElement;
                                 var rSupportsCheckbox = cont.lastChild?.children[1]?.children[1]?.querySelector('input');
-                                var showUpcomingSupportsCheckbox = cont.lastChild?.children[1]?.children[1]?.querySelector('input');
+                                var showUpcomingSupportsCheckbox = cont.lastChild?.children[1]?.children[2]?.querySelector('input');
                                 if( rSupportsCheckbox && !rSupportsCheckbox.checked ) {
                                  rSupportsCheckbox.click(); 
                                 }

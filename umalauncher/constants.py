@@ -238,6 +238,19 @@ DEFAULT_TRAINING_SECTIONS = (
     (79, "black", "END")
 )
 
+
+DEFAULT_DREAMS_SECTIONS = (
+    (1, "cyan", "Pre-Debut"),
+    (13, "lightgreen", "Junior"),
+    (25, "salmon", "Classic"),
+    (37, "yellow", "Classic Summer"),
+    (41, "salmon", "Classic"),
+    (49, "plum", "Senior"),
+    (61, "yellow", "Senior Summer"),
+    (65, "plum", "Senior"),
+    (69, "black", "END")
+)
+
 DEFAULT_ARC_SECTIONS = (
     (1, "cyan", "Pre-Debut"),
     (13, "lightgreen", "Junior"),
