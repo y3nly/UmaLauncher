@@ -1,4 +1,6 @@
 import enum
+import traceback
+
 from loguru import logger
 import gui
 import util
@@ -325,7 +327,7 @@ class Preset():
                 try:
                     table.append(row.to_tr(command_info))
                 except KeyError as e:
-                    logger.error(f"Error generating table row: {e}")
+                    logger.error(f"Error generating table row: {e}\n{traceback.format_exc()}")
                     continue
 
         thead = f"<thead>{table[0]}</thead>"

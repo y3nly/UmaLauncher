@@ -10,7 +10,8 @@ SCENARIO_DICT = {
     9: "Run! Mecha Umamusume",
     10: "The Twinkle Legends",
     11: "Design Your Island",
-    12: "Yukoma Hot Springs"
+    12: "Yukoma Hot Springs",
+    13: "Beyond Dreams"
 }
 
 MOTIVATION_DICT = {

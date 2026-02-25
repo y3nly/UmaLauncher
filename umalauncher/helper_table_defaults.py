@@ -1115,6 +1115,24 @@ class OnsenSettings(se.NewSettings):
         ),
     }
 
+
+class DreamsPartnersSettings(se.NewSettings):
+    _settings = {
+        "highlight_max": se.Setting(
+            "Highlight max",
+            "Highlights the facility with the greatest DP gain.",
+            True,
+            se.SettingType.BOOL
+        ),
+        "highlight_max_color": se.Setting(
+            "Highlight max color",
+            "The color to use to highlight the facility with the greatest DP gain.",
+            "#90EE90",
+            se.SettingType.COLOR
+        ),
+    }
+
+
 class GFFVegetablesRow(hte.Row):
     long_name = "GFF Vegetable Gain"
     short_name = "Veggies"
@@ -1344,6 +1362,60 @@ class OnsenPointsDistributionRow(hte.Row):
         return super().to_tr(command_info)
 
 
+class DreamsPartnersRow(hte.Row):
+    long_name = "Beyond Dreams team member Dream Gauge gain"
+    short_name = "Dream Gauge"
+    description = "[Scenario-specific] Shows the Dream Gauge gain for each team member. Hidden in other scenarios."
+
+
+    def __init__(self):
+        super().__init__()
+        self.settings = DreamsPartnersSettings()
+
+    def _generate_cells(self, game_state) -> list[hte.Cell]:
+        if list(game_state.values())[0]['scenario_id'] != 13:
+            return []
+
+        cells = [hte.Cell(self.short_name, title=self.description)]
+
+        logger.info(f"Game state: {game_state}")
+        has_ssr_casino_drive = list(game_state.values())[0]['has_ssr_casino_drive']
+
+        dp_sums = {}
+        for command_key, command_data in game_state.items():
+            point_sum = 0
+            for member in command_data['team_member_info_array']:
+                point_sum += (2 if has_ssr_casino_drive else 1) if member['gain_exp'] == 0 else 0
+            dp_sums[command_key] = point_sum
+        max_points = max(dp_sums.values())
+
+
+        for command_key, command_data in game_state.items():
+            cell_text = f"<div style=\"display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.2rem;\">"
+            for member in command_data['team_member_info_array']:
+                chara_id = member['chara_id']
+                gain_xp = member['gain_exp']
+                chara_img = f"https://gametora.com/images/umamusume/characters/icons/chr_icon_{chara_id}.png"
+                gain_img = util.get_dreams_image_dict()[str(gain_xp)]# TODO
+                cell_text += f"<div style=\"display: flex; flex-direction: column; align-items: center; justify-content: center;\"><img src=\"{chara_img}\" height=\"24\" width=\"24\" style=\"margin-bottom: -2px\" />"
+                cell_text += f"""<img src=\"{gain_img}\"height=\"12\" width=\"12\" style=\"position: relative; top: -10px; right: -5px; margin-bottom: -6px\" /></div>"""
+            if dp_sums[command_key] != 0: # Level up
+                cell_text += f"DP +{dp_sums[command_key]}"
+            cell_text += "</div>"
+            if dp_sums[command_key] != 0 and dp_sums[command_key] == max_points and self.settings.highlight_max.value:
+                cells.append(hte.Cell(cell_text, bold=True, color=self.settings.highlight_max_color.value))
+            else:
+                cells.append(hte.Cell(cell_text))
+
+        return cells
+
+    def to_tr(self, command_info):
+        if list(command_info.values())[0]['scenario_id'] != 13:
+            return ""
+
+        return super().to_tr(command_info)
+
+
 
 class RowTypes(Enum):
     CURRENT_STATS = CurrentStatsRow
@@ -1374,6 +1446,7 @@ class RowTypes(Enum):
     RMU_RESEARCH_DIST = RMUResearchDistributionRow
     DYI_POINTS_DIST = DYIPointsDistributionRow
     ONSEN_POINTS_DIST = OnsenPointsDistributionRow
+    DREAM_PARTNERS = DreamsPartnersRow
 
 
 class DefaultPreset(hte.Preset):
@@ -1389,6 +1462,7 @@ class DefaultPreset(hte.Preset):
         RowTypes.AOHARU_UNITY_PARTNER_COUNT,
         RowTypes.DYI_POINTS_DIST,
         RowTypes.ONSEN_POINTS_DIST,
+        RowTypes.DREAM_PARTNERS,
         RowTypes.CURRENT_STATS,
         RowTypes.GAINED_STATS,
         RowTypes.USEFUL_BOND,

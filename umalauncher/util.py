@@ -657,6 +657,16 @@ def get_rmu_image_dict(force=False):
         rmu_image_dict.update(assets_folder_images_to_dict("_assets/rmu"))
     return rmu_image_dict
 
+
+dreams_image_dict = {}
+def get_dreams_image_dict(force=False):
+    global dreams_image_dict
+
+    if force or not dreams_image_dict:
+        logger.debug("Loading Beyond Dreams images...")
+        dreams_image_dict.update(assets_folder_images_to_dict("_assets/dreams"))
+    return dreams_image_dict
+
 GROUP_SUPPORT_ID_TO_PASSION_ZONE_EFFECT_ID_DICT = {}
 def get_group_support_id_to_passion_zone_effect_id_dict(force=False):
     global GROUP_SUPPORT_ID_TO_PASSION_ZONE_EFFECT_ID_DICT
@@ -695,6 +705,7 @@ UPDATE_FUNCS = [
     get_gff_veg_image_dict,
     get_gl_token_dict,
     get_rmu_image_dict,
+    get_dreams_image_dict,
     get_group_support_id_to_passion_zone_effect_id_dict,
 ]
 
