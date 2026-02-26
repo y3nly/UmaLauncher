@@ -321,7 +321,6 @@ class HelperTable():
             arc_aptitude_gain = 0
             onsen_points_gain = 0
             team_member_info_array = {}
-            turn = 0
 
             for param in command.get('params_inc_dec_info_array', []):
                 if param['target_type'] < 6:
@@ -561,7 +560,6 @@ class HelperTable():
             has_ssr_casino_drive = False
             if 'breeders_data_set' in data:
                 team_member_info_array = command['team_member_info_array']
-                turn = command['turn']
                 #rank_up_predict = command['rank_up_predict']
                 for card in data['chara_info']['support_card_array']:
                     if card["support_card_id"] == 30290:
