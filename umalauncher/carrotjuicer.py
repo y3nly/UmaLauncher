@@ -526,9 +526,9 @@ class CarrotJuicer:
                         } 
                         """, event_element, [self.status_name_dict[i] for i in status_ids if i in self.status_name_dict])
 
-            if 'reserved_race_array' in data and 'chara_info' not in data and self.last_helper_data:
+            if 'reserved_race_info' in data and 'reserved_race_array' in data['reserved_race_info'] and 'chara_info' not in data and self.last_helper_data:
                 # User changed reserved races
-                self.last_helper_data['reserved_race_array'] = data['reserved_race_array']
+                self.last_helper_data['reserved_race_array'] = data['reserved_race_info']['reserved_race_array']
                 data = self.last_helper_data
                 self.update_helper_table(data)
 
@@ -584,6 +584,9 @@ class CarrotJuicer:
             if 'start_chara' in data:
                 # Packet is a request to start a training
                 logger.debug("Start of training detected")
+                if 'exec_count' in data['start_chara']:
+                    logger.debug("Auto-training detected, not starting training")
+                    return
                 self.helper_url = self.create_gametora_helper_url_from_start(data)
                 logger.debug(f"Helper URL: {self.helper_url}")
                 self.open_helper()
