@@ -247,6 +247,16 @@ class HelperTable():
             for command in data['onsen_data_set']['command_info_array']:
                 all_commands[command['command_id']]['dig_info_array'] = command['dig_info_array']
 
+        # Beyond Dreams (Breeder's Cup)
+        if 'breeders_data_set' in data:
+            for command in data['breeders_data_set']['command_info_array']:
+                all_commands[command['command_id']]['team_member_info_array'] = command['team_member_info_array']
+                all_commands[command['command_id']]['turn'] = data['chara_info']['turn']
+                for idx, member in enumerate(all_commands[command['command_id']]['team_member_info_array']):
+                    team_member = [x for x in data['breeders_data_set']['team_member_info_array'] if x['chara_id'] == member['chara_id']]
+                    all_commands[command['command_id']]['team_member_info_array'][idx]['rank'] = team_member[0]['rank']
+                    all_commands[command['command_id']]['team_member_info_array'][idx]['exp'] = team_member[0]['exp']
+
         # Aoharu
         if 'team_data_set' in data:
             for command in data['team_data_set']['command_info_array']:
@@ -310,6 +320,7 @@ class HelperTable():
             rainbow_count = 0
             arc_aptitude_gain = 0
             onsen_points_gain = 0
+            team_member_info_array = {}
 
             for param in command.get('params_inc_dec_info_array', []):
                 if param['target_type'] < 6:
@@ -348,6 +359,7 @@ class HelperTable():
             bond_gains_useful = [0]
             partner_count = 0
             useful_partner_count = 0
+            riko_count = 0
             num_hints = len(command.get('tips_event_partner_array', []))
             if num_hints:
                 hint_partners += command.get('tips_event_partner_array')
@@ -375,6 +387,10 @@ class HelperTable():
                             len(data['venus_data_set']['venus_spirit_active_effect_info_array']) > 0 and \
                                 data['venus_data_set']['venus_spirit_active_effect_info_array'][0]['chara_id'] == 9042:
                         rainbow_count += 1
+
+                    # Checking if Support card is Riko Kashimoto
+                    if support_id == 30036 or support_id == 10060:
+                        riko_count = 1
                 elif training_partner_id > 1000:  # TODO: Maybe 1000 < training_partner_id < 9000
                     useful_partner_count += 1
 
@@ -389,15 +405,18 @@ class HelperTable():
             unity_partner_count = 0
             useful_unity_partner_count = 0
             spirit_burst_partner_count = 0
+            unity_near_explode_partner_count = 0
             if 'team_data_set' in data:
-                for partner in command.get('guide_event_partner_array', []):
+                for partner_id  in command.get('guide_event_partner_array', []):
                     # find partner in the evaluation_info_array
-                    entry = next((d for d in data['team_data_set'].get('evaluation_info_array') if d["target_id"] == partner), None)
+                    entry = next((d for d in data['team_data_set'].get('evaluation_info_array') if d["target_id"] == partner_id ), None)
 
-                    # increase count if not exploded
+                    # "Useful" is count of partners not yet exploded
                     if entry.get("soul_event_state") == 0:
                         useful_unity_partner_count += 1
-
+                    # One step away from being full
+                    if entry.get('soul_threshold_id') == 4:
+                        unity_near_explode_partner_count += 1
                     unity_partner_count += 1
                 for _ in command.get('soul_event_partner_array', []):
                     # TODO: Should a spirit burst parner be considered a useful partner?
@@ -545,6 +564,16 @@ class HelperTable():
                 if 'dig_info_array' in command:
                     onsen_points_gain += sum(dig_info['dig_value'] for dig_info in command['dig_info_array'])
 
+            # Beyond Dreams (Breeder's Cup)
+            has_ssr_casino_drive = False
+            if 'breeders_data_set' in data:
+                team_member_info_array = command['team_member_info_array']
+                #rank_up_predict = command['rank_up_predict']
+                for card in data['chara_info']['support_card_array']:
+                    if card["support_card_id"] == 30290:
+                        has_ssr_casino_drive = True
+                        break
+
             command_info[command['command_id']] = {
                 'scenario_id': scenario_id,
                 'current_stats': current_stats,
@@ -569,6 +598,11 @@ class HelperTable():
                 'unity_partner_count': unity_partner_count,
                 'useful_unity_partner_count': useful_unity_partner_count,
                 'spirit_burst_partner_count': spirit_burst_partner_count,
+                'team_member_info_array': team_member_info_array,
+                'has_ssr_casino_drive': has_ssr_casino_drive,
+                'turn': turn,
+                'unity_near_explode_partner_count': unity_near_explode_partner_count,
+                'riko_count': riko_count,
             }
 
         # Simplify everything down to a dict with only the keys we care about.

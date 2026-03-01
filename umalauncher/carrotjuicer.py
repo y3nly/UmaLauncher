@@ -467,28 +467,23 @@ class CarrotJuicer:
                             """
                                 var cont = document.getElementById("30021").parentElement.parentElement.parentElement;
                                 var rSupportsCheckbox = cont.lastChild?.children[1]?.children[1]?.querySelector('input');
-                                var showUpcomingSupportsCheckbox = cont.lastChild?.children[1]?.children[1]?.querySelector('input');
+                                var showUpcomingSupportsCheckbox = cont.lastChild?.children[1]?.children[2]?.querySelector('input');
                                 if( rSupportsCheckbox && !rSupportsCheckbox.checked ) {
-                                 rSupportsCheckbox.click(); 
+                                    rSupportsCheckbox.click(); 
                                 }
                                 if( showUpcomingSupportsCheckbox && !showUpcomingSupportsCheckbox.checked ) {
-                                 showUpcomingSupportsCheckbox.click(); 
+                                    showUpcomingSupportsCheckbox.click(); 
                                 }
-                            """)
-                        self.browser.execute_script(
-                            """
-                            var cont = document.getElementById("30021").parentElement.parentElement.parentElement;
-                            
-                            var ele = document.getElementById(arguments[0].toString());
+                                
+                                var ele = document.getElementById(arguments[0].toString());
 
-                            if (ele) {
-                                ele.click();
-                                return;
-                            }
-                            cont.querySelector('img[src="/images/ui/close.png"]').click();
+                                if (ele) {
+                                    ele.click();
+                                    return;
+                                }
+                                cont.querySelector('img[src="/images/ui/close.png"]').click();
                             """,
-                            event_data['event_contents_info']['support_card_id']
-                        )
+                            event_data['event_contents_info']['support_card_id'])
                     else:
                         logger.debug("Trained character or support card detected")
 
@@ -526,11 +521,19 @@ class CarrotJuicer:
                         } 
                         """, event_element, [self.status_name_dict[i] for i in status_ids if i in self.status_name_dict])
 
-            if 'reserved_race_array' in data and 'chara_info' not in data and self.last_helper_data:
-                # User changed reserved races
-                self.last_helper_data['reserved_race_array'] = data['reserved_race_array']
-                data = self.last_helper_data
-                self.update_helper_table(data)
+            if 'chara_info' not in data and self.last_helper_data:
+                if 'IS_UL_GLOBAL' in os.environ:
+                    if 'reserved_race_array' in data:
+                        # User changed reserved races
+                        self.last_helper_data['reserved_race_array'] = data['reserved_race_array']
+                        data = self.last_helper_data
+                        self.update_helper_table(data)
+                else:
+                    if 'reserved_race_info' in data and 'reserved_race_array' in data['reserved_race_info']:
+                        # User changed reserved races
+                        self.last_helper_data['reserved_race_array'] = data['reserved_race_info']['reserved_race_array']
+                        data = self.last_helper_data
+                        self.update_helper_table(data)
 
             self.last_data = data
         except Exception:
@@ -584,6 +587,9 @@ class CarrotJuicer:
             if 'start_chara' in data:
                 # Packet is a request to start a training
                 logger.debug("Start of training detected")
+                if 'exec_count' in data['start_chara']:
+                    logger.debug("Auto-training detected, not starting training")
+                    return
                 self.helper_url = self.create_gametora_helper_url_from_start(data)
                 logger.debug(f"Helper URL: {self.helper_url}")
                 self.open_helper()
