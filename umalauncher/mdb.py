@@ -304,6 +304,33 @@ def get_skill_costs_dict(force=False):
 
     return SKILL_COSTS_DICT
 
+SKILL_CONDITIONS_DICT = {}
+def get_skill_conditions_dict(force=False):
+    global SKILL_CONDITIONS_DICT
+    if force or not SKILL_CONDITIONS_DICT:
+        with Connection() as (_, cursor):
+            # Fetch condition_1 from your local DB
+            cursor.execute("SELECT id, condition_1 FROM skill_data;")
+            rows = cursor.fetchall()
+
+        if rows:
+            tmp = {}
+            for row in rows:
+                skill_id = row[0]
+                logic_str = row[1]
+
+                if logic_str:
+                    # Apply logic from generate_skill_data.py: split by @, wrap in [], join with OR
+                    blocks = str(logic_str).split('@')
+                    formatted_blocks = [f"{b.strip().replace('&', ' & ')}" for b in blocks if b.strip()]
+                    tmp[skill_id] = " OR ".join(formatted_blocks)
+                else:
+                    tmp[skill_id] = "Guaranteed"
+
+            SKILL_CONDITIONS_DICT.update(tmp)
+
+    return SKILL_CONDITIONS_DICT
+
 SKILL_HINT_NAME_DICT = {}
 def get_skill_hint_name_dict(force=False):
     global SKILL_HINT_NAME_DICT
@@ -697,7 +724,8 @@ UPDATE_FUNCS = [
     get_skill_id_dict,
     get_scouting_score_to_rank_dict,
     get_single_mode_unique_chara_dict,
-    get_skill_costs_dict
+    get_skill_costs_dict,
+    get_skill_conditions_dict
 ]
 
 def has_carotene_table():
