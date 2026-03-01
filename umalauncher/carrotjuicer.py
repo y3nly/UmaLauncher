@@ -1425,30 +1425,37 @@ def setup_helper_page(browser: horsium.BrowserWindow):
 
     gametora_dark_mode(browser)
 
-    # Enable all cards
+    # # Enable all cards
+    # browser.execute_script("""
+    # var settings = document.querySelector("[class^='filters_settings_button_']");
+    # if( settings == null )
+    # {
+    #    settings = document.getElementById("teh-settings-open");
+    # }
+    # if( settings == null )
+    # {
+    #    settings = Array.from(document.querySelectorAll('div')).find( el => el.textContent === "Settings");
+    #    if( settings == null ) return;
+    #    settings = settings.childNodes[0];
+    # }
+    # if( settings != null )
+    # {
+    #    settings.click();
+    # }
+    # """)
+    # while not browser.execute_script("""return document.getElementById("allAtOnceCheckbox");"""):
+    #     time.sleep(0.125)
+    # all_cards_enabled = browser.execute_script("""return document.getElementById("allAtOnceCheckbox").checked;""")
+    # if not all_cards_enabled:
+    #     browser.execute_script("""document.getElementById("allAtOnceCheckbox").click()""")
+    # browser.execute_script("""document.querySelector("[class^='filters_confirm_button_']").click()""")
+
     browser.execute_script("""
-    var settings = document.querySelector("[class^='filters_settings_button_']");
-    if( settings == null )
-    {
-       settings = document.getElementById("teh-settings-open");
-    }
-    if( settings == null )
-    {
-       settings = Array.from(document.querySelectorAll('div')).find( el => el.textContent === "Settings");
-       if( settings == null ) return;
-       settings = settings.childNodes[0];
-    }
-    if( settings != null )
-    {
-       settings.click();
-    }
-    """)
-    while not browser.execute_script("""return document.getElementById("allAtOnceCheckbox");"""):
-        time.sleep(0.125)
-    all_cards_enabled = browser.execute_script("""return document.getElementById("allAtOnceCheckbox").checked;""")
-    if not all_cards_enabled:
-        browser.execute_script("""document.getElementById("allAtOnceCheckbox").click()""")
-    browser.execute_script("""document.querySelector("[class^='filters_confirm_button_']").click()""")
+            let checkbox = document.getElementById("allAtOnceCheckbox");
+            if (checkbox && !checkbox.checked) {
+                checkbox.click();
+            }
+        """)
 
     gametora_remove_cookies_banner(browser)
     gametora_close_ad_banner(browser)
@@ -1543,70 +1550,59 @@ def setup_skill_window(browser: horsium.BrowserWindow):
     gametora_close_ad_banner(browser)
 
 
-def gametora_dark_mode(browser: horsium.BrowserWindow):
-    # Enable dark mode (the only reasonable color scheme)
-    browser.execute_script("""document.querySelector("[class^='styles_header_settings_']").click()""")
-    while not browser.execute_script("""return document.querySelector("[class^='filters_toggle_button_']");"""):
-        time.sleep(0.25)
-
-    dark_enabled = browser.execute_script(
-        """return document.querySelector("[class^='tooltips_tooltip_']").querySelector("[class^='filters_toggle_button_']").childNodes[0].querySelector("input").checked;""")
-    if dark_enabled != browser.threader.settings["gametora_dark_mode"]:
-        browser.execute_script(
-            """document.querySelector("[class^='tooltips_tooltip_']").querySelector("[class^='filters_toggle_button_']").childNodes[0].querySelector("input").click()""")
-    browser.execute_script("""document.querySelector("[class^='styles_header_settings_']").click()""")
+def gametora_dark_mode(browser):
+    browser.execute_script("""
+        localStorage.setItem('theme', 'dark');
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.documentElement.style.colorScheme = 'dark';
+    """)
 
 
 def gametora_remove_cookies_banner(browser: horsium.BrowserWindow):
-    # Hide the cookies banner
+    # Inject a permanent CSS rule to instantly hide the cookie banner
     browser.execute_script("""
-            if( window.removeCookiesId == null ) {
-                window.removeCookiesId = setInterval( function() {
-                    if( document.getElementById("adnote") != null) {
-                        document.getElementById("adnote").style.display = 'none';
-                    }
-                }, 5 * 1000);
-            }
-            """)
+        if (!document.getElementById('ul-cookie-hider')) {
+            let style = document.createElement('style');
+            style.id = 'ul-cookie-hider';
+            style.innerHTML = '#adnote { display: none !important; }';
+            document.head.appendChild(style);
+        }
+    """)
 
 
 def gametora_close_ad_banner(browser: horsium.BrowserWindow):
     if 'training-event-helper' in browser.url:
-        # Close the top support cards thing, super jank
+        # Close the top support cards thing
         browser.execute_script("""
-                        let a = document.querySelector("[id^='styles_page-main_']");
-                        if( a != null ){
-                            let b = a.children[1]; //First element is top ad
-                            if( b != null )
-                            {
-                                let c = b.children[b.childElementCount - 1]; //Last element is the support cards thing
-                                if( c != null )
-                                {
-                                    c.style.display = "none";
-                                }
-                            }
-                        }
-                        """)
+            let a = document.querySelector("[id^='styles_page-main_']");
+            if( a != null ){
+                let b = a.children[1]; //First element is top ad
+                if( b != null )
+                {
+                    let c = b.children[b.childElementCount - 1]; //Last element is the support cards thing
+                    if( c != null )
+                    {
+                        c.style.display = "none";
+                    }
+                }
+            }
+        """)
 
+    # Permanent CSS rule to instantly hide ads across all pages
     browser.execute_script("""
-    if (!window.__gtAdBlocker) {
-        window.__gtAdBlocker = true;
-
-        const removeAds = () => {
-            document.querySelectorAll(
-                '.top-ad, .footer-ad, ' +
-                '.publift-widget-sticky_footer-container, ' +
-                '[class*="publift"]'
-            ).forEach(e => e.remove());
-        };
-
-        // Run once immediately
-        removeAds();
-
-        // Watch for dynamic injection
-        const observer = new MutationObserver(removeAds);
-        observer.observe(document.body, { childList: true, subtree: true });
-    }
+        if (!document.getElementById('ul-ad-hider')) {
+            let style = document.createElement('style');
+            style.id = 'ul-ad-hider';
+            style.innerHTML = `
+                .top-ad, 
+                .footer-ad, 
+                .publift-widget-sticky_footer-container, 
+                [class*="publift"] { 
+                    display: none !important; 
+                }
+            `;
+            document.head.appendChild(style);
+        }
     """)
 
 
