@@ -23,8 +23,10 @@ from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.common.exceptions import NoSuchWindowException
 import util
 import socket
+import requests
 
 OLD_DRIVERS = []
+DYNAMIC_BLOCKLIST_CACHE = None
 
 def _is_port_open(port: int, host: str = "127.0.0.1", timeout: float = 0.15) -> bool:
     try:
@@ -61,9 +63,36 @@ def firefox_setup(helper_url, settings):
     browser.get(helper_url)
     return browser
 
+def get_dynamic_blocklist():
+    global DYNAMIC_BLOCKLIST_CACHE
+
+    # If we already fetched it this session, return the cached version instantly
+    if DYNAMIC_BLOCKLIST_CACHE is not None:
+        return DYNAMIC_BLOCKLIST_CACHE
+
+    try:
+        # Fetches a raw text list of known ad domains
+        url = "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=nohtml&showintro=0&mimetype=plaintext"
+        response = requests.get(url, timeout=3)
+        domains = response.text.splitlines()
+
+        # Convert to CDP format: *://*.domain.com/*
+        DYNAMIC_BLOCKLIST_CACHE = [f"*://*.{d.strip()}/*" for d in domains if d.strip() and not d.startswith("#")]
+        logger.info(f"Loaded {len(DYNAMIC_BLOCKLIST_CACHE)} dynamic blocklist rules.")
+
+        return DYNAMIC_BLOCKLIST_CACHE
+
+    except Exception as e:
+        logger.warning(f"Failed to fetch dynamic blocklist: {e}")
+        # Cache an empty list so we don't keep trying and timing out on every browser launch if the network is down
+        DYNAMIC_BLOCKLIST_CACHE = []
+        return DYNAMIC_BLOCKLIST_CACHE
+
 def chromium_setup(service, options_class, driver_class, profile, helper_url, settings, binary_path=None, base_port=9222, max_port=9229):
     service.creation_flags = CREATE_NO_WINDOW
     options = options_class()
+
+    options.page_load_strategy = 'eager'
 
     if binary_path:
         options.binary_location = binary_path
@@ -91,10 +120,111 @@ def chromium_setup(service, options_class, driver_class, profile, helper_url, se
 
     # List of patterns to block
     blocked_urls = [
+        # Header bidding / prebid
+        "*://*.presage.io/*",
+        "*://presage.io/*",
 
+        "*://*.prebid.media.net/*",
+        "*://prebid.media.net/*",
+
+        "*://*.a-mo.net/*",
+        "*://a-mo.net/*",
+
+        "*://*.onetag-sys.com/*",
+        "*://onetag-sys.com/*",
+
+        "*://*.33across.com/*",
+        "*://33across.com/*",
+
+        "*://*.rubiconproject.com/*",
+        "*://rubiconproject.com/*",
+
+        "*://*.openx.net/*",
+        "*://openx.net/*",
+
+        "*://*.adnxs.com/*",
+        "*://adnxs.com/*",
+
+        "*://*.gumgum.com/*",
+        "*://gumgum.com/*",
+
+        "*://*.media.net/*",
+        "*://media.net/*",
+
+        "*://*.richaudience.com/*",
+        "*://richaudience.com/*",
+
+        "*://*.connectad.io/*",
+        "*://connectad.io/*",
+
+        "*://*.kueezrtb.com/*",
+        "*://kueezrtb.com/*",
+
+        "*://*.cootlogix.com/*",
+        "*://cootlogix.com/*",
+
+        "*://*.ingage.tech/*",
+        "*://ingage.tech/*",
+
+        "*://*.marphezis.com/*",
+        "*://marphezis.com/*",
+
+        # Ad delivery / tracking
+        "*://*.doubleclick.net/*",
+        "*://doubleclick.net/*",
+
+        "*://*.googlesyndication.com/*",
+        "*://googlesyndication.com/*",
+
+        "*://*.btloader.com/*",
+        "*://btloader.com/*",
+
+        "*://*.ad-delivery.net/*",
+        "*://ad-delivery.net/*",
+
+        "*://*.inmobi.com/*",
+        "*://inmobi.com/*",
+
+        "*://*.intentiq.com/*",
+        "*://intentiq.com/*",
+
+        "*://*.cloudflareinsights.com/*",
+        "*://cloudflareinsights.com/*",
+
+        "*://*.fuseplatform.net/*",
+        "*://fuseplatform.net/*",
+
+        "*://*.amazon-adsystem.com/*",
+        "*://amazon-adsystem.com/*",
+
+        "*://*.adsrvr.org/*",
+        "*://adsrvr.org/*",
+
+        "*://*.servenobid.com/*",
+        "*://servenobid.com/*",
+
+        "*://*.criteo.com/*",
+        "*://criteo.com/*",
+
+        "*://*.adtrafficquality.google/*",
+        "*://adtrafficquality.google/*",
+
+        "*://*.google-analytics.com/*",
+        "*://google-analytics.com/*",
+
+        "*://*.ay.delivery/*",
+        "*://ay.delivery/*",
+
+        "*://*.pubmatic.com/*",
+        "*://*.casalemedia.com/*",
+        "*://*.smartadserver.com/*",
+        "*://*.tynt.com/*",
+        "*://*.quantserve.com/*",
+        "*://*.sharethrough.com/*",
+        "*://*.outbrain.com/*",
     ]
 
-    # Execute the CDP command
+    blocked_urls.extend(get_dynamic_blocklist())
     browser.execute_cdp_cmd("Network.enable", {})
     browser.execute_cdp_cmd(
         "Network.setBlockedURLs",
