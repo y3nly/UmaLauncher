@@ -515,48 +515,38 @@ class CarrotJuicer:
                     logger.warning(f"Packet has more than 1 unchecked event! {message}")
 
                 if len(event_data['event_contents_info']['choice_array']) > 1:
-                    # Event has choices
-
                     # If character is the trained character
-                    if event_data['event_contents_info']['support_card_id'] and event_data['event_contents_info'][
-                        'support_card_id'] not in supports:
-                        logger.debug("Random support card detected")
+                    if event_data['event_contents_info']['support_card_id'] and event_data['event_contents_info']['support_card_id'] not in supports:
+                        # Random support card event
+                        target_id = event_data['event_contents_info']['support_card_id']
+                        logger.debug(f"Random support card detected. Searching for ID: {target_id}")
 
-                        js_script = """
-                        var checkboxR = document.getElementById('checkboxShowR');
-                        if (checkboxR && !checkboxR.checked) {
-                            checkboxR.click();
-                        }
+                        self.browser.execute_script("""
+                                var checkboxR = document.getElementById('checkboxShowR');
+                                if (checkboxR && !checkboxR.checked) {
+                                    checkboxR.click();
+                                }
+                                var boxExtra = document.getElementById("boxSupportExtra");
+                                if (boxExtra) {
+                                    boxExtra.click();
+                                }
+                            """)
 
-                        var boxExtra = document.getElementById("boxSupportExtra");
-                        if (!boxExtra) return "Error: boxSupportExtra not found.";
-                        boxExtra.click();
+                        self.browser.execute_script(
+                            """
+                            var cont = document.getElementById("30021").parentElement.parentElement;
+                            var ele = document.getElementById(arguments[0].toString());
 
-                        var targetId = arguments[0].toString();
-                        var ele = document.getElementById(targetId);
-
-                        if (ele) {
-                            ele.click();
-                            return "Success: Clicked support card " + targetId;
-                        }
-
-                        var refElement = document.getElementById("30021");
-                        if (refElement && refElement.parentElement && refElement.parentElement.parentElement) {
-                            var cont = refElement.parentElement.parentElement;
-                            var closeBtn = cont.querySelector('img[src="/images/ui/close.png"]');
-
-                            if (closeBtn) {
-                                closeBtn.click();
-                                return "Closed modal: Target card not found.";
+                            if (ele) {
+                                ele.click();
+                                return;
                             }
-                        }
-
-                        return "Error: Could not find target card OR the close button.";
-                        """
-
-                        result = self.browser.execute_script(js_script,
-                                                             event_data['event_contents_info']['support_card_id'])
-                        logger.debug(f"JS Execution Result: {result}")
+                            cont.querySelector('img[src="/images/ui/close.png"]').click();
+                            """,
+                            target_id
+                        )
+                    else:
+                        logger.debug("Trained character or support card detected")
 
 
                     # Check for after-race event.
