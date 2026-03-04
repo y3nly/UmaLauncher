@@ -74,6 +74,7 @@ class CarrotJuicer:
 
         self.skill_id_dict = mdb.get_skill_id_dict()
         self.status_name_dict = mdb.get_status_name_dict()
+        self.skill_name_dict = mdb.get_skill_name_dict()
         self.skill_costs_dict = mdb.get_skill_costs_dict()
         self.skill_conditions_dict = mdb.get_skill_conditions_dict()
 
@@ -462,16 +463,16 @@ class CarrotJuicer:
 
                 self.skills_list = mdb.sort_skills_by_display_order(self.skills_list)
 
-                # Fix certain skills for GameTora
-                for i in range(len(self.skills_list)):
-                    old_id = self.skills_list[i]
-                    if 900000 <= old_id < 1000000:
-                        new_id = old_id - 800000
-                        self.skills_list[i] = new_id
-
-                        # Keep the hint dictionary synced if the ID changes
-                        if old_id in self.skill_hints:
-                            self.skill_hints[new_id] = self.skill_hints.pop(old_id)
+                # # Fix certain skills for GameTora
+                # for i in range(len(self.skills_list)):
+                #     old_id = self.skills_list[i]
+                #     if 900000 <= old_id < 1000000:
+                #         new_id = old_id - 800000
+                #         self.skills_list[i] = new_id
+                #
+                #         # Keep the hint dictionary synced if the ID changes
+                #         if old_id in self.skill_hints:
+                #             self.skill_hints[new_id] = self.skill_hints.pop(old_id)
 
                 logger.debug(f"Skills list: {self.skills_list}")
 
@@ -519,26 +520,44 @@ class CarrotJuicer:
                     # If character is the trained character
                     if event_data['event_contents_info']['support_card_id'] and event_data['event_contents_info'][
                         'support_card_id'] not in supports:
-                        # Random support card event
                         logger.debug("Random support card detected")
 
-                        self.browser.execute_script("""document.getElementById("boxSupportExtra").click();""")
-                        self.browser.execute_script(
-                            """
-                            var cont = document.getElementById("30021").parentElement.parentElement;
+                        js_script = """
+                        var checkboxR = document.getElementById('checkboxShowR');
+                        if (checkboxR && !checkboxR.checked) {
+                            checkboxR.click();
+                        }
 
-                            var ele = document.getElementById(arguments[0].toString());
+                        var boxExtra = document.getElementById("boxSupportExtra");
+                        if (!boxExtra) return "Error: boxSupportExtra not found.";
+                        boxExtra.click();
 
-                            if (ele) {
-                                ele.click();
-                                return;
+                        var targetId = arguments[0].toString();
+                        var ele = document.getElementById(targetId);
+
+                        if (ele) {
+                            ele.click();
+                            return "Success: Clicked support card " + targetId;
+                        }
+
+                        var refElement = document.getElementById("30021");
+                        if (refElement && refElement.parentElement && refElement.parentElement.parentElement) {
+                            var cont = refElement.parentElement.parentElement;
+                            var closeBtn = cont.querySelector('img[src="/images/ui/close.png"]');
+
+                            if (closeBtn) {
+                                closeBtn.click();
+                                return "Closed modal: Target card not found.";
                             }
-                            cont.querySelector('img[src="/images/ui/close.png"]').click();
-                            """,
-                            event_data['event_contents_info']['support_card_id']
-                        )
-                    else:
-                        logger.debug("Trained character or support card detected")
+                        }
+
+                        return "Error: Could not find target card OR the close button.";
+                        """
+
+                        result = self.browser.execute_script(js_script,
+                                                             event_data['event_contents_info']['support_card_id'])
+                        logger.debug(f"JS Execution Result: {result}")
+
 
                     # Check for after-race event.
                     if event_data['event_id'] in (7005, 7006, 7007):
@@ -754,30 +773,45 @@ class CarrotJuicer:
             },
             "acquiredSkillIds": self.acquired_skills_list,
             "unacquiredSkillIds": unacquired_skills_list,
-            "skillHints": self.skill_hints,
             "iterations": total_iterations
         }
 
         results = self.run_simulation(util.get_asset("_assets/umasim-cli.exe"), mock_payload)
 
         sim_summary = {}
-        global_min = 0.0
-        global_max = 0.0
+
+        # Dual Scales
+        global_hist_min = 0.0
+        global_hist_max = 0.0
+        global_box_min = float('inf')
+        global_box_max = float('-inf')
+        base_median_abs = 0.0
 
         if results and "baselineStats" in results and "candidates" in results:
-            skill_costs_dict = mdb.get_skill_costs_dict()
+            # Fetch Baseline Stats to anchor the boxplot scale (Using MEDIAN)
+            base_stats = results.get("baselineStats", {})
+            base_median_abs = base_stats.get("median", 0.0)
+
+            # Ensure the baseline min/max/outliers are included in the global boxplot scale
+            b_min_arr = [base_stats.get("min", base_median_abs), base_median_abs] + base_stats.get("outliers", [])
+            b_max_arr = [base_stats.get("max", base_median_abs), base_median_abs] + base_stats.get("outliers", [])
+            global_box_min = min(b_min_arr)
+            global_box_max = max(b_max_arr)
 
             for skill_id_str, candidate_data in results["candidates"].items():
                 if not candidate_data:
                     continue
 
                 skill_id_int = int(skill_id_str)
-                time_saved_stats = candidate_data.get("timeSavedStats", {})
 
-                if not time_saved_stats:
+                # Extract the data structures
+                time_saved_stats = candidate_data.get("timeSavedStats", {})
+                race_time_stats = candidate_data.get("raceTimeStats", {})
+
+                if not time_saved_stats or not race_time_stats:
                     continue
 
-                base_cost = skill_costs_dict.get(skill_id_str, 0)
+                base_cost = self.skill_costs_dict.get(skill_id_str, 0)
                 hint_level = self.skill_hints.get(skill_id_int, 0)
 
                 effective_hint_level = min(hint_level, 5)
@@ -785,31 +819,54 @@ class CarrotJuicer:
                 discount_percent = discount_map.get(effective_hint_level, 0)
                 sp_cost = int(base_cost * (100 - discount_percent) / 100)
 
-                s_mean = time_saved_stats.get("mean", 0.0)
-                saved_mean_display = -s_mean
+                # Absolute Boxplot Stats
+                k_min_val = race_time_stats.get("min", 0.0)
+                k_max_val = race_time_stats.get("max", 0.0)
 
-                efficiency = (saved_mean_display / max(sp_cost, 1)) * 100
+                # Extract explicitly calculated whiskers from Kotlin for drawing the lines
+                k_wMin = race_time_stats.get("whiskerMin", k_min_val)
+                k_wMax = race_time_stats.get("whiskerMax", k_max_val)
 
-                freqs = time_saved_stats.get("frequencies", [])
-                max_freq = max(freqs) if freqs else 1
+                k_q1 = race_time_stats.get("q1", 0.0)
+                k_median = race_time_stats.get("median", 0.0)
+                k_q3 = race_time_stats.get("q3", 0.0)
+                k_outliers = [round(x, 3) for x in race_time_stats.get("outliers", [])]
+
+                # Histogram Stats (Negative means faster)
+                saved_mean_display = time_saved_stats.get("mean", 0.0)
+
+                # Efficiency calculation: Seconds Saved per 100 SP
+                efficiency = (-saved_mean_display / max(sp_cost, 1)) * 100
 
                 data_obj = {
                     "saved": round(saved_mean_display, 4),
-                    "mean": s_mean,
+                    "mean": saved_mean_display,
                     "binMin": time_saved_stats.get("binMin", 0.0),
                     "binWidth": time_saved_stats.get("binWidth", 1.0),
-                    "frequencies": freqs,
-                    "maxFreq": max_freq,
+                    "frequencies": time_saved_stats.get("frequencies", []),
+                    "maxFreq": max(time_saved_stats.get("frequencies", [0])) if time_saved_stats.get(
+                        "frequencies") else 1,
                     "vMax": total_iterations,
-                    "min": time_saved_stats.get("min", 0.0),
-                    "max": time_saved_stats.get("max", 0.0),
+                    "wMin": round(k_wMin, 4),
+                    "q1": round(k_q1, 4),
+                    "median": round(k_median, 4),
+                    "q3": round(k_q3, 4),
+                    "wMax": round(k_wMax, 4),
+                    "outliers": k_outliers,
                     "sp_cost": sp_cost,
                     "hint_level": hint_level,
                     "efficiency": round(efficiency, 4)
                 }
 
-                global_min = min(global_min, data_obj["min"])
-                global_max = max(global_max, data_obj["max"])
+                # Update Histogram Scale Bounds
+                bin_max = data_obj["binMin"] + (len(data_obj["frequencies"]) * data_obj["binWidth"]) if data_obj[
+                    "frequencies"] else 0
+                global_hist_min = min([global_hist_min, data_obj["binMin"], saved_mean_display, 0.0])
+                global_hist_max = max([global_hist_max, bin_max, saved_mean_display, 0.0])
+
+                # Update Boxplot Scale Bounds (using absolute min/max to keep outliers on screen)
+                global_box_min = min([global_box_min, k_min_val] + k_outliers)
+                global_box_max = max([global_box_max, k_max_val] + k_outliers)
 
                 sim_summary[skill_id_str] = data_obj
 
@@ -819,43 +876,122 @@ class CarrotJuicer:
                                                                                                        "")
             all_conditions[str(skill_id)] = cond
 
+        skill_names = [self.skill_name_dict.get(s, str(s)) for s in self.skills_list]
+
+        print(self.skills_list)
+        print(sim_summary)
+
         self.skill_browser.execute_script(
             """
             let skills_list = arguments[0];
             let sim_results = arguments[1] || {};
-            let globalMin = arguments[2];
-            let globalMax = arguments[3];
-            let acquired_list = arguments[4] || [];
-            let all_conditions = arguments[5] || {};
+            let globalHistMin = arguments[2];
+            let globalHistMax = arguments[3];
+            let globalBoxMin = arguments[4];
+            let globalBoxMax = arguments[5];
+            let acquired_list = arguments[6] || [];
+            let all_conditions = arguments[7] || {};
+            let baseMedianAbs = arguments[8] || 0.0;
 
             function formatCondition(cond) {
                 if (!cond) return "";
                 return cond.replace(/([a-zA-Z_]+)|(==|>=|<=|!=|>|<|=|&|!)|(\\b\\d+(?:\\.\\d+)?\\b)/g, function(match, word, op, num) {
                     if (word) {
-                        if (word === 'OR') {
-                            return `<span style="color: #d65d8a;">${word}</span>`;
-                        }
+                        if (word === 'OR') return `<span style="color: #d65d8a;">${word}</span>`;
                         return `<span style="color: #73c991;">${word}</span>`;
                     }
-                    if (op) {
-                        return `<span style="color: #60a5fa;">${op}</span>`;
-                    }
-                    if (num) {
-                        return `<span style="color: #c084fc;">${num}</span>`;
-                    }
+                    if (op) return `<span style="color: #60a5fa;">${op}</span>`;
+                    if (num) return `<span style="color: #c084fc;">${num}</span>`;
                     return match;
                 });
             }
 
-            let range = globalMax - globalMin;
-            if (range === 0) range = 1;
-            let pad = range * 0.05; 
-            let scaleMin = globalMin - pad;
-            let scaleMax = globalMax + pad;
-            let scaleRange = scaleMax - scaleMin;
+            // Histogram Scale (Standard: Negative left, Positive right)
+            let hRange = globalHistMax - globalHistMin;
+            if (hRange === 0) hRange = 1;
+            let hPad = hRange * 0.05; 
+            let hScaleMin = globalHistMin - hPad;
+            let hScaleMax = globalHistMax + hPad;
+            let hScaleRange = hScaleMax - hScaleMin;
+            let getHistPct = (val) => Math.max(0, Math.min(100, ((val - hScaleMin) / hScaleRange) * 100));
+            let hZeroPct = getHistPct(0); 
 
-            let getPct = (val) => Math.max(0, Math.min(100, ((val - scaleMin) / scaleRange) * 100));
-            let zeroPct = getPct(0); 
+            // Boxplot Scale (Standard: Lower times left, Higher times right)
+            let bRange = globalBoxMax - globalBoxMin;
+            if (bRange === 0) bRange = 1;
+            let bPad = bRange * 0.05;
+            let bScaleMin = globalBoxMin - bPad;
+            let bScaleMax = globalBoxMax + bPad;
+            let bScaleRange = bScaleMax - bScaleMin;
+            let getBoxPct = (val) => Math.max(0, Math.min(100, ((val - bScaleMin) / bScaleRange) * 100));
+            let baseMedianPct = getBoxPct(baseMedianAbs);
+
+            // Handle Persistent Toggle State
+            window.UL_BADGE_PREF = localStorage.getItem('UL_BADGE_PREF') || 'hist';
+
+            let pageTitle = document.querySelector("h1");
+            if (pageTitle && !document.getElementById("ul-badge-toggle")) {
+                let toggleDiv = document.createElement("div");
+                toggleDiv.id = "ul-badge-toggle";
+                toggleDiv.style.display = "inline-flex";
+                toggleDiv.style.marginLeft = "15px";
+                toggleDiv.style.fontSize = "0.5em";
+                toggleDiv.style.verticalAlign = "middle";
+
+                let btnHist = document.createElement("button");
+                btnHist.innerText = "Time Saved";
+                btnHist.style.padding = "4px 8px";
+                btnHist.style.borderRadius = "4px 0 0 4px";
+                btnHist.style.border = "1px solid var(--c-topnav)";
+                btnHist.style.cursor = "pointer";
+
+                let btnBox = document.createElement("button");
+                btnBox.innerText = "Race Time";
+                btnBox.style.padding = "4px 8px";
+                btnBox.style.borderRadius = "0 4px 4px 0";
+                btnBox.style.border = "1px solid var(--c-topnav)";
+                btnBox.style.cursor = "pointer";
+
+                window.updateToggleColors = () => {
+                    if (window.UL_BADGE_PREF === 'hist') {
+                        btnHist.style.background = "var(--c-topnav)";
+                        btnHist.style.color = "white";
+                        btnBox.style.background = "transparent";
+                        btnBox.style.color = "var(--c-text)";
+                    } else {
+                        btnBox.style.background = "var(--c-topnav)";
+                        btnBox.style.color = "white";
+                        btnHist.style.background = "transparent";
+                        btnHist.style.color = "var(--c-text)";
+                    }
+                };
+
+                btnHist.onclick = () => {
+                    window.UL_BADGE_PREF = 'hist';
+                    localStorage.setItem('UL_BADGE_PREF', 'hist');
+                    window.updateToggleColors();
+                    document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "block");
+                    document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "none");
+                };
+
+                btnBox.onclick = () => {
+                    window.UL_BADGE_PREF = 'box';
+                    localStorage.setItem('UL_BADGE_PREF', 'box');
+                    window.updateToggleColors();
+                    document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "none");
+                    document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "flex");
+                };
+
+                window.updateToggleColors();
+                toggleDiv.appendChild(btnHist);
+                toggleDiv.appendChild(btnBox);
+                pageTitle.appendChild(toggleDiv);
+                pageTitle.style.display = "flex";
+                pageTitle.style.alignItems = "center";
+            } else if (window.updateToggleColors) {
+                // Ensure colors are correct on re-renders
+                window.updateToggleColors();
+            }
 
             let skill_elements = [];
             let skills_table = document.querySelector("[class^='skills_skill_table_']");
@@ -870,7 +1006,12 @@ class CarrotJuicer:
             }
 
             for (const skill_id of skills_list) {
-                let skill_string = "(" + skill_id + ")";
+                // inherited unique fix
+                let display_id = skill_id;
+                if (display_id >= 900000 && display_id < 1000000) {
+                    display_id = display_id - 800000;
+                }
+                let skill_string = "(" + display_id + ")";
                 for (const item of skill_rows) {
                     if (item.textContent.includes(skill_string)) {
                         let row = item.parentNode;
@@ -883,7 +1024,7 @@ class CarrotJuicer:
                         let badge = document.createElement("div");
                         badge.className = "sim-data-badge";
                         badge.style.gridArea = "badge";
-                        badge.style.width = "180px"; 
+                        badge.style.width = "155px"; 
                         badge.style.height = "40px";
                         badge.style.marginRight = "10px"; 
                         badge.style.boxSizing = "border-box";
@@ -924,7 +1065,7 @@ class CarrotJuicer:
                                 else if (eff >= 0.01) color = "#bbf7d0"; 
                                 else if (eff <= -0.01) color = "#ca8a8a";                  
 
-                                let sign = data.saved > 0 ? "-" : (data.saved < 0 ? "+" : "");
+                                let sign = data.saved < 0 ? "-" : (data.saved > 0 ? "+" : "");
                                 let absSaved = Math.abs(data.saved);
 
                                 let histogramHtml = '';
@@ -939,47 +1080,62 @@ class CarrotJuicer:
                                         let hPct = (freq / data.vMax) * 100;
                                         hPct = Math.min(hPct, 100);
 
-                                        let leftEdge = bMin + (j * bWid);
-                                        let rightEdge = leftEdge + bWid;
+                                        let leftEdge = bMin + (j * bWid); 
+                                        let rightEdge = leftEdge + bWid;  
 
-                                        let xLeft = getPct(leftEdge);
-                                        let xWidth = getPct(rightEdge) - xLeft;
+                                        let xLeft = getHistPct(leftEdge);
+                                        let xWidth = getHistPct(rightEdge) - xLeft;
 
                                         let barColor;
                                         if (leftEdge <= 0 && rightEdge > 0) {
-                                            barColor = '#9ca3af';
+                                            barColor = '#9ca3af'; 
                                         } else if (rightEdge <= 0) {
-                                            barColor = '#86efac';
+                                            barColor = '#86efac'; 
                                         } else {
-                                            barColor = '#fca5a5';
+                                            barColor = '#fca5a5'; 
                                         }
 
                                         histogramHtml += `<div style="position: absolute; left: ${xLeft}%; width: ${xWidth}%; bottom: 0; height: ${hPct}%; background-color: ${barColor}; opacity: 0.85;"></div>`;
                                     }
 
-                                    let meanX = getPct(data.mean);
+                                    let meanX = getHistPct(data.mean);
 
-                                    histogramHtml += `<div style="position: absolute; left: ${zeroPct}%; top: 0; bottom: 0; width: 0px; border-left: 1px dashed white; z-index: 2;"></div>`;
+                                    histogramHtml += `<div style="position: absolute; left: ${hZeroPct}%; top: 0; bottom: 0; width: 0px; border-left: 1px dashed white; z-index: 2;"></div>`;
                                     histogramHtml += `<div style="position: absolute; left: ${meanX}%; top: 0; bottom: 0; width: 0px; border-left: 1px dashed #60a5fa; z-index: 3;"></div>`;
                                 }
 
+                                let histDisplay = window.UL_BADGE_PREF === 'hist' ? 'block' : 'none';
+                                let boxDisplay = window.UL_BADGE_PREF === 'box' ? 'flex' : 'none';
+
                                 badge.innerHTML = `
-                                    <div style="position: relative; width: 100%; height: 100%; background: var(--c-bg-main-hover); border: 1px solid ${color}; border-radius: 4px; overflow: hidden;">
+                                    <div class="ul-badge-hist" style="display: ${histDisplay}; position: relative; width: 100%; height: 100%; background: var(--c-bg-main-hover); border: 1px solid ${color}; border-radius: 4px; overflow: hidden;">
                                         ${histogramHtml}
-
-                                        <div style="position: absolute; top: 1px; left: 4px; font-size: 0.7em; color: rgba(255,255,255,0.9); z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">
-                                            Lv ${data.hint_level || 0} | ${data.sp_cost || "?"} SP
-                                        </div>
-
-                                        <div style="position: absolute; bottom: 0px; left: 4px; font-size: 0.55em; color: rgba(200,200,200,0.9); z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">
-                                            Peak: ${data.maxFreq}
-                                        </div>
-
+                                        <div style="position: absolute; top: 1px; left: 4px; font-size: 0.7em; color: rgba(255,255,255,0.9); z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">Lv ${data.hint_level || 0} | ${data.sp_cost || "?"} SP</div>
+                                        <div style="position: absolute; bottom: 0px; left: 4px; font-size: 0.55em; color: rgba(200,200,200,0.9); z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">Peak: ${data.maxFreq}</div>
                                         <div style="position: absolute; top: 2px; right: 4px; font-size: 0.75em; text-align: right; line-height: 1.15; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">
                                             <div style="font-weight: bold; color: ${color};">${sign}${absSaved.toFixed(3)}s</div>
                                             <div style="color: ${color}; font-weight: bold; font-size: 0.9em;">(${eff.toFixed(3)})</div>
                                         </div>
                                     </div>
+
+                                    <div class="ul-badge-box" style="display: ${boxDisplay}; position: relative; width: 100%; height: 100%; background: var(--c-bg-main-hover); border: 1px solid ${color}; border-radius: 4px; box-sizing: border-box; overflow: hidden;">
+                                        
+                                        <div style="position: absolute; left: ${baseMedianPct}%; top: 0; bottom: 0; width: 0px; border-left: 1px dashed white; z-index: 2;"></div>
+
+                                        <div style="position: absolute; top: 1px; left: 4px; font-size: 0.7em; color: rgba(255,255,255,0.9); z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">Lv ${data.hint_level || 0} | ${data.sp_cost || "?"} SP</div>
+                                        <div style="position: absolute; top: 2px; right: 4px; font-size: 0.75em; text-align: right; line-height: 1.15; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">
+                                            <div style="font-weight: bold; color: ${color};">${sign}${absSaved.toFixed(3)}s</div>
+                                            <div style="color: ${color}; font-weight: bold; font-size: 0.9em;">(${eff.toFixed(3)})</div>
+                                        </div>
+
+                                        <div style="position: absolute; bottom: 0px; left: 0px; right: 0px; height: 20px; z-index: 3;">
+                                            <div style="position: absolute; left: ${getBoxPct(data.wMin)}%; width: ${Math.max(0, getBoxPct(data.q1) - getBoxPct(data.wMin))}%; top: 50%; height: 2px; background: rgba(255,255,255,0.6); transform: translateY(-50%);"></div>
+                                            <div style="position: absolute; left: ${getBoxPct(data.q1)}%; width: ${Math.max(0, getBoxPct(data.q3) - getBoxPct(data.q1))}%; top: 2px; bottom: 2px; background: ${color}; opacity: 0.85; border-radius: 1px;"></div>
+                                            
+                                            <div style="position: absolute; left: ${getBoxPct(data.median)}%; top: 2px; bottom: 2px; width: 1px; background: #60a5fa; z-index: 2;"></div>
+                                            
+                                            <div style="position: absolute; left: ${getBoxPct(data.q3)}%; width: ${Math.max(0, getBoxPct(data.wMax) - getBoxPct(data.q3))}%; top: 50%; height: 2px; background: rgba(255,255,255,0.6); transform: translateY(-50%);"></div>
+                                            ${(data.outliers || []).map(val => `<div style="position: absolute; left: ${getBoxPct(val)}%; top: 50%; width: 1px; height: 10px; background: white; opacity: 0.2; border-radius: 1px; transform: translate(-50%, -50%);"></div>`).join("")}                                    </div>
                                 `;
                             }
                         }
@@ -993,7 +1149,7 @@ class CarrotJuicer:
                 const item = skill_elements[i];
                 item.style.display = "grid";
                 item.style.gridTemplateAreas = '"badge image jpname desc"';
-                item.style.gridTemplateColumns = "190px 40px 250px auto";
+                item.style.gridTemplateColumns = "165px 40px 250px auto"; // Tightened columns
 
                 if (color_class) {
                     if (i % 2 == 0) item.classList.add(color_class);
@@ -1001,7 +1157,8 @@ class CarrotJuicer:
                 }
                 skills_table.appendChild(item);
             }
-            """, self.skills_list, sim_summary, global_min, global_max, self.acquired_skills_list, all_conditions)
+            """, self.skills_list, sim_summary, global_hist_min, global_hist_max, global_box_min, global_box_max,
+            self.acquired_skills_list, all_conditions, base_median_abs)
 
     def run_simulation(self, exe_path, payload):
         json_payload = json.dumps(payload)
