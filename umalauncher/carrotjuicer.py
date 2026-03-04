@@ -515,33 +515,45 @@ class CarrotJuicer:
                     logger.warning(f"Packet has more than 1 unchecked event! {message}")
 
                 if len(event_data['event_contents_info']['choice_array']) > 1:
-                    # If character is the trained character
-                    if event_data['event_contents_info']['support_card_id'] and event_data['event_contents_info']['support_card_id'] not in supports:
-                        # Random support card event
+                    if event_data['event_contents_info']['support_card_id'] and event_data['event_contents_info'][
+                        'support_card_id'] not in supports:
                         target_id = event_data['event_contents_info']['support_card_id']
                         logger.debug(f"Random support card detected. Searching for ID: {target_id}")
 
-                        self.browser.execute_script("""
-                                var checkboxR = document.getElementById('checkboxShowR');
-                                if (checkboxR && !checkboxR.checked) {
-                                    checkboxR.click();
-                                }
-                                var boxExtra = document.getElementById("boxSupportExtra");
-                                if (boxExtra) {
-                                    boxExtra.click();
-                                }
-                            """)
-
                         self.browser.execute_script(
                             """
-                            var cont = document.getElementById("30021").parentElement.parentElement;
-                            var ele = document.getElementById(arguments[0].toString());
+                            var targetId = arguments[0].toString();
+                            var done = arguments[arguments.length - 1]; // Selenium's async callback
 
-                            if (ele) {
-                                ele.click();
-                                return;
-                            }
-                            cont.querySelector('img[src="/images/ui/close.png"]').click();
+                            var checkboxR = document.getElementById('checkboxShowR');
+                            if (checkboxR && !checkboxR.checked) checkboxR.click();
+
+                            var boxExtra = document.getElementById("boxSupportExtra");
+                            if (boxExtra) boxExtra.click();
+
+                            var attempts = 0;
+                            var checkDOM = setInterval(function() {
+                                var ele = document.getElementById(targetId);
+
+                                // If found, click it immediately and finish
+                                if (ele) {
+                                    clearInterval(checkDOM);
+                                    ele.click();
+                                    done();
+                                    return;
+                                }
+
+                                // If not found after 50 attempts (500ms timeout), click close
+                                if (++attempts > 50) { 
+                                    clearInterval(checkDOM);
+                                    var ref = document.getElementById("30021");
+                                    if (ref && ref.parentElement && ref.parentElement.parentElement) {
+                                        var closeBtn = ref.parentElement.parentElement.querySelector('img[src="/images/ui/close.png"]');
+                                        if (closeBtn) closeBtn.click();
+                                    }
+                                    done();
+                                }
+                            }, 10); // Poll every 10ms
                             """,
                             target_id
                         )
@@ -866,11 +878,6 @@ class CarrotJuicer:
                                                                                                        "")
             all_conditions[str(skill_id)] = cond
 
-        skill_names = [self.skill_name_dict.get(s, str(s)) for s in self.skills_list]
-
-        print(self.skills_list)
-        print(sim_summary)
-
         self.skill_browser.execute_script(
             """
             let skills_list = arguments[0];
@@ -1003,7 +1010,7 @@ class CarrotJuicer:
                 }
                 let skill_string = "(" + display_id + ")";
                 for (const item of skill_rows) {
-                    if (item.textContent.includes(skill_string)) {
+                    if (item.textContent.includes(skill_string) || item.textContent.includes(display_id) {
                         let row = item.parentNode;
                         skill_elements.push(row);
                         row.remove();
