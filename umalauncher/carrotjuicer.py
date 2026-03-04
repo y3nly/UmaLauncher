@@ -764,10 +764,10 @@ class CarrotJuicer:
             "baseSetting": {
                 "umaStatus": {
                     "charaName": "Place Holder",
-                    "speed": 1200, "stamina": 1200, "power": 1000, "guts": 400, "wisdom": 1200,
+                    "speed": 1200, "stamina": 2000, "power": 1000, "guts": 600, "wisdom": 1200,
                     "condition": "BEST", "style": STYLE_INTERNAL_MAP[self.style],
                     "distanceFit": "A", "surfaceFit": "A", "styleFit": "A",
-                    "popularity": 1, "gateNumber": 1,
+                    "popularity": 1, "gateNumber": 0,
                 },
                 "track": {
                     "location": 10006, "course": 10611, "condition": "GOOD", "gateCount": 9
@@ -1008,9 +1008,8 @@ class CarrotJuicer:
                 if (display_id >= 900000 && display_id < 1000000) {
                     display_id = display_id - 800000;
                 }
-                let skill_string = "(" + display_id + ")";
                 for (const item of skill_rows) {
-                    if (item.textContent.includes(skill_string) || item.textContent.includes(display_id) {
+                    if (item.textContent.includes(display_id) || item.textContent.includes(skill_id)) {
                         let row = item.parentNode;
                         skill_elements.push(row);
                         row.remove();
