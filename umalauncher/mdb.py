@@ -576,25 +576,34 @@ def sort_skills_by_display_order(skill_id_list):
     
     return [row[0] for row in rows]
 
+
 def determine_skill_id_from_group_id(group_id, rarity, skills_id_list):
     with Connection() as (_, cursor):
         cursor.execute(
-            """SELECT id FROM skill_data WHERE group_id = ? AND rarity = ? AND group_rate > 0 ORDER BY group_rate ASC;""",
+            """SELECT id, skill_category FROM skill_data WHERE group_id = ? AND rarity = ? AND group_rate > 0 ORDER BY group_rate ASC;""",
             (group_id, rarity)
         )
         rows = cursor.fetchall()
-    
+
     if not rows:
         return None
-    
+
     skill_id = None
+    skill_category = None
+
     for row in rows:
         skill_id = row[0]
+        skill_category = row[1]
+
         if skill_id not in skills_id_list:
             break
         else:
             skills_id_list.remove(skill_id)
-    
+
+    # Uniques
+    if skill_id is not None and skill_category == 5 and 100000 <= skill_id < 300000:
+        skill_id += 800000
+
     return skill_id
 
 def get_total_minigame_plushies(force=False):
