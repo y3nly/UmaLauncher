@@ -749,6 +749,9 @@ class CarrotJuicer:
         if self.browser and self.browser.alive():
             self.browser.execute_script("""window.skill_window_opened();""")
 
+        mode_pref = self.skill_browser.execute_script("return window.localStorage.getItem('UL_MODE_PREF') || 'parent';")
+        is_ace_mode = (mode_pref == 'ace')
+
         unacquired_skills_list = [s for s in self.skills_list if s not in self.acquired_skills_list]
 
         STYLE_INTERNAL_MAP = {
@@ -760,11 +763,26 @@ class CarrotJuicer:
 
         total_iterations = 2000
 
+        if is_ace_mode:
+            # ACE MODE: Pull stats from the trainee (replace with your actual variables)
+            u_speed = self.last_data['chara_info'].get('speed', 1200)
+            u_stamina = self.last_data['chara_info'].get('stamina', 1200)
+            u_power = self.last_data['chara_info'].get('power', 1200)
+            u_guts = self.last_data['chara_info'].get('guts', 1200)
+            u_wisdom = self.last_data['chara_info'].get('wiz', 1200)
+        else:
+            # PARENT MODE: Fixed farm values
+            u_speed = 1200
+            u_stamina = 2000
+            u_power = 1100
+            u_guts = 1100
+            u_wisdom = 1100
+
         mock_payload = {
             "baseSetting": {
                 "umaStatus": {
                     "charaName": "Place Holder",
-                    "speed": 1200, "stamina": 2000, "power": 1000, "guts": 600, "wisdom": 1200,
+                    "speed": u_speed, "stamina": u_stamina, "power": u_power, "guts": u_guts, "wisdom": u_wisdom,
                     "condition": "BEST", "style": STYLE_INTERNAL_MAP[self.style],
                     "distanceFit": "A", "surfaceFit": "A", "styleFit": "A",
                     "popularity": 1, "gateNumber": 0,
@@ -923,72 +941,125 @@ class CarrotJuicer:
             let getBoxPct = (val) => Math.max(0, Math.min(100, ((val - bScaleMin) / bScaleRange) * 100));
             let baseMedianPct = getBoxPct(baseMedianAbs);
 
-            // Handle Persistent Toggle State
-            window.UL_BADGE_PREF = localStorage.getItem('UL_BADGE_PREF') || 'hist';
+        window.UL_BADGE_PREF = localStorage.getItem('UL_BADGE_PREF') || 'hist';
+        window.UL_MODE_PREF = localStorage.getItem('UL_MODE_PREF') || 'parent';
 
-            let pageTitle = document.querySelector("h1");
-            if (pageTitle && !document.getElementById("ul-badge-toggle")) {
-                let toggleDiv = document.createElement("div");
-                toggleDiv.id = "ul-badge-toggle";
-                toggleDiv.style.display = "inline-flex";
-                toggleDiv.style.marginLeft = "15px";
-                toggleDiv.style.fontSize = "0.5em";
-                toggleDiv.style.verticalAlign = "middle";
+        let pageTitle = document.querySelector("h1");
+        if (pageTitle && !document.getElementById("ul-badge-toggle")) {
+            
+            // --- BADGE DISPLAY TOGGLE ---
+            let toggleDiv = document.createElement("div");
+            toggleDiv.id = "ul-badge-toggle";
+            toggleDiv.style.display = "inline-flex";
+            toggleDiv.style.marginLeft = "15px";
+            toggleDiv.style.fontSize = "0.5em";
+            toggleDiv.style.verticalAlign = "middle";
 
-                let btnHist = document.createElement("button");
-                btnHist.innerText = "Time Saved";
-                btnHist.style.padding = "4px 8px";
-                btnHist.style.borderRadius = "4px 0 0 4px";
-                btnHist.style.border = "1px solid var(--c-topnav)";
-                btnHist.style.cursor = "pointer";
+            let btnHist = document.createElement("button");
+            btnHist.innerText = "Time Saved";
+            btnHist.style.padding = "4px 8px";
+            btnHist.style.borderRadius = "4px 0 0 4px";
+            btnHist.style.border = "1px solid var(--c-topnav)";
+            btnHist.style.cursor = "pointer";
 
-                let btnBox = document.createElement("button");
-                btnBox.innerText = "Race Time";
-                btnBox.style.padding = "4px 8px";
-                btnBox.style.borderRadius = "0 4px 4px 0";
-                btnBox.style.border = "1px solid var(--c-topnav)";
-                btnBox.style.cursor = "pointer";
+            let btnBox = document.createElement("button");
+            btnBox.innerText = "Race Time";
+            btnBox.style.padding = "4px 8px";
+            btnBox.style.borderRadius = "0 4px 4px 0";
+            btnBox.style.border = "1px solid var(--c-topnav)";
+            btnBox.style.cursor = "pointer";
 
-                window.updateToggleColors = () => {
-                    if (window.UL_BADGE_PREF === 'hist') {
-                        btnHist.style.background = "var(--c-topnav)";
-                        btnHist.style.color = "white";
-                        btnBox.style.background = "transparent";
-                        btnBox.style.color = "var(--c-text)";
-                    } else {
-                        btnBox.style.background = "var(--c-topnav)";
-                        btnBox.style.color = "white";
-                        btnHist.style.background = "transparent";
-                        btnHist.style.color = "var(--c-text)";
-                    }
-                };
+            // --- SIMULATION MODE TOGGLE ---
+            let modeToggleDiv = document.createElement("div");
+            modeToggleDiv.id = "ul-mode-toggle";
+            modeToggleDiv.style.display = "inline-flex";
+            modeToggleDiv.style.marginLeft = "10px";
+            modeToggleDiv.style.fontSize = "0.5em";
+            modeToggleDiv.style.verticalAlign = "middle";
 
-                btnHist.onclick = () => {
-                    window.UL_BADGE_PREF = 'hist';
-                    localStorage.setItem('UL_BADGE_PREF', 'hist');
-                    window.updateToggleColors();
-                    document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "block");
-                    document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "none");
-                };
+            let btnParent = document.createElement("button");
+            btnParent.innerText = "Parent";
+            btnParent.style.padding = "4px 8px";
+            btnParent.style.borderRadius = "4px 0 0 4px";
+            btnParent.style.border = "1px solid #c084fc";
+            btnParent.style.cursor = "pointer";
 
-                btnBox.onclick = () => {
-                    window.UL_BADGE_PREF = 'box';
-                    localStorage.setItem('UL_BADGE_PREF', 'box');
-                    window.updateToggleColors();
-                    document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "none");
-                    document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "flex");
-                };
+            let btnAce = document.createElement("button");
+            btnAce.innerText = "Ace";
+            btnAce.style.padding = "4px 8px";
+            btnAce.style.borderRadius = "0 4px 4px 0";
+            btnAce.style.border = "1px solid #c084fc";
+            btnAce.style.cursor = "pointer";
 
+            window.updateToggleColors = () => {
+                if (window.UL_BADGE_PREF === 'hist') {
+                    btnHist.style.background = "var(--c-topnav)";
+                    btnHist.style.color = "white";
+                    btnBox.style.background = "transparent";
+                    btnBox.style.color = "var(--c-text)";
+                } else {
+                    btnBox.style.background = "var(--c-topnav)";
+                    btnBox.style.color = "white";
+                    btnHist.style.background = "transparent";
+                    btnHist.style.color = "var(--c-text)";
+                }
+
+                if (window.UL_MODE_PREF === 'ace') {
+                    btnAce.style.background = "#c084fc";
+                    btnAce.style.color = "white";
+                    btnParent.style.background = "transparent";
+                    btnParent.style.color = "var(--c-text)";
+                } else {
+                    btnParent.style.background = "#c084fc";
+                    btnParent.style.color = "white";
+                    btnAce.style.background = "transparent";
+                    btnAce.style.color = "var(--c-text)";
+                }
+            };
+
+            btnHist.onclick = () => {
+                window.UL_BADGE_PREF = 'hist';
+                localStorage.setItem('UL_BADGE_PREF', 'hist');
                 window.updateToggleColors();
-                toggleDiv.appendChild(btnHist);
-                toggleDiv.appendChild(btnBox);
-                pageTitle.appendChild(toggleDiv);
-                pageTitle.style.display = "flex";
-                pageTitle.style.alignItems = "center";
-            } else if (window.updateToggleColors) {
-                // Ensure colors are correct on re-renders
+                document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "block");
+                document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "none");
+            };
+
+            btnBox.onclick = () => {
+                window.UL_BADGE_PREF = 'box';
+                localStorage.setItem('UL_BADGE_PREF', 'box');
                 window.updateToggleColors();
-            }
+                document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "none");
+                document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "flex");
+            };
+
+            btnParent.onclick = () => {
+                window.UL_MODE_PREF = 'parent';
+                localStorage.setItem('UL_MODE_PREF', 'parent');
+                window.updateToggleColors();
+            };
+
+            btnAce.onclick = () => {
+                window.UL_MODE_PREF = 'ace';
+                localStorage.setItem('UL_MODE_PREF', 'ace');
+                window.updateToggleColors();
+            };
+
+            window.updateToggleColors();
+            
+            toggleDiv.appendChild(btnHist);
+            toggleDiv.appendChild(btnBox);
+            modeToggleDiv.appendChild(btnParent);
+            modeToggleDiv.appendChild(btnAce);
+            
+            pageTitle.appendChild(toggleDiv);
+            pageTitle.appendChild(modeToggleDiv);
+            pageTitle.style.display = "flex";
+            pageTitle.style.alignItems = "center";
+
+        } else if (window.updateToggleColors) {
+            window.updateToggleColors();
+        }
 
             let skill_elements = [];
             let skills_table = document.querySelector("[class^='skills_skill_table_']");
