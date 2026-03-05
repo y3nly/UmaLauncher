@@ -515,33 +515,45 @@ class CarrotJuicer:
                     logger.warning(f"Packet has more than 1 unchecked event! {message}")
 
                 if len(event_data['event_contents_info']['choice_array']) > 1:
-                    # If character is the trained character
-                    if event_data['event_contents_info']['support_card_id'] and event_data['event_contents_info']['support_card_id'] not in supports:
-                        # Random support card event
+                    if event_data['event_contents_info']['support_card_id'] and event_data['event_contents_info'][
+                        'support_card_id'] not in supports:
                         target_id = event_data['event_contents_info']['support_card_id']
                         logger.debug(f"Random support card detected. Searching for ID: {target_id}")
 
-                        self.browser.execute_script("""
-                                var checkboxR = document.getElementById('checkboxShowR');
-                                if (checkboxR && !checkboxR.checked) {
-                                    checkboxR.click();
-                                }
-                                var boxExtra = document.getElementById("boxSupportExtra");
-                                if (boxExtra) {
-                                    boxExtra.click();
-                                }
-                            """)
-
                         self.browser.execute_script(
                             """
-                            var cont = document.getElementById("30021").parentElement.parentElement;
-                            var ele = document.getElementById(arguments[0].toString());
+                            var targetId = arguments[0].toString();
+                            var done = arguments[arguments.length - 1]; // Selenium's async callback
 
-                            if (ele) {
-                                ele.click();
-                                return;
-                            }
-                            cont.querySelector('img[src="/images/ui/close.png"]').click();
+                            var checkboxR = document.getElementById('checkboxShowR');
+                            if (checkboxR && !checkboxR.checked) checkboxR.click();
+
+                            var boxExtra = document.getElementById("boxSupportExtra");
+                            if (boxExtra) boxExtra.click();
+
+                            var attempts = 0;
+                            var checkDOM = setInterval(function() {
+                                var ele = document.getElementById(targetId);
+
+                                // If found, click it immediately and finish
+                                if (ele) {
+                                    clearInterval(checkDOM);
+                                    ele.click();
+                                    done();
+                                    return;
+                                }
+
+                                // If not found after 50 attempts (500ms timeout), click close
+                                if (++attempts > 50) { 
+                                    clearInterval(checkDOM);
+                                    var ref = document.getElementById("30021");
+                                    if (ref && ref.parentElement && ref.parentElement.parentElement) {
+                                        var closeBtn = ref.parentElement.parentElement.querySelector('img[src="/images/ui/close.png"]');
+                                        if (closeBtn) closeBtn.click();
+                                    }
+                                    done();
+                                }
+                            }, 10); // Poll every 10ms
                             """,
                             target_id
                         )
@@ -737,6 +749,9 @@ class CarrotJuicer:
         if self.browser and self.browser.alive():
             self.browser.execute_script("""window.skill_window_opened();""")
 
+        mode_pref = self.skill_browser.execute_script("return window.localStorage.getItem('UL_MODE_PREF') || 'parent';")
+        is_ace_mode = (mode_pref == 'ace')
+
         unacquired_skills_list = [s for s in self.skills_list if s not in self.acquired_skills_list]
 
         STYLE_INTERNAL_MAP = {
@@ -748,14 +763,29 @@ class CarrotJuicer:
 
         total_iterations = 2000
 
+        if is_ace_mode:
+            # ACE MODE: Pull stats from the trainee (replace with your actual variables)
+            u_speed = self.last_data['chara_info'].get('speed', 1200)
+            u_stamina = self.last_data['chara_info'].get('stamina', 1200)
+            u_power = self.last_data['chara_info'].get('power', 1200)
+            u_guts = self.last_data['chara_info'].get('guts', 1200)
+            u_wisdom = self.last_data['chara_info'].get('wiz', 1200)
+        else:
+            # PARENT MODE: Fixed farm values
+            u_speed = 1200
+            u_stamina = 2000
+            u_power = 1100
+            u_guts = 1100
+            u_wisdom = 1100
+
         mock_payload = {
             "baseSetting": {
                 "umaStatus": {
                     "charaName": "Place Holder",
-                    "speed": 1200, "stamina": 1200, "power": 1000, "guts": 400, "wisdom": 1200,
+                    "speed": u_speed, "stamina": u_stamina, "power": u_power, "guts": u_guts, "wisdom": u_wisdom,
                     "condition": "BEST", "style": STYLE_INTERNAL_MAP[self.style],
                     "distanceFit": "A", "surfaceFit": "A", "styleFit": "A",
-                    "popularity": 1, "gateNumber": 1,
+                    "popularity": 1, "gateNumber": 0,
                 },
                 "track": {
                     "location": 10006, "course": 10611, "condition": "GOOD", "gateCount": 9
@@ -866,11 +896,6 @@ class CarrotJuicer:
                                                                                                        "")
             all_conditions[str(skill_id)] = cond
 
-        skill_names = [self.skill_name_dict.get(s, str(s)) for s in self.skills_list]
-
-        print(self.skills_list)
-        print(sim_summary)
-
         self.skill_browser.execute_script(
             """
             let skills_list = arguments[0];
@@ -916,72 +941,125 @@ class CarrotJuicer:
             let getBoxPct = (val) => Math.max(0, Math.min(100, ((val - bScaleMin) / bScaleRange) * 100));
             let baseMedianPct = getBoxPct(baseMedianAbs);
 
-            // Handle Persistent Toggle State
-            window.UL_BADGE_PREF = localStorage.getItem('UL_BADGE_PREF') || 'hist';
+        window.UL_BADGE_PREF = localStorage.getItem('UL_BADGE_PREF') || 'hist';
+        window.UL_MODE_PREF = localStorage.getItem('UL_MODE_PREF') || 'parent';
 
-            let pageTitle = document.querySelector("h1");
-            if (pageTitle && !document.getElementById("ul-badge-toggle")) {
-                let toggleDiv = document.createElement("div");
-                toggleDiv.id = "ul-badge-toggle";
-                toggleDiv.style.display = "inline-flex";
-                toggleDiv.style.marginLeft = "15px";
-                toggleDiv.style.fontSize = "0.5em";
-                toggleDiv.style.verticalAlign = "middle";
+        let pageTitle = document.querySelector("h1");
+        if (pageTitle && !document.getElementById("ul-badge-toggle")) {
+            
+            // --- BADGE DISPLAY TOGGLE ---
+            let toggleDiv = document.createElement("div");
+            toggleDiv.id = "ul-badge-toggle";
+            toggleDiv.style.display = "inline-flex";
+            toggleDiv.style.marginLeft = "15px";
+            toggleDiv.style.fontSize = "0.5em";
+            toggleDiv.style.verticalAlign = "middle";
 
-                let btnHist = document.createElement("button");
-                btnHist.innerText = "Time Saved";
-                btnHist.style.padding = "4px 8px";
-                btnHist.style.borderRadius = "4px 0 0 4px";
-                btnHist.style.border = "1px solid var(--c-topnav)";
-                btnHist.style.cursor = "pointer";
+            let btnHist = document.createElement("button");
+            btnHist.innerText = "Time Saved";
+            btnHist.style.padding = "4px 8px";
+            btnHist.style.borderRadius = "4px 0 0 4px";
+            btnHist.style.border = "1px solid var(--c-topnav)";
+            btnHist.style.cursor = "pointer";
 
-                let btnBox = document.createElement("button");
-                btnBox.innerText = "Race Time";
-                btnBox.style.padding = "4px 8px";
-                btnBox.style.borderRadius = "0 4px 4px 0";
-                btnBox.style.border = "1px solid var(--c-topnav)";
-                btnBox.style.cursor = "pointer";
+            let btnBox = document.createElement("button");
+            btnBox.innerText = "Race Time";
+            btnBox.style.padding = "4px 8px";
+            btnBox.style.borderRadius = "0 4px 4px 0";
+            btnBox.style.border = "1px solid var(--c-topnav)";
+            btnBox.style.cursor = "pointer";
 
-                window.updateToggleColors = () => {
-                    if (window.UL_BADGE_PREF === 'hist') {
-                        btnHist.style.background = "var(--c-topnav)";
-                        btnHist.style.color = "white";
-                        btnBox.style.background = "transparent";
-                        btnBox.style.color = "var(--c-text)";
-                    } else {
-                        btnBox.style.background = "var(--c-topnav)";
-                        btnBox.style.color = "white";
-                        btnHist.style.background = "transparent";
-                        btnHist.style.color = "var(--c-text)";
-                    }
-                };
+            // --- SIMULATION MODE TOGGLE ---
+            let modeToggleDiv = document.createElement("div");
+            modeToggleDiv.id = "ul-mode-toggle";
+            modeToggleDiv.style.display = "inline-flex";
+            modeToggleDiv.style.marginLeft = "10px";
+            modeToggleDiv.style.fontSize = "0.5em";
+            modeToggleDiv.style.verticalAlign = "middle";
 
-                btnHist.onclick = () => {
-                    window.UL_BADGE_PREF = 'hist';
-                    localStorage.setItem('UL_BADGE_PREF', 'hist');
-                    window.updateToggleColors();
-                    document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "block");
-                    document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "none");
-                };
+            let btnParent = document.createElement("button");
+            btnParent.innerText = "Parent";
+            btnParent.style.padding = "4px 8px";
+            btnParent.style.borderRadius = "4px 0 0 4px";
+            btnParent.style.border = "1px solid #c084fc";
+            btnParent.style.cursor = "pointer";
 
-                btnBox.onclick = () => {
-                    window.UL_BADGE_PREF = 'box';
-                    localStorage.setItem('UL_BADGE_PREF', 'box');
-                    window.updateToggleColors();
-                    document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "none");
-                    document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "flex");
-                };
+            let btnAce = document.createElement("button");
+            btnAce.innerText = "Ace";
+            btnAce.style.padding = "4px 8px";
+            btnAce.style.borderRadius = "0 4px 4px 0";
+            btnAce.style.border = "1px solid #c084fc";
+            btnAce.style.cursor = "pointer";
 
+            window.updateToggleColors = () => {
+                if (window.UL_BADGE_PREF === 'hist') {
+                    btnHist.style.background = "var(--c-topnav)";
+                    btnHist.style.color = "white";
+                    btnBox.style.background = "transparent";
+                    btnBox.style.color = "var(--c-text)";
+                } else {
+                    btnBox.style.background = "var(--c-topnav)";
+                    btnBox.style.color = "white";
+                    btnHist.style.background = "transparent";
+                    btnHist.style.color = "var(--c-text)";
+                }
+
+                if (window.UL_MODE_PREF === 'ace') {
+                    btnAce.style.background = "#c084fc";
+                    btnAce.style.color = "white";
+                    btnParent.style.background = "transparent";
+                    btnParent.style.color = "var(--c-text)";
+                } else {
+                    btnParent.style.background = "#c084fc";
+                    btnParent.style.color = "white";
+                    btnAce.style.background = "transparent";
+                    btnAce.style.color = "var(--c-text)";
+                }
+            };
+
+            btnHist.onclick = () => {
+                window.UL_BADGE_PREF = 'hist';
+                localStorage.setItem('UL_BADGE_PREF', 'hist');
                 window.updateToggleColors();
-                toggleDiv.appendChild(btnHist);
-                toggleDiv.appendChild(btnBox);
-                pageTitle.appendChild(toggleDiv);
-                pageTitle.style.display = "flex";
-                pageTitle.style.alignItems = "center";
-            } else if (window.updateToggleColors) {
-                // Ensure colors are correct on re-renders
+                document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "block");
+                document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "none");
+            };
+
+            btnBox.onclick = () => {
+                window.UL_BADGE_PREF = 'box';
+                localStorage.setItem('UL_BADGE_PREF', 'box');
                 window.updateToggleColors();
-            }
+                document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "none");
+                document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "flex");
+            };
+
+            btnParent.onclick = () => {
+                window.UL_MODE_PREF = 'parent';
+                localStorage.setItem('UL_MODE_PREF', 'parent');
+                window.updateToggleColors();
+            };
+
+            btnAce.onclick = () => {
+                window.UL_MODE_PREF = 'ace';
+                localStorage.setItem('UL_MODE_PREF', 'ace');
+                window.updateToggleColors();
+            };
+
+            window.updateToggleColors();
+            
+            toggleDiv.appendChild(btnHist);
+            toggleDiv.appendChild(btnBox);
+            modeToggleDiv.appendChild(btnParent);
+            modeToggleDiv.appendChild(btnAce);
+            
+            pageTitle.appendChild(toggleDiv);
+            pageTitle.appendChild(modeToggleDiv);
+            pageTitle.style.display = "flex";
+            pageTitle.style.alignItems = "center";
+
+        } else if (window.updateToggleColors) {
+            window.updateToggleColors();
+        }
 
             let skill_elements = [];
             let skills_table = document.querySelector("[class^='skills_skill_table_']");
@@ -1001,9 +1079,8 @@ class CarrotJuicer:
                 if (display_id >= 900000 && display_id < 1000000) {
                     display_id = display_id - 800000;
                 }
-                let skill_string = "(" + display_id + ")";
                 for (const item of skill_rows) {
-                    if (item.textContent.includes(skill_string)) {
+                    if (item.textContent.includes(display_id) || item.textContent.includes(skill_id)) {
                         let row = item.parentNode;
                         skill_elements.push(row);
                         row.remove();
@@ -1270,8 +1347,7 @@ class CarrotJuicer:
                     self.browser.enforce_z_order()
 
                     if self.reset_browser:
-                        pass
-                        # self.browser.set_window_rect(self.get_browser_reset_position())
+                        self.browser.set_window_rect(self.get_browser_reset_position())
                 elif self.last_browser_rect:
                     self.save_last_browser_rect()
 
