@@ -1347,8 +1347,7 @@ class CarrotJuicer:
                     self.browser.enforce_z_order()
 
                     if self.reset_browser:
-                        pass
-                        # self.browser.set_window_rect(self.get_browser_reset_position())
+                        self.browser.set_window_rect(self.get_browser_reset_position())
                 elif self.last_browser_rect:
                     self.save_last_browser_rect()
 
