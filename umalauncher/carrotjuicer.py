@@ -827,6 +827,9 @@ class CarrotJuicer:
                 # Extract the data structures
                 time_saved_stats = candidate_data.get("timeSavedStats", {})
                 race_time_stats = candidate_data.get("raceTimeStats", {})
+                eff_rate = candidate_data.get("effectiveRate", 0.0)
+                conn_rate = candidate_data.get("connectionRate", 0.0)
+                conn_time = candidate_data.get("avgConnectionTime", 0.0)
 
                 if not time_saved_stats or not race_time_stats:
                     continue
@@ -834,10 +837,26 @@ class CarrotJuicer:
                 base_cost = self.skill_costs_dict.get(skill_id_str, 0)
                 hint_level = self.skill_hints.get(skill_id_int, 0)
 
+                print(self.skill_hints)
+                skill_rarity = self.skill_hints.get(skill_id_int, 1)
+
                 effective_hint_level = min(hint_level, 5)
                 discount_map = {0: 0, 1: 10, 2: 20, 3: 30, 4: 35, 5: 40}
                 discount_percent = discount_map.get(effective_hint_level, 0)
-                sp_cost = int(base_cost * (100 - discount_percent) / 100)
+                total_sp_cost = int(base_cost * (100 - discount_percent) / 100)
+
+                if skill_id_str.endswith('1'):
+                    white_skill_id = skill_id_int + 1
+                    white_skill_id_str = str(white_skill_id)
+
+                    if white_skill_id_str in self.skill_costs_dict and white_skill_id not in self.acquired_skills_list:
+                        white_base_cost = self.skill_costs_dict.get(white_skill_id_str, 0)
+                        white_hint_level = self.skill_hints.get(white_skill_id, 0)
+
+                        white_discount_percent = discount_map.get(min(white_hint_level, 5), 0)
+                        white_sp_cost = int(white_base_cost * (100 - white_discount_percent) / 100)
+
+                        total_sp_cost += white_sp_cost
 
                 # Absolute Boxplot Stats
                 k_min_val = race_time_stats.get("min", 0.0)
@@ -856,7 +875,7 @@ class CarrotJuicer:
                 saved_mean_display = time_saved_stats.get("mean", 0.0)
 
                 # Efficiency calculation: Seconds Saved per 100 SP
-                efficiency = (-saved_mean_display / max(sp_cost, 1)) * 100
+                efficiency = (-saved_mean_display / max(total_sp_cost, 1)) * 100
 
                 data_obj = {
                     "saved": round(saved_mean_display, 4),
@@ -873,9 +892,12 @@ class CarrotJuicer:
                     "q3": round(k_q3, 4),
                     "wMax": round(k_wMax, 4),
                     "outliers": k_outliers,
-                    "sp_cost": sp_cost,
+                    "sp_cost": total_sp_cost,
                     "hint_level": hint_level,
-                    "efficiency": round(efficiency, 4)
+                    "efficiency": round(efficiency, 4),
+                    "eff_rate": int(round(eff_rate * 100)),
+                    "conn_rate": int(round(conn_rate * 100)),
+                    "conn_time": conn_time
                 }
 
                 # Update Histogram Scale Bounds
@@ -907,7 +929,7 @@ class CarrotJuicer:
             let acquired_list = arguments[6] || [];
             let all_conditions = arguments[7] || {};
             let baseMedianAbs = arguments[8] || 0.0;
-
+    
             function formatCondition(cond) {
                 if (!cond) return "";
                 return cond.replace(/([a-zA-Z_]+)|(==|>=|<=|!=|>|<|=|&|!)|(\\b\\d+(?:\\.\\d+)?\\b)/g, function(match, word, op, num) {
@@ -920,8 +942,7 @@ class CarrotJuicer:
                     return match;
                 });
             }
-
-            // Histogram Scale (Standard: Negative left, Positive right)
+    
             let hRange = globalHistMax - globalHistMin;
             if (hRange === 0) hRange = 1;
             let hPad = hRange * 0.05; 
@@ -930,8 +951,7 @@ class CarrotJuicer:
             let hScaleRange = hScaleMax - hScaleMin;
             let getHistPct = (val) => Math.max(0, Math.min(100, ((val - hScaleMin) / hScaleRange) * 100));
             let hZeroPct = getHistPct(0); 
-
-            // Boxplot Scale (Standard: Lower times left, Higher times right)
+    
             let bRange = globalBoxMax - globalBoxMin;
             if (bRange === 0) bRange = 1;
             let bPad = bRange * 0.05;
@@ -940,154 +960,155 @@ class CarrotJuicer:
             let bScaleRange = bScaleMax - bScaleMin;
             let getBoxPct = (val) => Math.max(0, Math.min(100, ((val - bScaleMin) / bScaleRange) * 100));
             let baseMedianPct = getBoxPct(baseMedianAbs);
-
-        window.UL_BADGE_PREF = localStorage.getItem('UL_BADGE_PREF') || 'hist';
-        window.UL_MODE_PREF = localStorage.getItem('UL_MODE_PREF') || 'parent';
-
-        let pageTitle = document.querySelector("h1");
-        if (pageTitle && !document.getElementById("ul-badge-toggle")) {
-            
-            // --- BADGE DISPLAY TOGGLE ---
-            let toggleDiv = document.createElement("div");
-            toggleDiv.id = "ul-badge-toggle";
-            toggleDiv.style.display = "inline-flex";
-            toggleDiv.style.marginLeft = "15px";
-            toggleDiv.style.fontSize = "0.5em";
-            toggleDiv.style.verticalAlign = "middle";
-
-            let btnHist = document.createElement("button");
-            btnHist.innerText = "Time Saved";
-            btnHist.style.padding = "4px 8px";
-            btnHist.style.borderRadius = "4px 0 0 4px";
-            btnHist.style.border = "1px solid var(--c-topnav)";
-            btnHist.style.cursor = "pointer";
-
-            let btnBox = document.createElement("button");
-            btnBox.innerText = "Race Time";
-            btnBox.style.padding = "4px 8px";
-            btnBox.style.borderRadius = "0 4px 4px 0";
-            btnBox.style.border = "1px solid var(--c-topnav)";
-            btnBox.style.cursor = "pointer";
-
-            // --- SIMULATION MODE TOGGLE ---
-            let modeToggleDiv = document.createElement("div");
-            modeToggleDiv.id = "ul-mode-toggle";
-            modeToggleDiv.style.display = "inline-flex";
-            modeToggleDiv.style.marginLeft = "10px";
-            modeToggleDiv.style.fontSize = "0.5em";
-            modeToggleDiv.style.verticalAlign = "middle";
-
-            let btnParent = document.createElement("button");
-            btnParent.innerText = "Parent";
-            btnParent.style.padding = "4px 8px";
-            btnParent.style.borderRadius = "4px 0 0 4px";
-            btnParent.style.border = "1px solid #c084fc";
-            btnParent.style.cursor = "pointer";
-
-            let btnAce = document.createElement("button");
-            btnAce.innerText = "Ace";
-            btnAce.style.padding = "4px 8px";
-            btnAce.style.borderRadius = "0 4px 4px 0";
-            btnAce.style.border = "1px solid #c084fc";
-            btnAce.style.cursor = "pointer";
-
-            window.updateToggleColors = () => {
-                if (window.UL_BADGE_PREF === 'hist') {
-                    btnHist.style.background = "var(--c-topnav)";
-                    btnHist.style.color = "white";
-                    btnBox.style.background = "transparent";
-                    btnBox.style.color = "var(--c-text)";
-                } else {
-                    btnBox.style.background = "var(--c-topnav)";
-                    btnBox.style.color = "white";
-                    btnHist.style.background = "transparent";
-                    btnHist.style.color = "var(--c-text)";
-                }
-
-                if (window.UL_MODE_PREF === 'ace') {
-                    btnAce.style.background = "#c084fc";
-                    btnAce.style.color = "white";
-                    btnParent.style.background = "transparent";
-                    btnParent.style.color = "var(--c-text)";
-                } else {
-                    btnParent.style.background = "#c084fc";
-                    btnParent.style.color = "white";
-                    btnAce.style.background = "transparent";
-                    btnAce.style.color = "var(--c-text)";
-                }
-            };
-
-            btnHist.onclick = () => {
-                window.UL_BADGE_PREF = 'hist';
-                localStorage.setItem('UL_BADGE_PREF', 'hist');
+    
+            window.UL_BADGE_PREF = localStorage.getItem('UL_BADGE_PREF') || 'hist';
+            window.UL_MODE_PREF = localStorage.getItem('UL_MODE_PREF') || 'parent';
+    
+            let pageTitle = document.querySelector("h1");
+            if (pageTitle && !document.getElementById("ul-badge-toggle")) {
+                
+                let toggleDiv = document.createElement("div");
+                toggleDiv.id = "ul-badge-toggle";
+                toggleDiv.style.display = "inline-flex";
+                toggleDiv.style.marginLeft = "15px";
+                toggleDiv.style.fontSize = "0.5em";
+                toggleDiv.style.verticalAlign = "middle";
+    
+                let btnHist = document.createElement("button");
+                btnHist.innerText = "Time Saved";
+                btnHist.style.padding = "4px 8px";
+                btnHist.style.borderRadius = "4px 0 0 4px";
+                btnHist.style.border = "1px solid var(--c-topnav)";
+                btnHist.style.cursor = "pointer";
+    
+                let btnBox = document.createElement("button");
+                btnBox.innerText = "Race Time";
+                btnBox.style.padding = "4px 8px";
+                btnBox.style.borderRadius = "0 4px 4px 0";
+                btnBox.style.border = "1px solid var(--c-topnav)";
+                btnBox.style.cursor = "pointer";
+    
+                let modeToggleDiv = document.createElement("div");
+                modeToggleDiv.id = "ul-mode-toggle";
+                modeToggleDiv.style.display = "inline-flex";
+                modeToggleDiv.style.marginLeft = "10px";
+                modeToggleDiv.style.fontSize = "0.5em";
+                modeToggleDiv.style.verticalAlign = "middle";
+    
+                let btnParent = document.createElement("button");
+                btnParent.innerText = "Parent";
+                btnParent.style.padding = "4px 8px";
+                btnParent.style.borderRadius = "4px 0 0 4px";
+                btnParent.style.border = "1px solid #c084fc";
+                btnParent.style.cursor = "pointer";
+    
+                let btnAce = document.createElement("button");
+                btnAce.innerText = "Ace";
+                btnAce.style.padding = "4px 8px";
+                btnAce.style.borderRadius = "0 4px 4px 0";
+                btnAce.style.border = "1px solid #c084fc";
+                btnAce.style.cursor = "pointer";
+    
+                window.updateToggleColors = () => {
+                    if (window.UL_BADGE_PREF === 'hist') {
+                        btnHist.style.background = "var(--c-topnav)";
+                        btnHist.style.color = "white";
+                        btnBox.style.background = "transparent";
+                        btnBox.style.color = "var(--c-text)";
+                    } else {
+                        btnBox.style.background = "var(--c-topnav)";
+                        btnBox.style.color = "white";
+                        btnHist.style.background = "transparent";
+                        btnHist.style.color = "var(--c-text)";
+                    }
+    
+                    if (window.UL_MODE_PREF === 'ace') {
+                        btnAce.style.background = "#c084fc";
+                        btnAce.style.color = "white";
+                        btnParent.style.background = "transparent";
+                        btnParent.style.color = "var(--c-text)";
+                    } else {
+                        btnParent.style.background = "#c084fc";
+                        btnParent.style.color = "white";
+                        btnAce.style.background = "transparent";
+                        btnAce.style.color = "var(--c-text)";
+                    }
+                };
+    
+                btnHist.onclick = () => {
+                    window.UL_BADGE_PREF = 'hist';
+                    localStorage.setItem('UL_BADGE_PREF', 'hist');
+                    window.updateToggleColors();
+                    document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "block");
+                    document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "none");
+                };
+    
+                btnBox.onclick = () => {
+                    window.UL_BADGE_PREF = 'box';
+                    localStorage.setItem('UL_BADGE_PREF', 'box');
+                    window.updateToggleColors();
+                    document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "none");
+                    document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "flex");
+                };
+    
+                btnParent.onclick = () => {
+                    window.UL_MODE_PREF = 'parent';
+                    localStorage.setItem('UL_MODE_PREF', 'parent');
+                    window.updateToggleColors();
+                };
+    
+                btnAce.onclick = () => {
+                    window.UL_MODE_PREF = 'ace';
+                    localStorage.setItem('UL_MODE_PREF', 'ace');
+                    window.updateToggleColors();
+                };
+    
                 window.updateToggleColors();
-                document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "block");
-                document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "none");
-            };
-
-            btnBox.onclick = () => {
-                window.UL_BADGE_PREF = 'box';
-                localStorage.setItem('UL_BADGE_PREF', 'box');
+                
+                toggleDiv.appendChild(btnHist);
+                toggleDiv.appendChild(btnBox);
+                modeToggleDiv.appendChild(btnParent);
+                modeToggleDiv.appendChild(btnAce);
+                
+                pageTitle.appendChild(toggleDiv);
+                pageTitle.appendChild(modeToggleDiv);
+                pageTitle.style.display = "flex";
+                pageTitle.style.alignItems = "center";
+    
+            } else if (window.updateToggleColors) {
                 window.updateToggleColors();
-                document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "none");
-                document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "flex");
-            };
-
-            btnParent.onclick = () => {
-                window.UL_MODE_PREF = 'parent';
-                localStorage.setItem('UL_MODE_PREF', 'parent');
-                window.updateToggleColors();
-            };
-
-            btnAce.onclick = () => {
-                window.UL_MODE_PREF = 'ace';
-                localStorage.setItem('UL_MODE_PREF', 'ace');
-                window.updateToggleColors();
-            };
-
-            window.updateToggleColors();
-            
-            toggleDiv.appendChild(btnHist);
-            toggleDiv.appendChild(btnBox);
-            modeToggleDiv.appendChild(btnParent);
-            modeToggleDiv.appendChild(btnAce);
-            
-            pageTitle.appendChild(toggleDiv);
-            pageTitle.appendChild(modeToggleDiv);
-            pageTitle.style.display = "flex";
-            pageTitle.style.alignItems = "center";
-
-        } else if (window.updateToggleColors) {
-            window.updateToggleColors();
-        }
-
+            }
+    
             let skill_elements = [];
             let skills_table = document.querySelector("[class^='skills_skill_table_']");
             let skill_rows = document.querySelectorAll("[class^='skills_table_desc_']");
             let stripes_element = document.querySelector("[class*='skills_stripes_']");
             let color_class = stripes_element ? [...stripes_element.classList].filter(item => item.startsWith("skills_stripes_"))[0] : null;
-
+    
             if (!skills_table || skill_rows.length === 0) return;
-
+    
             for (const item of skill_rows) {
                 if (item.parentNode) item.parentNode.style.display = "none";
             }
-
+    
             for (const skill_id of skills_list) {
-                // inherited unique fix
                 let display_id = skill_id;
                 if (display_id >= 900000 && display_id < 1000000) {
                     display_id = display_id - 800000;
                 }
+                
+                let display_string = "(" + display_id + ")";
+                let true_skill_string = "(" + skill_id + ")";
+    
                 for (const item of skill_rows) {
-                    if (item.textContent.includes(display_id) || item.textContent.includes(skill_id)) {
+                    if (item.textContent.includes(display_string) || item.textContent.includes(true_skill_string)) {
                         let row = item.parentNode;
                         skill_elements.push(row);
                         row.remove();
-
+    
                         let existingBadge = row.querySelector('.sim-data-badge');
                         if (existingBadge) existingBadge.remove();
-
+    
                         let badge = document.createElement("div");
                         badge.className = "sim-data-badge";
                         badge.style.gridArea = "badge";
@@ -1096,21 +1117,21 @@ class CarrotJuicer:
                         badge.style.marginRight = "10px"; 
                         badge.style.boxSizing = "border-box";
                         badge.style.display = "block";
-
+    
                         let condRaw = all_conditions[skill_id.toString()] || "";
                         let condHtml = `<div style="color: #d1d5db; font-family: monospace; white-space: pre-wrap; line-height: 1.2;">${formatCondition(condRaw)} <span style="color: #6b7280; font-size: 0.85em;">(${skill_id})</span></div>`;
-
+    
                         if (row.children.length >= 3) {
                             let descCell = row.children[2];
                             if (descCell) {
                                 descCell.innerHTML = condHtml;
                             }
                         }
-
+    
                         if (row.children.length >= 4) {
                             row.children[3].style.display = "none";
                         }
-
+    
                         if (acquired_list.includes(skill_id)) {
                             badge.style.padding = "2px 8px";
                             badge.style.backgroundColor = "rgba(156, 163, 175, 0.1)"; 
@@ -1131,28 +1152,28 @@ class CarrotJuicer:
                                 else if (eff >= 0.02) color = "#86efac"; 
                                 else if (eff >= 0.01) color = "#bbf7d0"; 
                                 else if (eff <= -0.01) color = "#ca8a8a";                  
-
+    
                                 let sign = data.saved < 0 ? "-" : (data.saved > 0 ? "+" : "");
                                 let absSaved = Math.abs(data.saved);
-
+    
                                 let histogramHtml = '';
                                 if (data.frequencies && data.frequencies.length > 0) {
                                     let bMin = data.binMin;
                                     let bWid = data.binWidth;
-
+    
                                     for (let j = 0; j < data.frequencies.length; j++) {
                                         let freq = data.frequencies[j];
                                         if (freq === 0) continue;
-
+    
                                         let hPct = (freq / data.vMax) * 100;
                                         hPct = Math.min(hPct, 100);
-
+    
                                         let leftEdge = bMin + (j * bWid); 
                                         let rightEdge = leftEdge + bWid;  
-
+    
                                         let xLeft = getHistPct(leftEdge);
                                         let xWidth = getHistPct(rightEdge) - xLeft;
-
+    
                                         let barColor;
                                         if (leftEdge <= 0 && rightEdge > 0) {
                                             barColor = '#9ca3af'; 
@@ -1161,40 +1182,53 @@ class CarrotJuicer:
                                         } else {
                                             barColor = '#fca5a5'; 
                                         }
-
+    
                                         histogramHtml += `<div style="position: absolute; left: ${xLeft}%; width: ${xWidth}%; bottom: 0; height: ${hPct}%; background-color: ${barColor}; opacity: 0.85;"></div>`;
                                     }
-
+    
                                     let meanX = getHistPct(data.mean);
-
+    
                                     histogramHtml += `<div style="position: absolute; left: ${hZeroPct}%; top: 0; bottom: 0; width: 0px; border-left: 1px dashed white; z-index: 2;"></div>`;
                                     histogramHtml += `<div style="position: absolute; left: ${meanX}%; top: 0; bottom: 0; width: 0px; border-left: 1px dashed #60a5fa; z-index: 3;"></div>`;
                                 }
-
+    
                                 let histDisplay = window.UL_BADGE_PREF === 'hist' ? 'block' : 'none';
                                 let boxDisplay = window.UL_BADGE_PREF === 'box' ? 'flex' : 'none';
-
+    
+                                // Format the whole number percents passed from Python
+                                let effStr = data.eff_rate + "%";
+                                let connStr = data.conn_rate + "%";
+                                let timeStr = data.conn_time.toFixed(1) + "s";
+    
                                 badge.innerHTML = `
                                     <div class="ul-badge-hist" style="display: ${histDisplay}; position: relative; width: 100%; height: 100%; background: var(--c-bg-main-hover); border: 1px solid ${color}; border-radius: 4px; overflow: hidden;">
                                         ${histogramHtml}
-                                        <div style="position: absolute; top: 1px; left: 4px; font-size: 0.7em; color: rgba(255,255,255,0.9); z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">Lv ${data.hint_level || 0} | ${data.sp_cost || "?"} SP</div>
-                                        <div style="position: absolute; bottom: 0px; left: 4px; font-size: 0.55em; color: rgba(200,200,200,0.9); z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">Peak: ${data.maxFreq}</div>
+                                        
+                                        <div style="position: absolute; top: 1px; left: 4px; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">
+                                            <div style="font-size: 0.7em; color: rgba(255,255,255,0.9);">Lv ${data.hint_level || 0} | ${data.sp_cost || "?"} SP</div>
+                                            <div style="font-size: 0.6em; color: rgba(200,200,200,0.9); white-space: nowrap;">E: ${effStr} | C: ${connStr} | ${timeStr}</div>
+                                        </div>
+    
                                         <div style="position: absolute; top: 2px; right: 4px; font-size: 0.75em; text-align: right; line-height: 1.15; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">
                                             <div style="font-weight: bold; color: ${color};">${sign}${absSaved.toFixed(3)}s</div>
                                             <div style="color: ${color}; font-weight: bold; font-size: 0.9em;">(${eff.toFixed(3)})</div>
                                         </div>
                                     </div>
-
+    
                                     <div class="ul-badge-box" style="display: ${boxDisplay}; position: relative; width: 100%; height: 100%; background: var(--c-bg-main-hover); border: 1px solid ${color}; border-radius: 4px; box-sizing: border-box; overflow: hidden;">
                                         
                                         <div style="position: absolute; left: ${baseMedianPct}%; top: 0; bottom: 0; width: 0px; border-left: 1px dashed white; z-index: 2;"></div>
-
-                                        <div style="position: absolute; top: 1px; left: 4px; font-size: 0.7em; color: rgba(255,255,255,0.9); z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">Lv ${data.hint_level || 0} | ${data.sp_cost || "?"} SP</div>
+    
+                                        <div style="position: absolute; top: 1px; left: 4px; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">
+                                            <div style="font-size: 0.7em; color: rgba(255,255,255,0.9);">Lv ${data.hint_level || 0} | ${data.sp_cost || "?"} SP</div>
+                                            <div style="font-size: 0.6em; color: rgba(200,200,200,0.9); white-space: nowrap;">E: ${effStr} | C: ${connStr} | ${timeStr}</div>
+                                        </div>
+    
                                         <div style="position: absolute; top: 2px; right: 4px; font-size: 0.75em; text-align: right; line-height: 1.15; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">
                                             <div style="font-weight: bold; color: ${color};">${sign}${absSaved.toFixed(3)}s</div>
                                             <div style="color: ${color}; font-weight: bold; font-size: 0.9em;">(${eff.toFixed(3)})</div>
                                         </div>
-
+    
                                         <div style="position: absolute; bottom: 0px; left: 0px; right: 0px; height: 20px; z-index: 3;">
                                             <div style="position: absolute; left: ${getBoxPct(data.wMin)}%; width: ${Math.max(0, getBoxPct(data.q1) - getBoxPct(data.wMin))}%; top: 50%; height: 2px; background: rgba(255,255,255,0.6); transform: translateY(-50%);"></div>
                                             <div style="position: absolute; left: ${getBoxPct(data.q1)}%; width: ${Math.max(0, getBoxPct(data.q3) - getBoxPct(data.q1))}%; top: 2px; bottom: 2px; background: ${color}; opacity: 0.85; border-radius: 1px;"></div>
@@ -1202,7 +1236,9 @@ class CarrotJuicer:
                                             <div style="position: absolute; left: ${getBoxPct(data.median)}%; top: 2px; bottom: 2px; width: 1px; background: #60a5fa; z-index: 2;"></div>
                                             
                                             <div style="position: absolute; left: ${getBoxPct(data.q3)}%; width: ${Math.max(0, getBoxPct(data.wMax) - getBoxPct(data.q3))}%; top: 50%; height: 2px; background: rgba(255,255,255,0.6); transform: translateY(-50%);"></div>
-                                            ${(data.outliers || []).map(val => `<div style="position: absolute; left: ${getBoxPct(val)}%; top: 50%; width: 1px; height: 10px; background: white; opacity: 0.2; border-radius: 1px; transform: translate(-50%, -50%);"></div>`).join("")}                                    </div>
+                                            ${(data.outliers || []).map(val => `<div style="position: absolute; left: ${getBoxPct(val)}%; top: 50%; width: 1px; height: 10px; background: white; opacity: 0.2; border-radius: 1px; transform: translate(-50%, -50%);"></div>`).join("")}
+                                        </div>
+                                    </div>
                                 `;
                             }
                         }
@@ -1211,13 +1247,13 @@ class CarrotJuicer:
                     }
                 }
             }
-
+    
             for (let i = 0; i < skill_elements.length; i++) {
                 const item = skill_elements[i];
                 item.style.display = "grid";
                 item.style.gridTemplateAreas = '"badge image jpname desc"';
-                item.style.gridTemplateColumns = "165px 40px 250px auto"; // Tightened columns
-
+                item.style.gridTemplateColumns = "165px 40px 250px auto";
+    
                 if (color_class) {
                     if (i % 2 == 0) item.classList.add(color_class);
                     else item.classList.remove(color_class);
