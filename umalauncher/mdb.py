@@ -206,6 +206,16 @@ def get_skill_name(skill_id):
         skill_name = cursor.fetchone()[0]
     return skill_name
 
+def get_skill_rarity(skill_id):
+    with Connection() as (_, cursor):
+        cursor.execute(
+            """SELECT rarity FROM skill_data WHERE id = ? LIMIT 1""",
+            (skill_id,)
+        )
+        result = cursor.fetchone()
+        skill_rarity = result[0] if result else 1
+    return skill_rarity
+
 def get_skill_hint_name(group_id, rarity):
     with Connection() as (_, cursor):
         cursor.execute(

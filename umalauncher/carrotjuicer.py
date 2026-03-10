@@ -78,8 +78,8 @@ class CarrotJuicer:
         self.skill_costs_dict = mdb.get_skill_costs_dict()
         self.skill_conditions_dict = mdb.get_skill_conditions_dict()
 
-        self.acquired_skills_list = []
-        self.skill_hints = dict()
+        self.skill_data = {}
+        self.skills_list = []
         self.style = ''
 
         self.screen_state_handler = threader.screenstate
@@ -430,38 +430,87 @@ class CarrotJuicer:
                         not self.training_tracker or not self.training_tracker.training_id_matches(training_id)):
                     # Update cached dicts first
                     mdb.update_mdb_cache()
-
                     self.training_tracker = training_tracker.TrainingTracker(training_id, data['chara_info']['card_id'])
 
-                self.skills_list = []
-                self.acquired_skills_list = []
-                self.skill_hints = {}
+                self.skill_data = {}
                 self.style = data['chara_info']['race_running_style']
 
-                # Acquired skills
                 for skill_data in data['chara_info']['skill_array']:
                     skill_id = skill_data['skill_id']
-                    self.acquired_skills_list.append(skill_id)
-                    self.skills_list.append(skill_id)
+                    skill_rarity = mdb.get_skill_rarity(skill_id)
 
-                self.skills_list += mdb.get_card_inherent_skills(data['chara_info']['card_id'],
-                                                                 data['chara_info']['talent_level'])
+                    self.skill_data[skill_id] = {
+                        "is_acquired": True,
+                        "hint_level": 0,
+                        "rarity": skill_rarity,
+                        "base_cost": self.skill_costs_dict.get(str(skill_id), 0)
+                    }
+                    # If it's a Gold/Upgraded skill, automatically grant the base White skill
+                    if skill_rarity >= 2:
+                        white_id = skill_id + 1
+                        self.skill_data[white_id] = {
+                            "is_acquired": True,
+                            "hint_level": 0,
+                            "rarity": 1,
+                            "base_cost": self.skill_costs_dict.get(str(white_id), 0)
+                        }
 
-                # Hints
+                inherent_skills = mdb.get_card_inherent_skills(data['chara_info']['card_id'],
+                                                               data['chara_info']['talent_level'])
+                for skill_id in inherent_skills:
+                    if skill_id not in self.skill_data:
+                        self.skill_data[skill_id] = {
+                            "is_acquired": False,
+                            "hint_level": 0,
+                            "rarity": mdb.get_skill_rarity(skill_id),
+                            "base_cost": self.skill_costs_dict.get(str(skill_id), 0)
+                        }
+
+                    if self.skill_data[skill_id]["is_acquired"]:
+                        next_rank_id = skill_id - 1
+                        if str(next_rank_id) in self.skill_costs_dict and next_rank_id not in self.skill_data:
+                            next_rarity = mdb.get_skill_rarity(next_rank_id)
+
+                            if next_rarity == 1:
+                                self.skill_data[next_rank_id] = {
+                                    "is_acquired": False,
+                                    "hint_level": 0,
+                                    "rarity": next_rarity,
+                                    "base_cost": self.skill_costs_dict.get(str(next_rank_id), 0)
+                                }
+
                 for skill_tip in data['chara_info']['skill_tips_array']:
-                    if skill_tip['rarity'] > 1:
-                        skill_id = self.skill_id_dict[(skill_tip['group_id'], skill_tip['rarity'])]
-                        white_id = mdb.determine_skill_id_from_group_id(skill_tip['group_id'], 1, self.skills_list)
-                        if white_id not in self.skills_list:
-                            self.skills_list.append(white_id)
+                    tip_rarity = skill_tip['rarity']
+                    tip_level = skill_tip.get('level', 0)
+
+                    if tip_rarity > 1:
+                        skill_id = self.skill_id_dict[(skill_tip['group_id'], tip_rarity)]
+                        white_id = mdb.determine_skill_id_from_group_id(skill_tip['group_id'], 1,
+                                                                        list(self.skill_data.keys()))
+
+                        if white_id not in self.skill_data:
+                            self.skill_data[white_id] = {
+                                "is_acquired": False,
+                                "hint_level": 0,
+                                "rarity": 1,
+                                "base_cost": self.skill_costs_dict.get(str(white_id), 0)
+                            }
                     else:
-                        skill_id = mdb.determine_skill_id_from_group_id(skill_tip['group_id'], skill_tip['rarity'],
-                                                                        self.skills_list)
+                        skill_id = mdb.determine_skill_id_from_group_id(skill_tip['group_id'], tip_rarity,
+                                                                        list(self.skill_data.keys()))
 
-                    self.skills_list.append(skill_id)
-                    self.skill_hints[skill_id] = skill_tip.get('level', 0)
+                    if skill_id not in self.skill_data:
+                        self.skill_data[skill_id] = {
+                            "is_acquired": False,
+                            "hint_level": tip_level,
+                            "rarity": tip_rarity,
+                            "base_cost": self.skill_costs_dict.get(str(skill_id), 0)
+                        }
+                    else:
+                        self.skill_data[skill_id]["hint_level"] = tip_level
+                        self.skill_data[skill_id]["rarity"] = tip_rarity
 
-                self.skills_list = mdb.sort_skills_by_display_order(self.skills_list)
+                self.skills_list = mdb.sort_skills_by_display_order(list(self.skill_data.keys()))
 
                 # # Fix certain skills for GameTora
                 # for i in range(len(self.skills_list)):
@@ -752,7 +801,10 @@ class CarrotJuicer:
         mode_pref = self.skill_browser.execute_script("return window.localStorage.getItem('UL_MODE_PREF') || 'parent';")
         is_ace_mode = (mode_pref == 'ace')
 
-        unacquired_skills_list = [s for s in self.skills_list if s not in self.acquired_skills_list]
+        acquired_skills_list = [sid for sid, data in self.skill_data.items() if data["is_acquired"]]
+        unacquired_skills_list = [sid for sid, data in self.skill_data.items() if not data["is_acquired"]]
+
+        print(self.skill_data)
 
         STYLE_INTERNAL_MAP = {
             1: "NIGE",
@@ -764,14 +816,12 @@ class CarrotJuicer:
         total_iterations = 2000
 
         if is_ace_mode:
-            # ACE MODE: Pull stats from the trainee (replace with your actual variables)
-            u_speed = self.last_data['chara_info'].get('speed', 1200)
-            u_stamina = self.last_data['chara_info'].get('stamina', 1200)
-            u_power = self.last_data['chara_info'].get('power', 1200)
-            u_guts = self.last_data['chara_info'].get('guts', 1200)
-            u_wisdom = self.last_data['chara_info'].get('wiz', 1200)
+            u_speed = self.last_data['chara_info'].get('speed', 0)
+            u_stamina = self.last_data['chara_info'].get('stamina', 0)
+            u_power = self.last_data['chara_info'].get('power', 0)
+            u_guts = self.last_data['chara_info'].get('guts', 0)
+            u_wisdom = self.last_data['chara_info'].get('wiz', 0)
         else:
-            # PARENT MODE: Fixed farm values
             u_speed = 1200
             u_stamina = 2000
             u_power = 1100
@@ -791,7 +841,7 @@ class CarrotJuicer:
                     "location": 10006, "course": 10611, "condition": "GOOD", "gateCount": 9
                 }
             },
-            "acquiredSkillIds": self.acquired_skills_list,
+            "acquiredSkillIds": acquired_skills_list,
             "unacquiredSkillIds": unacquired_skills_list,
             "iterations": total_iterations
         }
@@ -818,13 +868,13 @@ class CarrotJuicer:
             global_box_min = min(b_min_arr)
             global_box_max = max(b_max_arr)
 
+            discount_map = {0: 0, 1: 10, 2: 20, 3: 30, 4: 35, 5: 40}
             for skill_id_str, candidate_data in results["candidates"].items():
                 if not candidate_data:
                     continue
 
                 skill_id_int = int(skill_id_str)
 
-                # Extract the data structures
                 time_saved_stats = candidate_data.get("timeSavedStats", {})
                 race_time_stats = candidate_data.get("raceTimeStats", {})
                 eff_rate = candidate_data.get("effectiveRate", 0.0)
@@ -834,24 +884,23 @@ class CarrotJuicer:
                 if not time_saved_stats or not race_time_stats:
                     continue
 
-                base_cost = self.skill_costs_dict.get(skill_id_str, 0)
-                hint_level = self.skill_hints.get(skill_id_int, 0)
-
-                print(self.skill_hints)
-                skill_rarity = self.skill_hints.get(skill_id_int, 1)
+                skill_info = self.skill_data.get(skill_id_int, {})
+                base_cost = skill_info.get("base_cost", 0)
+                hint_level = skill_info.get("hint_level", 0)
+                skill_rarity = skill_info.get("rarity", 1)
 
                 effective_hint_level = min(hint_level, 5)
-                discount_map = {0: 0, 1: 10, 2: 20, 3: 30, 4: 35, 5: 40}
                 discount_percent = discount_map.get(effective_hint_level, 0)
                 total_sp_cost = int(base_cost * (100 - discount_percent) / 100)
 
-                if skill_id_str.endswith('1'):
+                if skill_rarity == 2:
                     white_skill_id = skill_id_int + 1
-                    white_skill_id_str = str(white_skill_id)
+                    white_skill_info = self.skill_data.get(white_skill_id, {})
 
-                    if white_skill_id_str in self.skill_costs_dict and white_skill_id not in self.acquired_skills_list:
-                        white_base_cost = self.skill_costs_dict.get(white_skill_id_str, 0)
-                        white_hint_level = self.skill_hints.get(white_skill_id, 0)
+                    # If the white skill exists in our dictionary AND is not acquired yet
+                    if white_skill_info and not white_skill_info.get("is_acquired", False):
+                        white_base_cost = white_skill_info.get("base_cost", 0)
+                        white_hint_level = white_skill_info.get("hint_level", 0)
 
                         white_discount_percent = discount_map.get(min(white_hint_level, 5), 0)
                         white_sp_cost = int(white_base_cost * (100 - white_discount_percent) / 100)
@@ -1261,7 +1310,7 @@ class CarrotJuicer:
                 skills_table.appendChild(item);
             }
             """, self.skills_list, sim_summary, global_hist_min, global_hist_max, global_box_min, global_box_max,
-            self.acquired_skills_list, all_conditions, base_median_abs)
+            acquired_skills_list, all_conditions, base_median_abs)
 
     def run_simulation(self, exe_path, payload):
         json_payload = json.dumps(payload)
