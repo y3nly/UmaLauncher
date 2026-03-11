@@ -271,6 +271,7 @@ class CarrotJuicer:
             logger.error(f"Race grade not found for program id {self.previous_race_program_id}")
             return "RACE GRADE NOT FOUND"
 
+        # These aren't on Gametora anymore, but keep them around in case they update the page again.
         grade_text = ""
         if race_grade > 300:
             grade_text = "Pre/OP"
@@ -279,9 +280,10 @@ class CarrotJuicer:
         else:
             grade_text = "G1"
         if 'IS_UL_GLOBAL' in os.environ:
-            return [f"{self.EVENT_ID_TO_POS_STRING_GLB[event_id]} ({grade_text})"]
+            return [f"{self.EVENT_ID_TO_POS_STRING_GLB[event_id]} ({grade_text})", f"{self.EVENT_ID_TO_POS_STRING_GLB[event_id]}"]
         else:
             return [f"{self.EVENT_ID_TO_POS_STRING[event_id]} ({grade_text})"]
+
 
     def handle_response(self, message, is_json=False):
         if is_json:
@@ -619,7 +621,7 @@ class CarrotJuicer:
                     event_element = self.determine_event_element(event_titles)
 
                     if not event_element:
-                        logger.info(f"Could not find event on GT page: {event_data['story_id']} : {event_titles}")
+                        logger.info(f"Could not find event on GT page: {event_data['story_id']} - {event_data['event_id']} : {event_titles}")
                     self.browser.execute_script("""
                         if (arguments[0]) {
                             arguments[0].click();
@@ -645,11 +647,19 @@ class CarrotJuicer:
                         """, event_element, [self.status_name_dict[i] for i in status_ids if
                                              i in self.status_name_dict])
 
-            if 'reserved_race_array' in data and 'chara_info' not in data and self.last_helper_data:
-                # User changed reserved races
-                self.last_helper_data['reserved_race_array'] = data['reserved_race_array']
-                data = self.last_helper_data
-                self.update_helper_table(data)
+            if 'chara_info' not in data and self.last_helper_data:
+                if 'IS_UL_GLOBAL' in os.environ:
+                    if 'reserved_race_array' in data:
+                        # User changed reserved races
+                        self.last_helper_data['reserved_race_array'] = data['reserved_race_array']
+                        data = self.last_helper_data
+                        self.update_helper_table(data)
+                else:
+                    if 'reserved_race_info' in data and 'reserved_race_array' in data['reserved_race_info']:
+                        # User changed reserved races
+                        self.last_helper_data['reserved_race_array'] = data['reserved_race_info']['reserved_race_array']
+                        data = self.last_helper_data
+                        self.update_helper_table(data)
 
             self.last_data = data
         except Exception:
@@ -705,6 +715,9 @@ class CarrotJuicer:
             if 'start_chara' in data:
                 # Packet is a request to start a training
                 logger.debug("Start of training detected")
+                if 'exec_count' in data['start_chara']:
+                    logger.debug("Auto-training detected, not starting training")
+                    return
                 self.helper_url = self.create_gametora_helper_url_from_start(data)
                 logger.debug(f"Helper URL: {self.helper_url}")
                 self.open_helper()
@@ -1767,7 +1780,6 @@ def setup_helper_page(browser: horsium.BrowserWindow):
 
     gametora_remove_cookies_banner(browser)
     gametora_close_ad_banner(browser)
-
 
 def setup_skill_window(browser: horsium.BrowserWindow):
     # Setup callback for window position

@@ -10,7 +10,8 @@ SCENARIO_DICT = {
     9: "Run! Mecha Umamusume",
     10: "The Twinkle Legends",
     11: "Design Your Island",
-    12: "Yukoma Hot Springs"
+    12: "Yukoma Hot Springs",
+    13: "Beyond Dreams"
 }
 
 MOTIVATION_DICT = {
@@ -235,6 +236,19 @@ DEFAULT_TRAINING_SECTIONS = (
     (65, "plum", "Senior"),
     (73, "gold", "URA Finals"),
     (79, "black", "END")
+)
+
+
+DEFAULT_DREAMS_SECTIONS = (
+    (1, "cyan", "Pre-Debut"),
+    (13, "lightgreen", "Junior"),
+    (25, "salmon", "Classic"),
+    (37, "yellow", "Classic Summer"),
+    (41, "salmon", "Classic"),
+    (49, "plum", "Senior"),
+    (61, "yellow", "Senior Summer"),
+    (65, "plum", "Senior"),
+    (69, "black", "END")
 )
 
 DEFAULT_ARC_SECTIONS = (
