@@ -562,52 +562,53 @@ class CarrotJuicer:
                 event_titles = mdb.get_event_titles(event_data['story_id'], data['chara_info']['card_id'])
                 logger.debug(f"Event titles: {event_titles}")
 
-                if len(data['unchecked_event_array']) > 1:
-                    logger.warning(f"Packet has more than 1 unchecked event! {message}")
-
                 if len(event_data['event_contents_info']['choice_array']) > 1:
+                    # Event has choices
+
+                    # If character is the trained character
                     if event_data['event_contents_info']['support_card_id'] and event_data['event_contents_info'][
                         'support_card_id'] not in supports:
-                        target_id = event_data['event_contents_info']['support_card_id']
-                        logger.debug(f"Random support card detected. Searching for ID: {target_id}")
+                        # Random support card event
+                        logger.info("Random support card detected")
 
+                        self.browser.execute_script("""document.getElementById("boxSupportExtra").click();""")
                         self.browser.execute_script(
                             """
-                            var targetId = arguments[0].toString();
-                            var done = arguments[arguments.length - 1]; // Selenium's async callback
+                                var cont = document.querySelector('[class^="filters_hide"]').parentElement.parentElement.parentElement;
+                                var rSupportsCheckbox = cont.querySelector('[id*="ShowR"]');
+                                var showUpcomingSupportsCheckbox = cont.querySelector('[id*="showUpcoming"]');
+                                var onlyOwned = cont.querySelector('[id*="onlyOwned"]');
+                                var filtersDiv = document.querySelector('[class^="filters_hide"]').parentElement.parentElement;
+                                if( filtersDiv ) 
+                                {
+                                    for( var i = 0; i < filtersDiv.children.length; i++ )
+                                    {
+                                        var filter = filtersDiv.children[i]?.querySelector('label');
+                                        if( filter && filter.className.includes("_active") )
+                                        {
+                                            filter.click();
+                                        }
+                                    }
+                                }
+                                if( rSupportsCheckbox && !rSupportsCheckbox.checked ) {
+                                    rSupportsCheckbox.click(); 
+                                }
+                                if( showUpcomingSupportsCheckbox && !showUpcomingSupportsCheckbox.checked ) {
+                                    showUpcomingSupportsCheckbox.click(); 
+                                }
+                                if( onlyOwned && onlyOwned.checked ) {
+                                    onlyOwned.click(); 
+                                }
 
-                            var checkboxR = document.getElementById('checkboxShowR');
-                            if (checkboxR && !checkboxR.checked) checkboxR.click();
+                                var ele = document.getElementById(arguments[0].toString());
 
-                            var boxExtra = document.getElementById("boxSupportExtra");
-                            if (boxExtra) boxExtra.click();
-
-                            var attempts = 0;
-                            var checkDOM = setInterval(function() {
-                                var ele = document.getElementById(targetId);
-
-                                // If found, click it immediately and finish
                                 if (ele) {
-                                    clearInterval(checkDOM);
                                     ele.click();
-                                    done();
                                     return;
                                 }
-
-                                // If not found after 50 attempts (500ms timeout), click close
-                                if (++attempts > 50) { 
-                                    clearInterval(checkDOM);
-                                    var ref = document.getElementById("30021");
-                                    if (ref && ref.parentElement && ref.parentElement.parentElement) {
-                                        var closeBtn = ref.parentElement.parentElement.querySelector('img[src="/images/ui/close.png"]');
-                                        if (closeBtn) closeBtn.click();
-                                    }
-                                    done();
-                                }
-                            }, 10); // Poll every 10ms
+                                cont.parentElement.parentElement.querySelector('img[src="/images/ui/close.png"]').click();
                             """,
-                            target_id
-                        )
+                            event_data['event_contents_info']['support_card_id'])
                     else:
                         logger.debug("Trained character or support card detected")
 
