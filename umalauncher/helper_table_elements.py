@@ -6,7 +6,7 @@ import gui
 import util
 import constants
 import settings_elements as se
-from umalauncher import mdb
+import mdb
 
 TABLE_HEADERS = {
     "fac": "Facility",
@@ -617,7 +617,7 @@ class Preset():
         mant_imgs = util.get_mant_image_dict()
 
         if main_info['coin_num'] > 0:
-            html_text += f"<div><img src=\"{mant_imgs["coin"]}\" width=\"32\" height=\"32\"/> {main_info['coin_num']}</div>"
+            html_text += f"<div><img src=\"{mant_imgs['coin']}\" width=\"32\" height=\"32\"/> {main_info['coin_num']}</div>"
 
         shop_div = self.generate_mant_shop_div(main_info)
         races_div = self.generate_mant_races_div(main_info)
@@ -638,7 +638,7 @@ class Preset():
             for item in main_info['user_item_info_array']:
                 item_id = item['item_id']
                 inventory_div += "<tr>"
-                inventory_div += f"<td><img src=\"{"scenario_free_item_icon_" + mant_imgs[f'{item_id:05}']}\" width=\"32\" height=\"32\"/></td>"
+                inventory_div += f"<td><img src=\"{'scenario_free_item_icon_' + mant_imgs[f'{item_id:05}']}\" width=\"32\" height=\"32\"/></td>"
                 inventory_div += f"<td>{constants.MANT_ITEM_ID_TO_NAME[item_id]}</td>"
                 inventory_div += f"<td>{constants.MANT_ITEM_ID_TO_DESCRIPTION[item_id]}</td>"
                 inventory_div += f"<td>{item['num']}</td>"
@@ -653,7 +653,7 @@ class Preset():
                     continue
                 item_id = item['item_id']
                 shop_div += "<tr>"
-                shop_div += f"<td><img src=\"{"scenario_free_item_icon_" + mant_imgs[f'{item_id:05}']}\" width=\"32\" height=\"32\"/></td>"
+                shop_div += f"<td><img src=\"{'scenario_free_item_icon_' + mant_imgs[f'{item_id:05}']}\" width=\"32\" height=\"32\"/></td>"
                 shop_div += f"<td>{constants.MANT_ITEM_ID_TO_NAME[item_id]}</td>"
                 shop_div += f"<td>{constants.MANT_ITEM_ID_TO_DESCRIPTION[item_id]}</td>"
                 shop_div += f"<td>{item['coin_num']}</td>"
