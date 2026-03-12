@@ -11,7 +11,7 @@ import util
 import gui
 import glob
 
-VERSION = "1.18.0"
+VERSION = "1.18.6"
 
 def parse_version(version_string: str):
     """Convert version string to tuple."""
@@ -137,7 +137,7 @@ def auto_update(umasettings, force=False):
         os.remove("update.tmp")
         util.show_info_box("Update complete!", f"Uma Launcher updated successfully to v{vstr(script_version)}.<br>To see what's new, <a href=\"https://github.com/qwcan/UmaLauncher/releases/tag/v{vstr(script_version)}\">click here</a>.")
 
-    response = util.do_get_request("https://api.github.com/repos/qwcan/UmaLauncher/releases", error_message="Could not check for updates. Please check your internet connection.", ignore_timeout=True)
+    response = util.do_get_request("https://api.github.com/repos/y3nly/UmaLauncher/releases", error_message="Could not check for updates. Please check your internet connection.", ignore_timeout=True)
     if not response:
         return True
     response_json = response.json()

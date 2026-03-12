@@ -43,7 +43,14 @@ class DefaultSettings(se.NewSettings):
             "Save incoming/outgoing packets to json. (For debugging purposes)",
             False,
             se.SettingType.BOOL,
-            hidden=True
+            hidden=False
+        ),
+        "save_race_packets": se.Setting(
+            "Save race packets.",
+            "Save incoming race packets to text. (For debugging purposes)",
+            False,
+            se.SettingType.BOOL,
+            hidden=False
         ),
         "discord_rich_presence": se.Setting(
             "Discord rich presence",

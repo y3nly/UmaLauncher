@@ -206,6 +206,16 @@ def get_skill_name(skill_id):
         skill_name = cursor.fetchone()[0]
     return skill_name
 
+def get_skill_rarity(skill_id):
+    with Connection() as (_, cursor):
+        cursor.execute(
+            """SELECT rarity FROM skill_data WHERE id = ? LIMIT 1""",
+            (skill_id,)
+        )
+        result = cursor.fetchone()
+        skill_rarity = result[0] if result else 1
+    return skill_rarity
+
 def get_skill_hint_name(group_id, rarity):
     with Connection() as (_, cursor):
         cursor.execute(
@@ -290,6 +300,46 @@ def get_skill_name_dict(force=False):
         SKILL_NAME_DICT.update({row[0]: row[1] for row in rows})
 
     return SKILL_NAME_DICT
+
+SKILL_COSTS_DICT = {}
+def get_skill_costs_dict(force=False):
+    global SKILL_COSTS_DICT
+    if force or not SKILL_COSTS_DICT:
+        with Connection() as (_, cursor):
+            cursor.execute("SELECT id, need_skill_point FROM single_mode_skill_need_point")
+            rows = cursor.fetchall()
+
+        # Update the global cache
+        SKILL_COSTS_DICT.update({str(row[0]): row[1] for row in rows})
+
+    return SKILL_COSTS_DICT
+
+SKILL_CONDITIONS_DICT = {}
+def get_skill_conditions_dict(force=False):
+    global SKILL_CONDITIONS_DICT
+    if force or not SKILL_CONDITIONS_DICT:
+        with Connection() as (_, cursor):
+            # Fetch condition_1 from your local DB
+            cursor.execute("SELECT id, condition_1 FROM skill_data;")
+            rows = cursor.fetchall()
+
+        if rows:
+            tmp = {}
+            for row in rows:
+                skill_id = row[0]
+                logic_str = row[1]
+
+                if logic_str:
+                    # Apply logic from generate_skill_data.py: split by @, wrap in [], join with OR
+                    blocks = str(logic_str).split('@')
+                    formatted_blocks = [f"{b.strip().replace('&', ' & ')}" for b in blocks if b.strip()]
+                    tmp[skill_id] = " OR ".join(formatted_blocks)
+                else:
+                    tmp[skill_id] = "Guaranteed"
+
+            SKILL_CONDITIONS_DICT.update(tmp)
+
+    return SKILL_CONDITIONS_DICT
 
 SKILL_HINT_NAME_DICT = {}
 def get_skill_hint_name_dict(force=False):
@@ -566,25 +616,34 @@ def sort_skills_by_display_order(skill_id_list):
     
     return [row[0] for row in rows]
 
+
 def determine_skill_id_from_group_id(group_id, rarity, skills_id_list):
     with Connection() as (_, cursor):
         cursor.execute(
-            """SELECT id FROM skill_data WHERE group_id = ? AND rarity = ? AND group_rate > 0 ORDER BY group_rate ASC;""",
+            """SELECT id, skill_category FROM skill_data WHERE group_id = ? AND rarity = ? AND group_rate > 0 ORDER BY group_rate ASC;""",
             (group_id, rarity)
         )
         rows = cursor.fetchall()
-    
+
     if not rows:
         return None
-    
+
     skill_id = None
+    skill_category = None
+
     for row in rows:
         skill_id = row[0]
+        skill_category = row[1]
+
         if skill_id not in skills_id_list:
             break
         else:
             skills_id_list.remove(skill_id)
-    
+
+    # Uniques
+    if skill_id is not None and skill_category == 5 and 100000 <= skill_id < 300000:
+        skill_id += 800000
+
     return skill_id
 
 def get_total_minigame_plushies(force=False):
@@ -714,6 +773,8 @@ UPDATE_FUNCS = [
     get_skill_id_dict,
     get_scouting_score_to_rank_dict,
     get_single_mode_unique_chara_dict,
+    get_skill_costs_dict,
+    get_skill_conditions_dict,
     get_program_id_dict
 ]
 
