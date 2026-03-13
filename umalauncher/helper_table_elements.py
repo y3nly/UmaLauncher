@@ -708,7 +708,7 @@ class Preset():
                 races_div += "<tr>"
                 races_div += f"<td><img src=\"{race_img_url}\" width=\"51\" height=\"18.5\" style=\"vertical-align:middle;\"/></td>"
                 races_div += f"<td>{mdb.get_race_name_dict()[program_id]}</td>"
-                races_div += f"<td>{"Turf" if mdb.get_race_surface_dict()[program_id] == 1 else "Dirt"} - {mdb.get_race_distance_dict()[program_id]}m</td>"
+                races_div += f"<td>{'Turf' if mdb.get_race_surface_dict()[program_id] == 1 else 'Dirt'} - {mdb.get_race_distance_dict()[program_id]}m</td>"
                 races_div += f"<td>{self.grade_to_pts(race_grade)}</td>"
                 if program_id in rival_program_ids:
                     races_div += f"<td><img src=\"{mant_imgs['rival']}\" width=\"24\" height=\"42\"/></td>"
@@ -748,7 +748,7 @@ class Preset():
             util.show_warning_box(f"Could not get program data for program_id {program_id}")
             return None
 
-        thumb_url = f"https://gametora.com/images/umamusume/{"en/" if 'IS_UL_GLOBAL' in os.environ else ""}race_banners/thum_race_rt_000_{str(program_data['race_instance_id'])[:4]}_00.png"
+        thumb_url = f"https://gametora.com/images/umamusume/{'en/' if 'IS_UL_GLOBAL' in os.environ else ''}race_banners/thum_race_rt_000_{str(program_data['race_instance_id'])[:4]}_00.png"
         return thumb_url
 
     def to_dict(self):
