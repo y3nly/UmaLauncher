@@ -1,4 +1,6 @@
 import copy
+import os
+
 from loguru import logger
 import mdb
 import util
@@ -637,7 +639,7 @@ class HelperTable():
                 s_turn += month * 2
                 s_turn += half
                 s_turn += 1
-                thumb_url = f"https://gametora.com/images/umamusume/race_banners/thum_race_rt_000_{str(program_data['race_instance_id'])[:4]}_00.png"
+                thumb_url = f"https://gametora.com/images/umamusume/{"en/" if 'IS_UL_GLOBAL' in os.environ else "" }race_banners/thum_race_rt_000_{str(program_data['race_instance_id'])[:4]}_00.png"
 
                 scheduled_races.append({
                     "turn": s_turn,
@@ -774,10 +776,10 @@ class HelperTable():
                 coin_num = free_data['coin_num']
             # Shop (shop_item_id, item_id, coin_num, original_coin_num, item_buy_num (1=sold out), limit_buy_count, limit_turn)
             # TODO: how to get turns left?
-            if 'pick_up_item_info_array' in free_data:
+            if 'pick_up_item_info_array' in free_data and free_data['pick_up_item_info_array'] is not None:
                 pick_up_item_info_array = free_data['pick_up_item_info_array']
             # Inventory (item_id, num)
-            if 'user_item_info_array' in free_data:
+            if 'user_item_info_array' in free_data and free_data['user_item_info_array'] is not None:
                 user_item_info_array = free_data['user_item_info_array']
             # List of rivals for this turn (program_id, chara_id)
             if 'rival_race_info_array' in free_data:
