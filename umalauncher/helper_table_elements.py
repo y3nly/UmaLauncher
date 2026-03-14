@@ -612,114 +612,194 @@ class Preset():
         return f"<div id='gff' style='display:flex; flex-flow: column; justify-content:center; align-items:center; gap: 0.5rem;'>{internal}</div>"
 
     def generate_mant(self, main_info):
-        logger.info(main_info)
+        #logger.info(main_info)
         if main_info['scenario_id'] != 4:
             return ""
-        html_text = ""
-        mant_imgs = util.get_mant_image_dict()
 
-        if main_info['coin_num'] > 0:
-            html_text += f"<div style=\"display:flex; align-items:center; gap:0.25rem;\"><img src=\"{mant_imgs['coin']}\" width=\"32\" height=\"32\"/> {main_info['coin_num']}</div>"
+        # TODO: is a coin display needed, or is it sufficient to just show which items can be bought?
+        #if main_info['coin_num'] > 0:
+        #    html_text += f"<div style=\"display:flex; align-items:center; gap:0.25rem;\"><img src=\"{mant_imgs['coin']}\" width=\"32\" height=\"32\"/>Coins: {main_info['coin_num']}</div>"
 
         shop_div = self.generate_mant_shop_div(main_info)
         races_div = self.generate_mant_races_div(main_info)
 
-        html_text += "<div style=\"display:flex;justify-content:space-evenly; gap:1rem;\">"
+        html_text = "<div style=\"display:flex;flex-direction:column;align-items:center;gap:0.5rem;width:100%;\">"
         html_text += shop_div
         html_text += races_div
         html_text += "</div>"
         return html_text
 
     def generate_mant_shop_div(self, main_info):
-        inventory_div = ""
-        shop_div = ""
-        mant_imgs = util.get_mant_image_dict()
-
-        if len(main_info['user_item_info_array']) > 0:
-            inventory_div += "<div><table><thead><tr><th>Inv</th><th>Name</th><th>Effect</th><th>#</th></tr></thead><tbody>"
-            for item in main_info['user_item_info_array']:
-                item_id = item['item_id']
-                inventory_div += "<tr>"
-                inventory_div += f"<td><img src=\"{mant_imgs[f'scenario_free_item_icon_{item_id:05}']}\" width=\"32\" height=\"32\"/></td>"
-                inventory_div += f"<td>{constants.MANT_ITEM_ID_TO_NAME[item_id]}</td>"
-                inventory_div += f"<td>{constants.MANT_ITEM_ID_TO_DESCRIPTION[item_id]}</td>"
-                inventory_div += f"<td>{item['num']}</td>"
-                inventory_div += "</tr>"
-            inventory_div += "</tbody></div>"
-
-        if len(main_info['pick_up_item_info_array']) > 0:
-            shop_div += f"<div><table><thead><tr style=\"white-space:nowrap;\"><th></th><th>Name</th><th>Effect</th><th><img src=\"{mant_imgs['coin']}\" width=\"24\" height=\"24\" style=\"vertical-align:middle;\"/></th></tr></thead><tbody>"
-            for item in reversed(main_info['pick_up_item_info_array']): # This list is reversed for some reason???
-                if item['item_buy_num'] == item['limit_buy_count']:
-                    # Sold out
-                    continue
-                item_id = item['item_id']
-                shop_div += "<tr>"
-                shop_div += f"<td><img src=\"{mant_imgs[f'scenario_free_item_icon_{item_id:05}']}\" width=\"32\" height=\"32\"/></td>"
-                shop_div += f"<td>{constants.MANT_ITEM_ID_TO_NAME[item_id]}</td>"
-                shop_div += f"<td>{constants.MANT_ITEM_ID_TO_DESCRIPTION[item_id]}</td>"
-                shop_div += f"<td>{item['coin_num']}</td>"
-                shop_div += "</tr>"
-            shop_div += "</tbody></table></div>"
-
-        html_text = "<div style=\"display:flex;flex-direction:column;width:50%;\">"
-        html_text += inventory_div
-        html_text += shop_div
-        html_text += "</div>"
-        return html_text
-
-    def generate_mant_races_div(self, main_info):
         if main_info['turn'] <= 12:
             # Ignore anything before the debut
             return ""
-        html_text = "<div style=\"width:50%;\">"
+        if len(main_info['pick_up_item_info_array']) == 0:
+            return ""
+
+        mant_imgs = util.get_mant_image_dict()
+        items_html = ""
+
+        for item in reversed(main_info['pick_up_item_info_array']):
+            if item['item_buy_num'] == item['limit_buy_count']:
+                # Sold out
+                continue
+            item_id = item['item_id']
+            icon_src = mant_imgs.get(f'scenario_free_item_icon_{item_id:05}', '')
+            description = constants.MANT_ITEM_ID_TO_DESCRIPTION.get(item_id, '')
+            modifier = constants.MANT_ITEM_ID_TO_MODIFIER.get(item_id, '')
+
+            # Turns left badge
+            turns_left = self._get_mant_turns_left(item, main_info['turn'])
+            turn_color = '#e74c3c' if turns_left == 1 else '#e67e22' if turns_left <= 2 else '#888'
+            turns_badge = (
+                f'<div style="position:absolute;top:-2px;right:-2px;'
+                f'background:{turn_color};color:#fff;font-size:0.6rem;font-weight:700;'
+                f'min-width:14px;height:14px;line-height:14px;text-align:center;'
+                f'border-radius:7px;padding:0 2px;z-index:2;">'
+                f'{turns_left}</div>'
+            )
+
+            # Coin cost badge
+            can_afford = main_info['coin_num'] >= item['coin_num']
+            cost_color = '#ccc' if can_afford else '#e74c3c'
+            coin_badge = (
+                f'<div style="position:absolute;bottom:-2px;left:50%;transform:translateX(-50%);'
+                f'background:rgba(0,0,0,0.7);color:{cost_color};font-size:0.55rem;font-weight:700;'
+                f'padding:0 3px;border-radius:4px;white-space:nowrap;z-index:2;line-height:1.2;">'
+                f'{item["coin_num"]}</div>'
+            )
+
+            # Modifier label for shared-icon items (megaphones, cleat hammers)
+            modifier_label = ""
+            if modifier:
+                modifier_label = (
+                    f'<div style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);'
+                    f'background:rgba(0,0,0,0.75);color:#ffd700;font-size:0.5rem;font-weight:700;'
+                    f'padding:0 2px;border-radius:3px;white-space:nowrap;z-index:2;line-height:1.2;">'
+                    f'{modifier}</div>'
+                )
+
+            items_html += (
+                f'<div title="{description}" style="position:relative;flex:0 0 auto;'
+                f'width:36px;height:36px;cursor:default;">'
+                f'<img src="{icon_src}" width="32" height="32" '
+                f'style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);"/>'
+                f'{turns_badge}{coin_badge}{modifier_label}'
+                f'</div>'
+            )
+
+        return (
+            f'<div style="display:flex;flex-wrap:wrap;justify-content:center;'
+            f'gap:0.4rem;width:100%;padding:0.2rem 0;">'
+            f'{items_html}</div>'
+        )
+
+    def generate_mant_races_div(self, main_info):
+        if main_info['turn'] <= 12 or main_info['turn'] >= 73:
+            # Ignore anything before the debut and during Twinkle Start Climax
+            return ""
+        html_text = "<div style=\"width:100%;\">"
         races_div = ""
         mant_imgs = util.get_mant_image_dict()
 
-        # TODO: don't remove the table entirely if no races are available (happens when race results come back)
-        if len(main_info['races']) > 0:
-            races_div += "<div><table><thead><tr><th>Grade</th><th>Race</th><th>Surface/Dist</th><th>Pt</th><th>Rival</th></tr></thead><tbody>"
-            rival_program_ids = [race['program_id'] for race in main_info['rival_race_info_array']]
-            for race in main_info['races']:
-                logger.info( "Race: " + str(race) )
-                program_id = race['program_id']
-                race_grade = mdb.get_program_id_grade(program_id)
+        races_div += "<div><table style=\"width:100%;white-space:nowrap;\"><thead><tr><th>Grade</th><th>Surface/Dist</th><th>Rival</th></tr></thead><tbody>"
+        rival_program_ids = [race['program_id'] for race in main_info['rival_race_info_array']]
+        for race in main_info['races']:
+            #logger.info( "Race: " + str(race) )
+            program_id = race['program_id']
+            race_grade = mdb.get_program_id_grade(program_id)
 
-                if not race_grade:
-                    logger.error(f"Race grade not found for program id {program_id}")
-                logger.info(f"Race grade: {race_grade}")
-                if race_grade == 800: # Debut, ignore
-                    logger.info(f"Race grade {race} is debut, ignoring")
-                    continue
-                race_img_url = "https://gametora.com/images/umamusume/race_ribbons/utx_txt_grade_ribbon_"
-                if race_grade == 700:
-                    race_img_url += "06.png" # Pre-OP
-                elif race_grade == 400:
-                    race_img_url += "02.png" # OP
-                elif race_grade == 300:
-                    race_img_url += "03.png" # G3
-                elif race_grade == 200:
-                    race_img_url += "04.png" # G2
-                elif race_grade == 100:
-                    race_img_url += "05.png" # G1
-                else:
-                    race_img_url += "07.png" # EX
-                # race_img_url = self.get_thumb_url(program_id)
-                races_div += "<tr>"
-                races_div += f"<td><img src=\"{race_img_url}\" width=\"51\" height=\"18.5\" style=\"vertical-align:middle;\"/></td>"
-                races_div += f"<td>{mdb.get_race_name_dict()[program_id]}</td>"
-                races_div += f"<td>{'Turf' if mdb.get_race_surface_dict()[program_id] == 1 else 'Dirt'} - {mdb.get_race_distance_dict()[program_id]}m</td>"
-                races_div += f"<td>{self.grade_to_pts(race_grade)}</td>"
-                if program_id in rival_program_ids:
-                    races_div += f"<td><img src=\"{mant_imgs['rival']}\" width=\"24\" height=\"42\"/></td>"
-                else:
-                    races_div += f"<td></td>"
-                races_div += "</tr>"
-            races_div += "</tbody></table></div>"
+            if not race_grade:
+                logger.error(f"Race grade not found for program id {program_id}")
+            #logger.info(f"Race grade: {race_grade}")
+            if race_grade == 800 or race_grade == 700 or race_grade == 400: # Debut/OP/Pre-OP, ignore
+                #logger.debug(f"Race grade {race} is debut, ignoring")
+                continue
+            race_img_url = "https://gametora.com/images/umamusume/race_ribbons/utx_txt_grade_ribbon_"
+            if race_grade == 700:
+                race_img_url += "06.png" # Pre-OP
+            elif race_grade == 400:
+                race_img_url += "02.png" # OP
+            elif race_grade == 300:
+                race_img_url += "03.png" # G3
+            elif race_grade == 200:
+                race_img_url += "04.png" # G2
+            elif race_grade == 100:
+                race_img_url += "05.png" # G1
+            else:
+                race_img_url += "07.png" # EX
+            # race_img_url = self.get_thumb_url(program_id)
+            races_div += "<tr>"
+            races_div += f"<td><img src=\"{race_img_url}\" width=\"51\" height=\"18.5\" style=\"vertical-align:middle;\"/></td>"
+            #TODO: race names can be really long, are they needed? The thumbnail could be a compromise, but it's pretty big as well
+            #races_div += f"<td>{mdb.get_race_name_dict()[program_id]}</td>"
+            races_div += f"<td>{self.get_race_details_text(mdb.get_race_surface_dict()[program_id], mdb.get_race_distance_dict()[program_id], main_info['uma_aptitudes'])}</td>"
+            #TODO: is the Pts column needed?
+            #races_div += f"<td>{self.grade_to_pts(race_grade)}</td>"
+            if program_id in rival_program_ids:
+                races_div += f"<td><img src=\"{mant_imgs['rival']}\" width=\"24\" height=\"24\" style=\"vertical-align:middle;\"/></td>"
+            else:
+                races_div += f"<td></td>"
+            races_div += "</tr>"
+        races_div += "</tbody></table></div>"
 
         html_text += races_div
         html_text += "</div>"
         return html_text
+
+    def _get_mant_turns_left(self, item, turn):
+        turns_left = 0
+        if item['limit_turn'] == 0:
+            # Normal shop item, refreshes every six turns
+            turns_left = 6 - ((turn - 12) % 6) + 1
+        else:
+            turns_left = item['limit_turn'] - turn + 1 # limit_turn is the last turn it can be bought
+        return turns_left
+
+    def get_turns_left_text(self, item, turn):
+        turns_left = self._get_mant_turns_left(item, turn)
+        return f"<div style=\"{'color:red;' if turns_left == 1 else 'color:orange;' if turns_left == 2 else ''}\">{turns_left}</div>"
+
+    def get_race_details_text(self, surface, distance, uma_aptitudes):
+        # C or higher is "good"
+        #
+        # 1=G, 2=F, etc.
+        surface_text = ""
+        good_surface = False
+        distance_text = ""
+        good_distance = False
+        if surface == 1:
+            surface_text = "Turf"
+            if uma_aptitudes["proper_ground_turf"] >= 5:
+                good_surface = True
+        else:
+            surface_text = "Dirt"
+            if uma_aptitudes["proper_ground_dirt"] >= 5:
+                good_surface = True
+        if good_surface:
+            surface_text = f"<div style=\"color:lightgreen;\">{surface_text}</div>"
+        else:
+            surface_text = f"<div style=\"color:orange;\">{surface_text}</div>"
+
+        if distance <= 1400:
+            if uma_aptitudes["proper_distance_short"] >= 5:
+                good_distance = True
+        elif distance <= 1800:
+            if uma_aptitudes["proper_distance_mile"] >= 5:
+                good_distance = True
+        elif distance <= 2400:
+            if uma_aptitudes["proper_distance_middle"] >= 5:
+                good_distance = True
+        else:
+            if uma_aptitudes["proper_distance_long"] >= 5:
+                good_distance = True
+
+        if good_distance:
+            distance_text = f"<div style=\"color:lightgreen;\">{distance}m</div>"
+        else:
+            distance_text = f"<div style=\"color:orange;\">{distance}m</div>"
+
+        return f"<div style=\"display:flex; justify-content:space-around;{'font-weight:bold;' if good_distance and good_surface else ''}\">" + surface_text + "<div>-</div>" + distance_text + "</div>"
 
     def grade_to_pts(self, grade):
         if grade == 700:
