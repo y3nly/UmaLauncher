@@ -52,6 +52,13 @@ class DefaultSettings(se.NewSettings):
             se.SettingType.BOOL,
             hidden=False
         ),
+        "save_veteran_packets": se.Setting(
+            "Save veteran packets.",
+            "Save incoming veteran list to json.",
+            False,
+            se.SettingType.BOOL,
+            hidden=False
+        ),
         "discord_rich_presence": se.Setting(
             "Discord rich presence",
             "Display your current status in Discord.",
