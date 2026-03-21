@@ -21,7 +21,6 @@ import training_tracker
 import horsium
 import socket
 import subprocess
-import statistics
 
 from Cryptodome.Cipher import AES
 
@@ -860,7 +859,7 @@ class CarrotJuicer:
                     "popularity": 1, "gateNumber": 0,
                 },
                 "track": {
-                    "location": 10006, "course": 10611, "condition": "GOOD", "gateCount": 9
+                    "location": 10009, "course": 10914, "condition": "BAD", "gateCount": 9
                 }
             },
             "acquiredSkillIds": acquired_skills_list,
