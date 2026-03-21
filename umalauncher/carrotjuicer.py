@@ -21,7 +21,6 @@ import training_tracker
 import horsium
 import socket
 import subprocess
-import statistics
 
 from Cryptodome.Cipher import AES
 
@@ -306,9 +305,13 @@ class CarrotJuicer:
 
             data = data['data']
 
-            if 'trained_chara_array' in data:
-                if self.threader.settings['save_veteran_packets']:
+            if self.threader.settings['save_veteran_packets']:
+                if 'trained_chara_array' in data:
                     self.to_json(data['trained_chara_array'], "veteran.json")
+
+            if self.threader.settings['save_friend_veteran_packets']:
+                if 'succession_trained_chara_data' in data:
+                    self.to_json(data['succession_trained_chara_data'].get('succession_trained_chara_array', []), "friend.json")
 
             if self.threader.settings['save_race_packets']:
                 if data.get('race_scenario') or data.get('room_info') or data.get('race_result_info'):
@@ -856,7 +859,7 @@ class CarrotJuicer:
                     "popularity": 1, "gateNumber": 0,
                 },
                 "track": {
-                    "location": 10006, "course": 10611, "condition": "GOOD", "gateCount": 9
+                    "location": 10009, "course": 10914, "condition": "BAD", "gateCount": 9
                 }
             },
             "acquiredSkillIds": acquired_skills_list,
