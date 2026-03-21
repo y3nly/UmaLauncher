@@ -306,9 +306,13 @@ class CarrotJuicer:
 
             data = data['data']
 
-            if 'trained_chara_array' in data:
-                if self.threader.settings['save_veteran_packets']:
+            if self.threader.settings['save_veteran_packets']:
+                if 'trained_chara_array' in data:
                     self.to_json(data['trained_chara_array'], "veteran.json")
+
+            if self.threader.settings['save_friend_veteran_packets']:
+                if 'succession_trained_chara_data' in data:
+                    self.to_json(data['succession_trained_chara_data'].get('succession_trained_chara_array', []), "friend.json")
 
             if self.threader.settings['save_race_packets']:
                 if data.get('race_scenario') or data.get('room_info') or data.get('race_result_info'):
