@@ -310,8 +310,21 @@ class CarrotJuicer:
                     self.to_json(data['trained_chara_array'], "veteran.json")
 
             if self.threader.settings['save_friend_veteran_packets']:
-                if 'succession_trained_chara_data' in data:
-                    self.to_json(data['succession_trained_chara_data'].get('succession_trained_chara_array', []), "friend.json")
+                if 'succession_trained_chara_data' in data and 'friend_support_card_data' in data:
+                    trained_chara_array = data['succession_trained_chara_data'].get('succession_trained_chara_array', [])
+                    summary_user_info_array = data['friend_support_card_data'].get('summary_user_info_array', [])
+
+                    if summary_user_info_array:
+                        # Create mapping from viewer_id to name
+                        viewer_id_to_name = {user.get('viewer_id'): user.get('name') for user in summary_user_info_array}
+
+                        # Add name to each character entry
+                        for chara in trained_chara_array:
+                            viewer_id = chara.get('viewer_id')
+                            if viewer_id in viewer_id_to_name:
+                                chara['name'] = viewer_id_to_name[viewer_id]
+
+                    self.to_json(trained_chara_array, "friend.json")
 
             if self.threader.settings['save_race_packets']:
                 if data.get('race_scenario') or data.get('room_info') or data.get('race_result_info'):
