@@ -697,6 +697,56 @@ def determine_skill_id_from_group_id(group_id, rarity, skills_id_list):
 
     return skill_id
 
+def get_prerequisite_skill_ids(skill_id):
+    true_id = skill_id
+    if 900000 <= true_id < 1000000:
+        true_id -= 800000
+        
+    with Connection() as (_, cursor):
+        cursor.execute("SELECT group_id, group_rate FROM skill_data WHERE id = ?", (true_id,))
+        row = cursor.fetchone()
+        if not row:
+            return []
+            
+        group_id, group_rate = row
+        
+        cursor.execute(
+            "SELECT id, skill_category FROM skill_data WHERE group_id = ? AND group_rate < ? ORDER BY group_rate ASC",
+            (group_id, group_rate)
+        )
+        rows = cursor.fetchall()
+        
+    if not rows:
+        return []
+        
+    prereqs = []
+    for r in rows:
+        pid = r[0]
+        pcat = r[1]
+        if pcat == 5 and 100000 <= pid < 300000:
+            pid += 800000
+        prereqs.append(pid)
+        
+    return prereqs
+
+GROUP_ID_DICT = {}
+def get_group_id_dict(force=False):
+    global GROUP_ID_DICT
+    if force or not GROUP_ID_DICT:
+        with Connection() as (_, cursor):
+            try:
+                cursor.execute("SELECT id, group_id FROM skill_data")
+                rows = cursor.fetchall()
+            except sqlite3.OperationalError as e:
+                logger.error(f"get_group_id_dict failed: {e}\\n{traceback.format_exc()}")
+                rows = []
+        if rows:
+            tmp = {}
+            for row in rows:
+                tmp[str(row[0])] = row[1]
+            GROUP_ID_DICT.update(tmp)
+    return GROUP_ID_DICT
+
 def get_total_minigame_plushies(force=False):
     with Connection() as (_, cursor):
         cursor.execute(
@@ -822,6 +872,8 @@ UPDATE_FUNCS = [
     get_gl_lesson_dict,
     get_group_card_effect_ids,
     get_skill_id_dict,
+    get_group_id_dict,
+    get_skill_score_dict,
     get_scouting_score_to_rank_dict,
     get_single_mode_unique_chara_dict,
     get_program_id_dict,
