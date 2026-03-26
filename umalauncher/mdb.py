@@ -314,6 +314,22 @@ def get_skill_costs_dict(force=False):
 
     return SKILL_COSTS_DICT
 
+SKILL_SCORE_DICT = {}
+def get_skill_score_dict(force=False):
+    global SKILL_SCORE_DICT
+    if force or not SKILL_SCORE_DICT:
+        with Connection() as (_, cursor):
+            try:
+                cursor.execute("SELECT id, grade_value FROM skill_data WHERE grade_value > 0")
+                rows = cursor.fetchall()
+                SKILL_SCORE_DICT.update({row[0]: row[1] for row in rows})
+            except Exception as e:
+                logger.error(f"Error fetching skill scores: {e}")
+    return SKILL_SCORE_DICT
+
+
+
+
 SKILL_CONDITIONS_DICT = {}
 def get_skill_conditions_dict(force=False):
     global SKILL_CONDITIONS_DICT
