@@ -25,6 +25,184 @@ import subprocess
 from Cryptodome.Cipher import AES
 
 
+STAT_BLOCK_MULTIPLIERS = [
+    0.5, 0.8, 1.0, 1.3, 1.6, 1.8, 2.1, 2.4, 2.6, 2.8, 
+    2.9, 3.0, 3.1, 3.3, 3.4, 3.5, 3.9, 4.1, 4.2, 4.3, 
+    5.2, 5.5, 6.6, 6.8
+]
+
+STAT_SCORES = [0] * 1202
+_score_scaled = 0
+for _i in range(1, 1201):
+    _block = (_i - 1) // 50
+    _score_scaled += int(STAT_BLOCK_MULTIPLIERS[_block] * 10)
+    STAT_SCORES[_i] = _score_scaled // 10
+STAT_SCORES[1200] = 3841
+
+def get_stat_score(val):
+    x = val + 1
+    if x <= 0: return 0
+    if x <= 1200:
+        return STAT_SCORES[x]
+    if x <= 1209:
+        return round((x - 1200) * 7.888 + 3841)
+    
+    multipliers_10 = {
+        1210: 8.0, 1220: 8.1, 1230: 8.3, 1240: 8.4, 1250: 8.5, 1260: 8.6, 1270: 8.8, 1280: 8.9, 1290: 9.0,
+        1300: 9.2, 1310: 9.3, 1320: 9.4, 1330: 9.6, 1340: 9.7, 1350: 9.8, 1360: 10.0, 1370: 10.1, 1380: 10.2, 1390: 10.3,
+        1400: 10.5, 1410: 10.6, 1420: 10.7, 1430: 10.9, 1440: 11.0, 1450: 11.1, 1460: 11.3, 1470: 11.4, 1480: 11.5, 1490: 11.7,
+        1500: 11.8, 1510: 11.9, 1520: 12.1, 1530: 12.2, 1540: 12.3, 1550: 12.4, 1560: 12.6, 1570: 12.7, 1580: 12.8, 1590: 13.0,
+        1600: 13.1, 1610: 13.2, 1620: 13.4, 1630: 13.5, 1640: 13.6, 1650: 13.8, 1660: 13.9, 1670: 14.0, 1680: 14.1, 1690: 14.3,
+        1700: 14.4, 1710: 14.5, 1720: 14.7, 1730: 14.8, 1740: 14.9, 1750: 15.1, 1760: 15.2, 1770: 15.3, 1780: 15.5, 1790: 15.6,
+        1800: 15.7, 1810: 15.9, 1820: 16.0, 1830: 16.1, 1840: 16.2, 1850: 16.4, 1860: 16.5, 1870: 16.6, 1880: 16.8, 1890: 16.9,
+        1900: 17.0, 1910: 17.2, 1920: 17.3, 1930: 17.4, 1940: 17.6, 1950: 17.7, 1960: 17.8, 1970: 17.9, 1980: 18.1, 1990: 18.2,
+        2000: 18.3
+    }
+    block_key = (x // 10) * 10
+    mult = multipliers_10.get(block_key, multipliers_10[min(multipliers_10.keys(), key=lambda k: abs(k-block_key))]) # Fallback to nearest
+    return round((x - 1209) * mult + 3912)
+
+def get_aptitude_multiplier(apt_val):
+    if apt_val >= 7: return 1.1     # S or A
+    if apt_val >= 5: return 0.9   # B or C
+    if apt_val >= 2: return 0.8   # D, E, F
+    return 0.7                    # G
+
+def get_rank_str(score):
+    if score < 300: return "G"
+    if score < 600: return "G+"
+    if score < 900: return "F"
+    if score < 1300: return "F+"
+    if score < 1800: return "E"
+    if score < 2300: return "E+"
+    if score < 2900: return "D"
+    if score < 3500: return "D+"
+    if score < 4900: return "C"
+    if score < 6500: return "C+"
+    if score < 8200: return "B"
+    if score < 10000: return "B+"
+    if score < 12100: return "A"
+    if score < 14500: return "A+"
+    if score < 15900: return "S"
+    if score < 17500: return "S+"
+    if score < 19200: return "SS"
+    if score < 19600: return "SS+"
+    if score < 23900:
+        sub = (score - 19600) // 400
+        return f"UG{sub}" if sub > 0 else "UG"
+    if score < 28800:
+        sub = (score - 23900) // 500
+        return f"UF{sub}" if sub > 0 else "UF"
+    if score < 34400:
+        sub = (score - 28800) // 560
+        return f"UE{sub}" if sub > 0 else "UE"
+    if score < 40700:
+        sub = (score - 34400) // 630
+        return f"UD{sub}" if sub > 0 else "UD"
+    if score < 47600:
+        sub = (score - 40700) // 700
+        return f"UC{sub}" if sub > 0 else "UC"
+    if score < 55200:
+        sub = (score - 47600) // 760
+        return f"UB{sub}" if sub > 0 else "UB"
+    sub = (score - 55200) // 800
+    return f"UA{sub}" if sub > 0 else "UA"
+
+def get_next_rank_req(score):
+    if score < 300: return 300 - score
+    if score < 600: return 600 - score
+    if score < 900: return 900 - score
+    if score < 1300: return 1300 - score
+    if score < 1800: return 1800 - score
+    if score < 2300: return 2300 - score
+    if score < 2900: return 2900 - score
+    if score < 3500: return 3500 - score
+    if score < 4900: return 4900 - score
+    if score < 6500: return 6500 - score
+    if score < 8200: return 8200 - score
+    if score < 10000: return 10000 - score
+    if score < 12100: return 12100 - score
+    if score < 14500: return 14500 - score
+    if score < 15900: return 15900 - score
+    if score < 17500: return 17500 - score
+    if score < 19200: return 19200 - score
+    if score < 19600: return 19600 - score
+    if score < 23900:
+        base, step, bound = 19600, 400, 23900
+        return min(bound, base + ((score - base) // step + 1) * step) - score
+    if score < 28800:
+        base, step, bound = 23900, 500, 28800
+        return min(bound, base + ((score - base) // step + 1) * step) - score
+    if score < 34400:
+        base, step, bound = 28800, 560, 34400
+        return min(bound, base + ((score - base) // step + 1) * step) - score
+    if score < 40700:
+        base, step, bound = 34400, 630, 40700
+        return min(bound, base + ((score - base) // step + 1) * step) - score
+    if score < 47600:
+        base, step, bound = 40700, 700, 47600
+        return min(bound, base + ((score - base) // step + 1) * step) - score
+    if score < 55200:
+        base, step, bound = 47600, 760, 55200
+        return min(bound, base + ((score - base) // step + 1) * step) - score
+    base, step = 55200, 800
+    return base + ((score - base) // step + 1) * step - score
+
+def calculate_uma_rank_score(chara_info, skill_data):
+    total_score = 0
+    skill_scores_map = {}
+    
+    s_speed = get_stat_score(chara_info.get('speed', 0))
+    s_stamina = get_stat_score(chara_info.get('stamina', 0))
+    s_power = get_stat_score(chara_info.get('power', 0))
+    s_guts = get_stat_score(chara_info.get('guts', 0))
+    s_wiz = get_stat_score(chara_info.get('wiz', 0))
+    
+    total_score += s_speed + s_stamina + s_power + s_guts + s_wiz
+
+    skill_scores = mdb.get_skill_score_dict()
+    skill_conditions = mdb.get_skill_conditions_dict()
+    unique_skill_id = None
+    unique_skill_level = 1
+    stars = chara_info.get('talent_level', 1)
+    
+    for skill in chara_info.get('skill_array', []):
+        if str(skill.get('skill_id', '')).startswith('1'):
+            unique_skill_id = skill['skill_id']
+            unique_skill_level = skill.get('level', 1)
+            break
+
+    for sid, info in skill_data.items():
+        if str(sid).startswith('1'):
+            continue
+        base_score = skill_scores.get(sid, 0)
+        cond = skill_conditions.get(sid, "")
+        multiplier = 1.0
+        if "distance_type==" in cond:
+            if "distance_type==1" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_distance_short', 1))
+            elif "distance_type==2" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_distance_mile', 1))
+            elif "distance_type==3" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_distance_middle', 1))
+            elif "distance_type==4" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_distance_long', 1))
+        elif "ground_type==" in cond:
+            if "ground_type==1" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_ground_turf', 1))
+            elif "ground_type==2" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_ground_dirt', 1))
+        elif "running_style==" in cond:
+            if "running_style==1" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_running_style_nige', 1))
+            elif "running_style==2" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_running_style_senko', 1))
+            elif "running_style==3" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_running_style_sashi', 1))
+            elif "running_style==4" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_running_style_oikomi', 1))
+        final_s = round(base_score * multiplier)
+        if info.get('is_acquired'):
+            total_score += final_s
+        skill_scores_map[str(sid)] = final_s
+    unique_mult = 170 if stars >= 3 else 120
+    u_score = unique_skill_level * unique_mult
+    total_score += u_score
+    print(f"UMA RANK CALC DEBUG -> Unique Skill ID: {unique_skill_id} | Lvl: {unique_skill_level} | Stars: {stars} | Score Added: {u_score} | Base Mult: {unique_mult}")
+    if unique_skill_id:
+        skill_scores_map[str(unique_skill_id)] = u_score
+    return {"score": total_score, "rank": get_rank_str(total_score), "skill_scores": skill_scores_map}
+
 def unpack(data: bytes, key: bytes, iv: bytes) -> bytes:
     logger.debug(f"Unpacking:\nData: {data.hex()}\nKey: {key.hex()}\nIV: {iv.hex()}")
     cipher = AES.new(key, AES.MODE_CBC, iv=iv)
@@ -834,6 +1012,7 @@ class CarrotJuicer:
 
         mode_pref = self.skill_browser.execute_script("return window.localStorage.getItem('UL_MODE_PREF') || 'parent';")
         is_ace_mode = (mode_pref == 'ace')
+        is_rating_mode = (mode_pref == 'rating')
 
         acquired_skills_list = [sid for sid, data in self.skill_data.items() if data["is_acquired"]]
         unacquired_skills_list = [sid for sid, data in self.skill_data.items() if not data["is_acquired"]]
@@ -880,7 +1059,87 @@ class CarrotJuicer:
             "iterations": total_iterations
         }
 
-        results = self.run_simulation(util.get_asset("_assets/umasim-cli.exe"), mock_payload)
+        if is_rating_mode:
+            results = {"candidates": {}}
+        else:
+            results = self.run_simulation(util.get_asset("_assets/umasim-cli.exe"), mock_payload)
+
+        discount_map = {0: 0, 1: 10, 2: 20, 3: 30, 4: 35, 5: 40}
+        rating_calc = calculate_uma_rank_score(self.last_data['chara_info'], self.skill_data)
+        rating_scores = rating_calc.get("skill_scores", {})
+        uma_score = rating_calc.get("score", 0)
+        uma_rank = rating_calc.get("rank", "")
+        rating_data = {}
+        for skill_id in self.skills_list:
+            skill_id_int = int(skill_id)
+            skill_id_str = str(skill_id)
+            score = rating_scores.get(skill_id_str, 0)
+            skill_info = self.skill_data.get(skill_id_int, {})
+            skill_rarity = skill_info.get("rarity", 1)
+            
+            # Whether Gold/Evolve (rarity >= 2) or Double Circle (rarity == 1)
+            # The lower-rank prerequisite skill ALWAYS has an ID of (current_skill_id + 1).
+            prev_id = skill_id_int + 1
+            prev_info = self.skill_data.get(prev_id, {})
+            if prev_info and prev_info.get("is_acquired", False):
+                prev_score = rating_scores.get(str(prev_id), 0)
+                score = score - prev_score
+            base_cost = skill_info.get("base_cost", 0)
+            hint_level = skill_info.get("hint_level", 0)
+            skill_rarity = skill_info.get("rarity", 1)
+            effective_hint_level = min(hint_level, 5)
+            discount_percent = discount_map.get(effective_hint_level, 0)
+            total_sp_cost = int(base_cost * (100 - discount_percent) / 100)
+            if skill_rarity == 2:
+                white_skill_id = skill_id_int + 1
+                white_skill_info = self.skill_data.get(white_skill_id, {})
+                if white_skill_info and not white_skill_info.get("is_acquired", False):
+                    white_base_cost = white_skill_info.get("base_cost", 0)
+                    white_hint_level = white_skill_info.get("hint_level", 0)
+                    white_discount_percent = discount_map.get(min(white_hint_level, 5), 0)
+                    white_sp_cost = int(white_base_cost * (100 - white_discount_percent) / 100)
+                    total_sp_cost += white_sp_cost
+            eff = (score / total_sp_cost) if total_sp_cost > 0 else 0
+            rating_data[skill_id_str] = {
+                "score": score,
+                "sp_cost": total_sp_cost,
+                "efficiency": round(eff, 3),
+                "hint_level": hint_level
+            }
+
+        available_sp = self.last_data['chara_info'].get('skill_point', 0)
+        
+        skill_ids = [int(sid) for sid in rating_data.keys()]
+        id_to_group = {}
+        if skill_ids:
+            with mdb.Connection() as (_, cursor):
+                placeholders = ','.join('?' * len(skill_ids))
+                cursor.execute(f"SELECT id, group_id FROM skill_data WHERE id IN ({placeholders})", skill_ids)
+                for row in cursor.fetchall():
+                    id_to_group[str(row[0])] = row[1]
+
+        groups = {}
+        for sid_str, detail in rating_data.items():
+            cost = detail.get('sp_cost', 0)
+            gain = detail.get('score', 0)
+            if cost > 0 and gain > 0:
+                gid = id_to_group.get(sid_str, sid_str)
+                groups.setdefault(gid, []).append((cost, gain))
+        
+        dp = [0] * (available_sp + 1)
+        for gid, items_in_group in groups.items():
+            new_dp = list(dp)
+            for cost, gain in items_in_group:
+                for j in range(available_sp, cost - 1, -1):
+                    new_dp[j] = max(new_dp[j], dp[j - cost] + gain)
+            dp = new_dp
+                
+        max_score_gain = dp[available_sp] if available_sp >= 0 else 0
+        projected_score = uma_score + max_score_gain
+        projected_rank = get_rank_str(projected_score)
+        
+        uma_next = get_next_rank_req(uma_score)
+        proj_next = get_next_rank_req(projected_score)
 
         sim_summary = {}
 
@@ -902,7 +1161,6 @@ class CarrotJuicer:
             global_box_min = min(b_min_arr)
             global_box_max = max(b_max_arr)
 
-            discount_map = {0: 0, 1: 10, 2: 20, 3: 30, 4: 35, 5: 40}
             for skill_id_str, candidate_data in results["candidates"].items():
                 if not candidate_data:
                     continue
@@ -1001,6 +1259,9 @@ class CarrotJuicer:
                                                                                                        "")
             all_conditions[str(skill_id)] = cond
 
+        if global_box_min == float('inf'): global_box_min = 0.0
+        if global_box_max == float('-inf'): global_box_max = 0.0
+
         self.skill_browser.execute_script(
             """
             let skills_list = arguments[0];
@@ -1012,6 +1273,13 @@ class CarrotJuicer:
             let acquired_list = arguments[6] || [];
             let all_conditions = arguments[7] || {};
             let baseMedianAbs = arguments[8] || 0.0;
+            let rating_data = arguments[9] || {};
+            let uma_score = arguments[10] || 0;
+            let uma_rank = arguments[11] || "";
+            let proj_score = arguments[12] || 0;
+            let proj_rank = arguments[13] || "";
+            let uma_next = arguments[14] || 0;
+            let proj_next = arguments[15] || 0;
     
             function formatCondition(cond) {
                 if (!cond) return "";
@@ -1088,9 +1356,18 @@ class CarrotJuicer:
                 let btnAce = document.createElement("button");
                 btnAce.innerText = "Ace";
                 btnAce.style.padding = "4px 8px";
-                btnAce.style.borderRadius = "0 4px 4px 0";
+                btnAce.style.borderRadius = "0";
                 btnAce.style.border = "1px solid #c084fc";
+                btnAce.style.borderLeft = "none";
                 btnAce.style.cursor = "pointer";
+
+                let btnRating = document.createElement("button");
+                btnRating.innerText = "Rating";
+                btnRating.style.padding = "4px 8px";
+                btnRating.style.borderRadius = "0 4px 4px 0";
+                btnRating.style.border = "1px solid #c084fc";
+                btnRating.style.borderLeft = "none";
+                btnRating.style.cursor = "pointer";
     
                 window.updateToggleColors = () => {
                     if (window.UL_BADGE_PREF === 'hist') {
@@ -1110,11 +1387,41 @@ class CarrotJuicer:
                         btnAce.style.color = "white";
                         btnParent.style.background = "transparent";
                         btnParent.style.color = "var(--c-text)";
+                        btnRating.style.background = "transparent";
+                        btnRating.style.color = "var(--c-text)";
+                        document.querySelectorAll(".ul-badge-rating").forEach(el => el.style.display = "none");
+                        if (window.UL_BADGE_PREF === 'hist') {
+                            document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "block");
+                            document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "none");
+                        } else {
+                            document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "none");
+                            document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "flex");
+                        }
+                    } else if (window.UL_MODE_PREF === 'rating') {
+                        btnRating.style.background = "#c084fc";
+                        btnRating.style.color = "white";
+                        btnParent.style.background = "transparent";
+                        btnParent.style.color = "var(--c-text)";
+                        btnAce.style.background = "transparent";
+                        btnAce.style.color = "var(--c-text)";
+                        document.querySelectorAll(".ul-badge-rating").forEach(el => el.style.display = "flex");
+                        document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "none");
+                        document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "none");
                     } else {
                         btnParent.style.background = "#c084fc";
                         btnParent.style.color = "white";
                         btnAce.style.background = "transparent";
                         btnAce.style.color = "var(--c-text)";
+                        btnRating.style.background = "transparent";
+                        btnRating.style.color = "var(--c-text)";
+                        document.querySelectorAll(".ul-badge-rating").forEach(el => el.style.display = "none");
+                        if (window.UL_BADGE_PREF === 'hist') {
+                            document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "block");
+                            document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "none");
+                        } else {
+                            document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "none");
+                            document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "flex");
+                        }
                     }
                 };
     
@@ -1122,16 +1429,12 @@ class CarrotJuicer:
                     window.UL_BADGE_PREF = 'hist';
                     localStorage.setItem('UL_BADGE_PREF', 'hist');
                     window.updateToggleColors();
-                    document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "block");
-                    document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "none");
                 };
     
                 btnBox.onclick = () => {
                     window.UL_BADGE_PREF = 'box';
                     localStorage.setItem('UL_BADGE_PREF', 'box');
                     window.updateToggleColors();
-                    document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "none");
-                    document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "flex");
                 };
     
                 btnParent.onclick = () => {
@@ -1145,21 +1448,49 @@ class CarrotJuicer:
                     localStorage.setItem('UL_MODE_PREF', 'ace');
                     window.updateToggleColors();
                 };
+
+                btnRating.onclick = () => {
+                    window.UL_MODE_PREF = 'rating';
+                    localStorage.setItem('UL_MODE_PREF', 'rating');
+                    window.updateToggleColors();
+                };
     
                 window.updateToggleColors();
                 
+                let rankDisp = document.createElement("div");
+                rankDisp.id = "ul-rank-display";
+                rankDisp.style.marginLeft = "auto";
+                rankDisp.style.marginRight = "8px";
+                rankDisp.style.fontSize = "1em";
+                rankDisp.style.fontWeight = "bold";
+                rankDisp.style.color = "#fcd34d";
+                rankDisp.style.textAlign = "right";
+                rankDisp.style.lineHeight = "0.9";
+                rankDisp.style.textShadow = "1px 1px 2px black, -1px -1px 2px black";
+
                 toggleDiv.appendChild(btnHist);
                 toggleDiv.appendChild(btnBox);
                 modeToggleDiv.appendChild(btnParent);
                 modeToggleDiv.appendChild(btnAce);
+                modeToggleDiv.appendChild(btnRating);
                 
                 pageTitle.appendChild(toggleDiv);
                 pageTitle.appendChild(modeToggleDiv);
+                pageTitle.appendChild(rankDisp);
                 pageTitle.style.display = "flex";
                 pageTitle.style.alignItems = "center";
     
             } else if (window.updateToggleColors) {
                 window.updateToggleColors();
+            }
+            
+            let rankDispExists = document.getElementById("ul-rank-display");
+            if (rankDispExists) {
+                if (proj_score > uma_score) {
+                    rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank}</span> <span style="font-size:0.45em;font-weight:normal;">(${uma_score})</span> <span style="color:#d1d5db;font-weight:normal;font-size:0.45em;">[+${uma_next}]</span> <span style="color:#a8a29e;font-size:0.5em;">| Max: ${proj_rank}</span> <span style="font-size:0.45em;font-weight:normal;color:#a8a29e;">(${proj_score})</span> <span style="color:#a8a29e;font-weight:normal;font-size:0.45em;">[+${proj_next}]</span>`;
+                } else {
+                    rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank}</span> <span style="font-size:0.45em;font-weight:normal;">(${uma_score})</span> <span style="color:#d1d5db;font-weight:normal;font-size:0.45em;">[+${uma_next}]</span>`;
+                }
             }
     
             let skill_elements = [];
@@ -1227,6 +1558,30 @@ class CarrotJuicer:
                             badge.style.justifyContent = "center";
                             badge.innerHTML = `Acquired`;
                         } else {
+                            let rdata = rating_data[skill_id.toString()];
+                            let ratingHtml = '';
+                            if (rdata) {
+                                let eff = rdata.efficiency || 0;
+                                let t = Math.max(0, Math.min(1, (eff - 1) / 1));
+                                let saturation = 30 + t * 70;
+                                let lightness = 85 - t * 45;
+                                let bgColor = `hsla(45, ${saturation}%, ${lightness}%, ${0.08 + t * 0.17})`;
+                                let borderColor = `hsl(45, ${saturation}%, ${Math.max(lightness - 20, 30)}%)`;
+                                let rColor = eff >= 2 ? "#fcd34d" : (eff >= 1 ? "#e5c547" : "#b8a860");
+                                let ratingDisplay = window.UL_MODE_PREF === 'rating' ? 'flex' : 'none';
+                                ratingHtml = `
+                                    <div class="ul-badge-rating" style="display: ${ratingDisplay}; position: relative; width: 100%; height: 100%; background: ${bgColor}; border: 1px solid ${borderColor}; border-radius: 4px; box-sizing: border-box; overflow: hidden; align-items: center; justify-content: space-between; padding: 0 8px;">
+                                        <div style="display: flex; flex-direction: column; justify-content: center; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black; text-align: left;">
+                                            <div style="font-size: 0.7em; color: rgba(255,255,255,0.9);">Lv ${rdata.hint_level || 0} | ${rdata.sp_cost || "?"} SP</div>
+                                            <div style="font-size: 0.65em; color: ${rColor}; white-space: nowrap;">${rdata.efficiency.toFixed(2)} Pt/SP</div>
+                                        </div>
+                                        <div style="font-size: 1.1em; font-weight: bold; color: ${rColor}; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black; text-align: right; margin-top: 2px;">
+                                            ${rdata.score} Pt
+                                        </div>
+                                    </div>
+                                `;
+                            }
+
                             let data = sim_results[skill_id.toString()]; 
                             if (data) {
                                 let color = "#9ca3af";
@@ -1284,6 +1639,7 @@ class CarrotJuicer:
                                 let timeStr = data.conn_time.toFixed(1) + "s";
     
                                 badge.innerHTML = `
+                                    ${ratingHtml}
                                     <div class="ul-badge-hist" style="display: ${histDisplay}; position: relative; width: 100%; height: 100%; background: var(--c-bg-main-hover); border: 1px solid ${color}; border-radius: 4px; overflow: hidden;">
                                         ${histogramHtml}
                                         
@@ -1323,6 +1679,8 @@ class CarrotJuicer:
                                         </div>
                                     </div>
                                 `;
+                            } else if (ratingHtml !== '') {
+                                badge.innerHTML = ratingHtml;
                             }
                         }
                         row.prepend(badge);
@@ -1344,7 +1702,7 @@ class CarrotJuicer:
                 skills_table.appendChild(item);
             }
             """, self.skills_list, sim_summary, global_hist_min, global_hist_max, global_box_min, global_box_max,
-            acquired_skills_list, all_conditions, base_median_abs)
+            acquired_skills_list, all_conditions, base_median_abs, rating_data, uma_score, uma_rank, projected_score, projected_rank, uma_next, proj_next)
 
     def run_simulation(self, exe_path, payload):
         json_payload = json.dumps(payload)
