@@ -649,15 +649,16 @@ class CarrotJuicer:
                         "rarity": skill_rarity,
                         "base_cost": self.skill_costs_dict.get(str(skill_id), 0)
                     }
-                    # If it's a Gold/Upgraded skill, automatically grant the base White skill
+                    # If it's a Gold/Upgraded skill, automatically grant the prerequisite skill(s)
                     if skill_rarity >= 2:
-                        white_id = skill_id + 1
-                        self.skill_data[white_id] = {
-                            "is_acquired": True,
-                            "hint_level": 0,
-                            "rarity": 1,
-                            "base_cost": self.skill_costs_dict.get(str(white_id), 0)
-                        }
+                        prereq_ids = mdb.get_prerequisite_skill_ids(skill_id)
+                        for pid in prereq_ids:
+                            self.skill_data[pid] = {
+                                "is_acquired": True,
+                                "hint_level": 0,
+                                "rarity": mdb.get_skill_rarity(pid),
+                                "base_cost": self.skill_costs_dict.get(str(pid), 0)
+                            }
 
                 inherent_skills = mdb.get_card_inherent_skills(data['chara_info']['card_id'],
                                                                data['chara_info']['talent_level'])
@@ -689,16 +690,16 @@ class CarrotJuicer:
 
                     if tip_rarity > 1:
                         skill_id = self.skill_id_dict[(skill_tip['group_id'], tip_rarity)]
-                        white_id = mdb.determine_skill_id_from_group_id(skill_tip['group_id'], 1,
-                                                                        list(self.skill_data.keys()))
+                        prereq_ids = mdb.get_prerequisite_skill_ids(skill_id)
 
-                        if white_id not in self.skill_data:
-                            self.skill_data[white_id] = {
-                                "is_acquired": False,
-                                "hint_level": 0,
-                                "rarity": 1,
-                                "base_cost": self.skill_costs_dict.get(str(white_id), 0)
-                            }
+                        for pid in prereq_ids:
+                            if pid not in self.skill_data:
+                                self.skill_data[pid] = {
+                                    "is_acquired": False,
+                                    "hint_level": 0,
+                                    "rarity": mdb.get_skill_rarity(pid),
+                                    "base_cost": self.skill_costs_dict.get(str(pid), 0)
+                                }
                     else:
                         skill_id = mdb.determine_skill_id_from_group_id(skill_tip['group_id'], tip_rarity,
                                                                         list(self.skill_data.keys()))
@@ -1001,6 +1002,9 @@ class CarrotJuicer:
         if self.should_stop:
             return
 
+        if not self.last_data:
+            return
+
         if not self.skill_browser:
             self.skill_browser = horsium.BrowserWindow(
                 "https://gametora.com/umamusume/skills",
@@ -1020,8 +1024,6 @@ class CarrotJuicer:
 
         acquired_skills_list = [sid for sid, data in self.skill_data.items() if data["is_acquired"]]
         unacquired_skills_list = [sid for sid, data in self.skill_data.items() if not data["is_acquired"]]
-
-        print(self.skill_data)
 
         STYLE_INTERNAL_MAP = {
             1: "NIGE",
