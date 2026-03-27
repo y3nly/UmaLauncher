@@ -357,94 +357,93 @@ def get_skill_conditions_dict(force=False):
 
     return SKILL_CONDITIONS_DICT
 
-SKILL_EFFECTS_DICT = None
-def get_skill_effects_dict():
+SKILL_EFFECTS_DICT = {}
+def get_skill_effects_dict(force=False):
     global SKILL_EFFECTS_DICT
-    if SKILL_EFFECTS_DICT is not None:
-        return SKILL_EFFECTS_DICT
+    if force or not SKILL_EFFECTS_DICT:
+        EFFECT_NAMES = {
+            0: "Noop",
+            1: "SpeedUp",
+            2: "StaminaUp",
+            3: "PowerUp",
+            4: "GutsUp",
+            5: "WisdomUp",
+            8: "Vision",
+            9: "Recovery",
+            10: "MultiplyStartDelay",
+            13: "ExtendKakari",
+            14: "SetStartDelay",
+            21: "CurrentSpeed",
+            22: "CurrentSpeedWithNaturalDeceleration",
+            27: "TargetSpeed",
+            29: "ModifyKakariChance",
+            31: "Accel",
+            37: "ActivateRandomGold",
+            42: "ExtendEvolvedDuration"
+        }
 
-    EFFECT_NAMES = {
-        0: "Noop",
-        1: "SpeedUp",
-        2: "StaminaUp",
-        3: "PowerUp",
-        4: "GutsUp",
-        5: "WisdomUp",
-        8: "Vision",
-        9: "Recovery",
-        10: "MultiplyStartDelay",
-        13: "ExtendKakari",
-        14: "SetStartDelay",
-        21: "CurrentSpeed",
-        22: "CurrentSpeedWithNaturalDeceleration",
-        27: "TargetSpeed",
-        29: "ModifyKakariChance",
-        31: "Accel",
-        37: "ActivateRandomGold",
-        42: "ExtendEvolvedDuration"
-    }
+        SKILL_EFFECTS_DICT = {}
 
-    SKILL_EFFECTS_DICT = {}
+        with Connection() as (_, cursor):
+            try:
+                cursor.execute(
+                    """SELECT id, 
+                    ability_type_1_1, float_ability_value_1_1,
+                    ability_type_1_2, float_ability_value_1_2,
+                    ability_type_1_3, float_ability_value_1_3,
+                    float_ability_time_1,
+                    ability_type_2_1, float_ability_value_2_1,
+                    ability_type_2_2, float_ability_value_2_2,
+                    ability_type_2_2, float_ability_value_2_2,
+                    ability_type_2_3, float_ability_value_2_3,
+                    float_ability_time_2
+                    FROM skill_data"""
+                )
+                rows = cursor.fetchall()
 
-    with Connection() as (_, cursor):
-        try:
-            cursor.execute(
-                """SELECT id, 
-                ability_type_1_1, float_ability_value_1_1,
-                ability_type_1_2, float_ability_value_1_2,
-                ability_type_1_3, float_ability_value_1_3,
-                float_ability_time_1,
-                ability_type_2_1, float_ability_value_2_1,
-                ability_type_2_2, float_ability_value_2_2,
-                ability_type_2_3, float_ability_value_2_3,
-                float_ability_time_2
-                FROM skill_data"""
-            )
-            rows = cursor.fetchall()
+                for r in rows:
+                    sid = str(r[0])
+                    eff_strs = []
+                    max_duration = 0.0
 
-            for r in rows:
-                sid = str(r[0])
-                eff_strs = []
-                max_duration = 0.0
+                    # Phase 1
+                    for i in range(1, 7, 2):
+                        a_type = r[i]
+                        a_val = r[i+1]
+                        if a_type != 0:
+                            eff_name = EFFECT_NAMES.get(a_type, f"Type {a_type}")
+                            eff_strs.append(f"{eff_name} {a_val}")
+                    if r[7] > max_duration:
+                        max_duration = r[7]
 
-                # Phase 1
-                for i in range(1, 7, 2):
-                    a_type = r[i]
-                    a_val = r[i+1]
-                    if a_type != 0:
-                        eff_name = EFFECT_NAMES.get(a_type, f"Type {a_type}")
-                        eff_strs.append(f"{eff_name} {a_val}")
-                if r[7] > max_duration:
-                    max_duration = r[7]
+                    # Phase 2
+                    for i in range(8, 14, 2):
+                        a_type = r[i]
+                        a_val = r[i+1]
+                        if a_type != 0:
+                            eff_name = EFFECT_NAMES.get(a_type, f"Type {a_type}")
+                            eff_strs.append(f"{eff_name} {a_val}")
+                    if r[14] > max_duration:
+                        max_duration = r[14]
 
-                # Phase 2
-                for i in range(8, 14, 2):
-                    a_type = r[i]
-                    a_val = r[i+1]
-                    if a_type != 0:
-                        eff_name = EFFECT_NAMES.get(a_type, f"Type {a_type}")
-                        eff_strs.append(f"{eff_name} {a_val}")
-                if r[14] > max_duration:
-                    max_duration = r[14]
+                    if not eff_strs:
+                        SKILL_EFFECTS_DICT[sid] = {"effects": "No Effects", "conditions": ""}
+                        continue
 
-                if not eff_strs:
-                    SKILL_EFFECTS_DICT[sid] = {"effects": "No Effects", "conditions": ""}
-                    continue
+                    eff_text = ", ".join(eff_strs)
+                    if max_duration > 0:
+                        dur_text = f"Duration {max_duration / 10000.0}s"
+                        summary = f"{eff_text}, {dur_text}"
+                    else:
+                        summary = eff_text
 
-                eff_text = ", ".join(eff_strs)
-                if max_duration > 0:
-                    dur_text = f"Duration {max_duration / 10000.0}s"
-                    summary = f"{eff_text}, {dur_text}"
-                else:
-                    summary = eff_text
-
-                SKILL_EFFECTS_DICT[sid] = {
-                    "effects": summary,
-                    "conditions": ""
-                }
-        except sqlite3.OperationalError as e:
-            logger.error(f"Failed to parse skill_data logic from DB: {e}")
-            return {}
+                    SKILL_EFFECTS_DICT[sid] = {
+                        "effects": summary,
+                        "conditions": ""
+                    }
+            except sqlite3.OperationalError as e:
+                logger.error(f"Failed to parse skill_data logic from DB: {e}")
+                return {}
 
     return SKILL_EFFECTS_DICT
 
