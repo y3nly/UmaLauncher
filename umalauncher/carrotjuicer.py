@@ -1254,11 +1254,21 @@ class CarrotJuicer:
 
                 sim_summary[skill_id_str] = data_obj
 
-        all_conditions = {}
+        all_sk_data = {}
+        effects_dict = mdb.get_skill_effects_dict()
         for skill_id in self.skills_list:
-            cond = self.skill_conditions_dict.get(int(skill_id), "") or self.skill_conditions_dict.get(str(skill_id),
-                                                                                                       "")
-            all_conditions[str(skill_id)] = cond
+            sk_id_str = str(skill_id)
+            cond_old = self.skill_conditions_dict.get(int(skill_id), "") or self.skill_conditions_dict.get(sk_id_str, "")
+            eff_info = effects_dict.get(sk_id_str, {})
+            eff_str = eff_info.get("effects", "")
+            cond_new = eff_info.get("conditions", "")
+            if not cond_new:
+                cond_new = cond_old
+                
+            all_sk_data[sk_id_str] = {
+                "effects": eff_str,
+                "conditions": cond_new
+            }
 
         if global_box_min == float('inf'): global_box_min = 0.0
         if global_box_max == float('-inf'): global_box_max = 0.0
@@ -1272,7 +1282,8 @@ class CarrotJuicer:
             let globalBoxMin = arguments[4];
             let globalBoxMax = arguments[5];
             let acquired_list = arguments[6] || [];
-            let all_conditions = arguments[7] || {};
+            let all_sk_data = arguments[7] || {};
+
             let baseMedianAbs = arguments[8] || 0.0;
             let rating_data = arguments[9] || {};
             let uma_score = arguments[10] || 0;
@@ -1284,13 +1295,13 @@ class CarrotJuicer:
     
             function formatCondition(cond) {
                 if (!cond) return "";
-                return cond.replace(/([a-zA-Z_]+)|(==|>=|<=|!=|>|<|=|&|!)|(\\b\\d+(?:\\.\\d+)?\\b)/g, function(match, word, op, num) {
+                return cond.replace(/([a-zA-Z_]+)|(==|>=|<=|!=|>|<|=|&|!)|(\d+(?:\.\d+)?s?)/g, function(match, word, op, num) {
                     if (word) {
                         if (word === 'OR') return `<span style="color: #d65d8a;">${word}</span>`;
-                        return `<span style="color: #73c991;">${word}</span>`;
+                        return `<span style="color: #c084fc;">${word}</span>`;
                     }
                     if (op) return `<span style="color: #60a5fa;">${op}</span>`;
-                    if (num) return `<span style="color: #c084fc;">${num}</span>`;
+                    if (num) return `<span style="color: #73c991;">${num}</span>`;
                     return match;
                 });
             }
@@ -1318,6 +1329,43 @@ class CarrotJuicer:
     
             let pageTitle = document.querySelector("h1");
             if (pageTitle && !document.getElementById("ul-badge-toggle")) {
+            
+                let tooltipStyle = document.createElement("style");
+                tooltipStyle.id = "ul-custom-tooltips";
+                tooltipStyle.innerHTML = `
+                    .ul-tooltip { position: relative; cursor: help; width: 100%; display: block; }
+                    .ul-tooltip-row-text { 
+                        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; 
+                        width: 100%; display: block; 
+                    }
+                    .ul-tooltip-content {
+                        position: absolute; bottom: 100%; left: 0;
+                        background: rgba(17, 24, 39, 0.95); color: #e5e7eb; padding: 8px 12px; border-radius: 6px;
+                        font-size: 13px; white-space: pre-wrap; z-index: 9999;
+                        opacity: 0; visibility: hidden; pointer-events: none;
+                        transition: none; width: max-content; max-width: 100%;
+                        text-shadow: none; font-weight: normal; font-family: monospace;
+                        text-align: left; border: 1px solid #4b5563;
+                        line-height: 1.4;
+                        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+                        box-sizing: border-box;
+                    }
+                    .ul-tooltip:hover .ul-tooltip-content { opacity: 1; visibility: visible; }
+                    /* Dont truncate tooltip content inside */
+                    .ul-tooltip-content * { white-space: pre-wrap !important; }
+                    
+                    /* Utility for elements at the right edge of the screen */
+                    .ul-tooltip-right .ul-tooltip-content { right: 0; left: auto; }
+                    
+                    /* Layout Fix: Force full width by removing sidebar padding */
+                    div[class*='Layout_content_'], div[class*='Layout_container_'], main { 
+                        padding-right: 0 !important; 
+                        padding-left: 0 !important; 
+                        max-width: 100% !important; 
+                        width: 100% !important;
+                    }
+                `;
+                document.head.appendChild(tooltipStyle);
                 
                 let toggleDiv = document.createElement("div");
                 toggleDiv.id = "ul-badge-toggle";
@@ -1460,13 +1508,14 @@ class CarrotJuicer:
                 
                 let rankDisp = document.createElement("div");
                 rankDisp.id = "ul-rank-display";
-                rankDisp.style.marginLeft = "auto";
-                rankDisp.style.marginRight = "8px";
+                rankDisp.style.marginLeft = "20px";
+                rankDisp.style.marginRight = "auto";
                 rankDisp.style.fontSize = "1em";
                 rankDisp.style.fontWeight = "bold";
                 rankDisp.style.color = "#fcd34d";
-                rankDisp.style.textAlign = "right";
+                rankDisp.style.textAlign = "left";
                 rankDisp.style.lineHeight = "0.9";
+                rankDisp.style.whiteSpace = "normal";
                 rankDisp.style.textShadow = "1px 1px 2px black, -1px -1px 2px black";
 
                 toggleDiv.appendChild(btnHist);
@@ -1480,6 +1529,7 @@ class CarrotJuicer:
                 pageTitle.appendChild(rankDisp);
                 pageTitle.style.display = "flex";
                 pageTitle.style.alignItems = "center";
+                pageTitle.style.width = "100%";
     
             } else if (window.updateToggleColors) {
                 window.updateToggleColors();
@@ -1488,9 +1538,9 @@ class CarrotJuicer:
             let rankDispExists = document.getElementById("ul-rank-display");
             if (rankDispExists) {
                 if (proj_score > uma_score) {
-                    rankDispExists.innerHTML = `<span title="Score: ${uma_score} | Next Rank: +${uma_next}" style="font-size:0.5em;cursor:help;">Rating: ${uma_rank}</span> <span title="Max Score: ${proj_score} | Next Rank: +${proj_next}" style="color:#a8a29e;font-size:0.5em;cursor:help;">| Max: ${proj_rank}</span>`;
+                    rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank} ${uma_score}<span style="font-weight:normal;color:#d1d5db;margin-left:4px;font-size:0.85em;"> +${uma_next}</span></span> <span style="color:#a8a29e;font-size:0.5em;margin-left:8px;">Max: ${proj_rank}<span style="font-weight:normal;margin-left:4px;font-size:0.85em;"> +${proj_next}</span></span>`;
                 } else {
-                    rankDispExists.innerHTML = `<span title="Score: ${uma_score} | Next Rank: +${uma_next}" style="font-size:0.5em;cursor:help;">Rating: ${uma_rank}</span>`;
+                    rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank} ${uma_score}<span style="font-weight:normal;color:#d1d5db;margin-left:4px;font-size:0.85em;"> +${uma_next}</span></span>`;
                 }
             }
     
@@ -1533,8 +1583,13 @@ class CarrotJuicer:
                         badge.style.boxSizing = "border-box";
                         badge.style.display = "block";
     
-                        let condRaw = all_conditions[skill_id.toString()] || "";
-                        let condHtml = `<div style="color: #d1d5db; font-family: monospace; white-space: pre-wrap; line-height: 1.2;">${formatCondition(condRaw)} <span style="color: #6b7280; font-size: 0.85em;">(${skill_id})</span></div>`;
+                        let skData = all_sk_data[skill_id.toString()] || {};
+                        let effRaw = skData.effects || "";
+                        let condRaw = skData.conditions || "";
+                        
+                        let displayVal = effRaw ? effRaw : condRaw;
+                        
+                        let condHtml = `<div class="ul-tooltip"><div class="ul-tooltip-row-text" style="color: #d1d5db; font-family: monospace; line-height: 1.2;">${formatCondition(displayVal)} <span style="color: #6b7280; font-size: 0.85em;">(${skill_id})</span></div><div class="ul-tooltip-content">${formatCondition(condRaw)}</div></div>`;
     
                         if (row.children.length >= 3) {
                             let descCell = row.children[2];
@@ -1568,10 +1623,10 @@ class CarrotJuicer:
                                 let lightness = 85 - t * 45;
                                 let bgColor = `hsla(45, ${saturation}%, ${lightness}%, ${0.08 + t * 0.17})`;
                                 let borderColor = `hsl(45, ${saturation}%, ${Math.max(lightness - 20, 30)}%)`;
-                                let rColor = eff >= 2 ? "#fcd34d" : (eff >= 1 ? "#e5c547" : "#b8a860");
+                                let rColor = eff >= 2.5 ? "#ffbe28" : (eff >= 2 ? "#fcd34d" : (eff >= 1 ? "#fff59d" : "#94a3b8"));
                                 let ratingDisplay = window.UL_MODE_PREF === 'rating' ? 'flex' : 'none';
                                 ratingHtml = `
-                                    <div class="ul-badge-rating" style="display: ${ratingDisplay}; position: relative; width: 100%; height: 100%; background: ${bgColor}; border: 1px solid ${borderColor}; border-radius: 4px; box-sizing: border-box; overflow: hidden; align-items: center; justify-content: space-between; padding: 0 8px;">
+                                    <div class="ul-badge-rating" style="display: ${ratingDisplay}; position: relative; width: 100%; height: 100%; background: #313131; border: 1px solid ${borderColor}; border-radius: 4px; box-sizing: border-box; overflow: hidden; align-items: center; justify-content: space-between; padding: 0 8px;">
                                         <div style="display: flex; flex-direction: column; justify-content: center; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black; text-align: left;">
                                             <div style="font-size: 0.7em; color: rgba(255,255,255,0.9);">Lv ${rdata.hint_level || 0} | ${rdata.sp_cost || "?"} SP</div>
                                             <div style="font-size: 0.65em; color: ${rColor}; white-space: nowrap;">${rdata.efficiency.toFixed(2)} Pt/SP</div>
@@ -1641,7 +1696,7 @@ class CarrotJuicer:
     
                                 badge.innerHTML = `
                                     ${ratingHtml}
-                                    <div class="ul-badge-hist" style="display: ${histDisplay}; position: relative; width: 100%; height: 100%; background: var(--c-bg-main-hover); border: 1px solid ${color}; border-radius: 4px; overflow: hidden;">
+                                    <div class="ul-badge-hist" style="display: ${histDisplay}; position: relative; width: 100%; height: 100%; background: #313131; border: 1px solid ${color}; border-radius: 4px; overflow: hidden;">
                                         ${histogramHtml}
                                         
                                         <div style="position: absolute; top: 1px; left: 4px; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">
@@ -1655,7 +1710,7 @@ class CarrotJuicer:
                                         </div>
                                     </div>
     
-                                    <div class="ul-badge-box" style="display: ${boxDisplay}; position: relative; width: 100%; height: 100%; background: var(--c-bg-main-hover); border: 1px solid ${color}; border-radius: 4px; box-sizing: border-box; overflow: hidden;">
+                                    <div class="ul-badge-box" style="display: ${boxDisplay}; position: relative; width: 100%; height: 100%; background: #313131; border: 1px solid ${color}; border-radius: 4px; box-sizing: border-box; overflow: hidden;">
                                         
                                         <div style="position: absolute; left: ${baseMedianPct}%; top: 0; bottom: 0; width: 0px; border-left: 1px dashed white; z-index: 2;"></div>
     
@@ -1693,8 +1748,10 @@ class CarrotJuicer:
             for (let i = 0; i < skill_elements.length; i++) {
                 const item = skill_elements[i];
                 item.style.display = "grid";
+                item.style.width = "100%";
+                item.style.boxSizing = "border-box";
                 item.style.gridTemplateAreas = '"badge image jpname desc"';
-                item.style.gridTemplateColumns = "165px 40px 250px auto";
+                item.style.gridTemplateColumns = "165px 40px 250px minmax(0, 1fr)";
     
                 if (color_class) {
                     if (i % 2 == 0) item.classList.add(color_class);
@@ -1703,7 +1760,7 @@ class CarrotJuicer:
                 skills_table.appendChild(item);
             }
             """, self.skills_list, sim_summary, global_hist_min, global_hist_max, global_box_min, global_box_max,
-            acquired_skills_list, all_conditions, base_median_abs, rating_data, uma_score, uma_rank, projected_score, projected_rank, uma_next, proj_next)
+            acquired_skills_list, all_sk_data, base_median_abs, rating_data, uma_score, uma_rank, projected_score, projected_rank, uma_next, proj_next)
 
     def run_simulation(self, exe_path, payload):
         json_payload = json.dumps(payload)
