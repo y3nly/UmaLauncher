@@ -357,6 +357,97 @@ def get_skill_conditions_dict(force=False):
 
     return SKILL_CONDITIONS_DICT
 
+SKILL_EFFECTS_DICT = None
+def get_skill_effects_dict():
+    global SKILL_EFFECTS_DICT
+    if SKILL_EFFECTS_DICT is not None:
+        return SKILL_EFFECTS_DICT
+
+    EFFECT_NAMES = {
+        0: "Noop",
+        1: "SpeedUp",
+        2: "StaminaUp",
+        3: "PowerUp",
+        4: "GutsUp",
+        5: "WisdomUp",
+        8: "Vision",
+        9: "Recovery",
+        10: "MultiplyStartDelay",
+        13: "ExtendKakari",
+        14: "SetStartDelay",
+        21: "CurrentSpeed",
+        22: "CurrentSpeedWithNaturalDeceleration",
+        27: "TargetSpeed",
+        29: "ModifyKakariChance",
+        31: "Accel",
+        37: "ActivateRandomGold",
+        42: "ExtendEvolvedDuration"
+    }
+
+    SKILL_EFFECTS_DICT = {}
+
+    with Connection() as (_, cursor):
+        try:
+            cursor.execute(
+                """SELECT id, 
+                ability_type_1_1, float_ability_value_1_1,
+                ability_type_1_2, float_ability_value_1_2,
+                ability_type_1_3, float_ability_value_1_3,
+                float_ability_time_1,
+                ability_type_2_1, float_ability_value_2_1,
+                ability_type_2_2, float_ability_value_2_2,
+                ability_type_2_3, float_ability_value_2_3,
+                float_ability_time_2
+                FROM skill_data"""
+            )
+            rows = cursor.fetchall()
+
+            for r in rows:
+                sid = str(r[0])
+                eff_strs = []
+                max_duration = 0.0
+
+                # Phase 1
+                for i in range(1, 7, 2):
+                    a_type = r[i]
+                    a_val = r[i+1]
+                    if a_type != 0:
+                        eff_name = EFFECT_NAMES.get(a_type, f"Type {a_type}")
+                        eff_strs.append(f"{eff_name} {a_val}")
+                if r[7] > max_duration:
+                    max_duration = r[7]
+
+                # Phase 2
+                for i in range(8, 14, 2):
+                    a_type = r[i]
+                    a_val = r[i+1]
+                    if a_type != 0:
+                        eff_name = EFFECT_NAMES.get(a_type, f"Type {a_type}")
+                        eff_strs.append(f"{eff_name} {a_val}")
+                if r[14] > max_duration:
+                    max_duration = r[14]
+
+                if not eff_strs:
+                    SKILL_EFFECTS_DICT[sid] = {"effects": "No Effects", "conditions": ""}
+                    continue
+
+                eff_text = ", ".join(eff_strs)
+                if max_duration > 0:
+                    dur_text = f"Duration {max_duration / 10000.0}s"
+                    summary = f"{eff_text}, {dur_text}"
+                else:
+                    summary = eff_text
+
+                SKILL_EFFECTS_DICT[sid] = {
+                    "effects": summary,
+                    "conditions": ""
+                }
+        except sqlite3.OperationalError as e:
+            logger.error(f"Failed to parse skill_data logic from DB: {e}")
+            return {}
+
+    return SKILL_EFFECTS_DICT
+
 SKILL_HINT_NAME_DICT = {}
 def get_skill_hint_name_dict(force=False):
     global SKILL_HINT_NAME_DICT
@@ -697,6 +788,56 @@ def determine_skill_id_from_group_id(group_id, rarity, skills_id_list):
 
     return skill_id
 
+def get_prerequisite_skill_ids(skill_id):
+    true_id = skill_id
+    if 900000 <= true_id < 1000000:
+        true_id -= 800000
+        
+    with Connection() as (_, cursor):
+        cursor.execute("SELECT group_id, group_rate FROM skill_data WHERE id = ?", (true_id,))
+        row = cursor.fetchone()
+        if not row:
+            return []
+            
+        group_id, group_rate = row
+        
+        cursor.execute(
+            "SELECT id, skill_category FROM skill_data WHERE group_id = ? AND group_rate < ? ORDER BY group_rate ASC",
+            (group_id, group_rate)
+        )
+        rows = cursor.fetchall()
+        
+    if not rows:
+        return []
+        
+    prereqs = []
+    for r in rows:
+        pid = r[0]
+        pcat = r[1]
+        if pcat == 5 and 100000 <= pid < 300000:
+            pid += 800000
+        prereqs.append(pid)
+        
+    return prereqs
+
+GROUP_ID_DICT = {}
+def get_group_id_dict(force=False):
+    global GROUP_ID_DICT
+    if force or not GROUP_ID_DICT:
+        with Connection() as (_, cursor):
+            try:
+                cursor.execute("SELECT id, group_id FROM skill_data")
+                rows = cursor.fetchall()
+            except sqlite3.OperationalError as e:
+                logger.error(f"get_group_id_dict failed: {e}\\n{traceback.format_exc()}")
+                rows = []
+        if rows:
+            tmp = {}
+            for row in rows:
+                tmp[str(row[0])] = row[1]
+            GROUP_ID_DICT.update(tmp)
+    return GROUP_ID_DICT
+
 def get_total_minigame_plushies(force=False):
     with Connection() as (_, cursor):
         cursor.execute(
@@ -822,6 +963,9 @@ UPDATE_FUNCS = [
     get_gl_lesson_dict,
     get_group_card_effect_ids,
     get_skill_id_dict,
+    get_group_id_dict,
+    get_skill_effects_dict,
+    get_skill_score_dict,
     get_scouting_score_to_rank_dict,
     get_single_mode_unique_chara_dict,
     get_program_id_dict,

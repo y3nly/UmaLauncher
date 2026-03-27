@@ -39,169 +39,7 @@ for _i in range(1, 1201):
     STAT_SCORES[_i] = _score_scaled // 10
 STAT_SCORES[1200] = 3841
 
-def get_stat_score(val):
-    x = val + 1
-    if x <= 0: return 0
-    if x <= 1200:
-        return STAT_SCORES[x]
-    if x <= 1209:
-        return round((x - 1200) * 7.888 + 3841)
-    
-    multipliers_10 = {
-        1210: 8.0, 1220: 8.1, 1230: 8.3, 1240: 8.4, 1250: 8.5, 1260: 8.6, 1270: 8.8, 1280: 8.9, 1290: 9.0,
-        1300: 9.2, 1310: 9.3, 1320: 9.4, 1330: 9.6, 1340: 9.7, 1350: 9.8, 1360: 10.0, 1370: 10.1, 1380: 10.2, 1390: 10.3,
-        1400: 10.5, 1410: 10.6, 1420: 10.7, 1430: 10.9, 1440: 11.0, 1450: 11.1, 1460: 11.3, 1470: 11.4, 1480: 11.5, 1490: 11.7,
-        1500: 11.8, 1510: 11.9, 1520: 12.1, 1530: 12.2, 1540: 12.3, 1550: 12.4, 1560: 12.6, 1570: 12.7, 1580: 12.8, 1590: 13.0,
-        1600: 13.1, 1610: 13.2, 1620: 13.4, 1630: 13.5, 1640: 13.6, 1650: 13.8, 1660: 13.9, 1670: 14.0, 1680: 14.1, 1690: 14.3,
-        1700: 14.4, 1710: 14.5, 1720: 14.7, 1730: 14.8, 1740: 14.9, 1750: 15.1, 1760: 15.2, 1770: 15.3, 1780: 15.5, 1790: 15.6,
-        1800: 15.7, 1810: 15.9, 1820: 16.0, 1830: 16.1, 1840: 16.2, 1850: 16.4, 1860: 16.5, 1870: 16.6, 1880: 16.8, 1890: 16.9,
-        1900: 17.0, 1910: 17.2, 1920: 17.3, 1930: 17.4, 1940: 17.6, 1950: 17.7, 1960: 17.8, 1970: 17.9, 1980: 18.1, 1990: 18.2,
-        2000: 18.3
-    }
-    block_key = (x // 10) * 10
-    mult = multipliers_10.get(block_key, multipliers_10[min(multipliers_10.keys(), key=lambda k: abs(k-block_key))]) # Fallback to nearest
-    return round((x - 1209) * mult + 3912)
 
-def get_aptitude_multiplier(apt_val):
-    if apt_val >= 7: return 1.1     # S or A
-    if apt_val >= 5: return 0.9   # B or C
-    if apt_val >= 2: return 0.8   # D, E, F
-    return 0.7                    # G
-
-def get_rank_str(score):
-    if score < 300: return "G"
-    if score < 600: return "G+"
-    if score < 900: return "F"
-    if score < 1300: return "F+"
-    if score < 1800: return "E"
-    if score < 2300: return "E+"
-    if score < 2900: return "D"
-    if score < 3500: return "D+"
-    if score < 4900: return "C"
-    if score < 6500: return "C+"
-    if score < 8200: return "B"
-    if score < 10000: return "B+"
-    if score < 12100: return "A"
-    if score < 14500: return "A+"
-    if score < 15900: return "S"
-    if score < 17500: return "S+"
-    if score < 19200: return "SS"
-    if score < 19600: return "SS+"
-    if score < 23900:
-        sub = (score - 19600) // 400
-        return f"UG{sub}" if sub > 0 else "UG"
-    if score < 28800:
-        sub = (score - 23900) // 500
-        return f"UF{sub}" if sub > 0 else "UF"
-    if score < 34400:
-        sub = (score - 28800) // 560
-        return f"UE{sub}" if sub > 0 else "UE"
-    if score < 40700:
-        sub = (score - 34400) // 630
-        return f"UD{sub}" if sub > 0 else "UD"
-    if score < 47600:
-        sub = (score - 40700) // 700
-        return f"UC{sub}" if sub > 0 else "UC"
-    if score < 55200:
-        sub = (score - 47600) // 760
-        return f"UB{sub}" if sub > 0 else "UB"
-    sub = (score - 55200) // 800
-    return f"UA{sub}" if sub > 0 else "UA"
-
-def get_next_rank_req(score):
-    if score < 300: return 300 - score
-    if score < 600: return 600 - score
-    if score < 900: return 900 - score
-    if score < 1300: return 1300 - score
-    if score < 1800: return 1800 - score
-    if score < 2300: return 2300 - score
-    if score < 2900: return 2900 - score
-    if score < 3500: return 3500 - score
-    if score < 4900: return 4900 - score
-    if score < 6500: return 6500 - score
-    if score < 8200: return 8200 - score
-    if score < 10000: return 10000 - score
-    if score < 12100: return 12100 - score
-    if score < 14500: return 14500 - score
-    if score < 15900: return 15900 - score
-    if score < 17500: return 17500 - score
-    if score < 19200: return 19200 - score
-    if score < 19600: return 19600 - score
-    if score < 23900:
-        base, step, bound = 19600, 400, 23900
-        return min(bound, base + ((score - base) // step + 1) * step) - score
-    if score < 28800:
-        base, step, bound = 23900, 500, 28800
-        return min(bound, base + ((score - base) // step + 1) * step) - score
-    if score < 34400:
-        base, step, bound = 28800, 560, 34400
-        return min(bound, base + ((score - base) // step + 1) * step) - score
-    if score < 40700:
-        base, step, bound = 34400, 630, 40700
-        return min(bound, base + ((score - base) // step + 1) * step) - score
-    if score < 47600:
-        base, step, bound = 40700, 700, 47600
-        return min(bound, base + ((score - base) // step + 1) * step) - score
-    if score < 55200:
-        base, step, bound = 47600, 760, 55200
-        return min(bound, base + ((score - base) // step + 1) * step) - score
-    base, step = 55200, 800
-    return base + ((score - base) // step + 1) * step - score
-
-def calculate_uma_rank_score(chara_info, skill_data):
-    total_score = 0
-    skill_scores_map = {}
-    
-    s_speed = get_stat_score(chara_info.get('speed', 0))
-    s_stamina = get_stat_score(chara_info.get('stamina', 0))
-    s_power = get_stat_score(chara_info.get('power', 0))
-    s_guts = get_stat_score(chara_info.get('guts', 0))
-    s_wiz = get_stat_score(chara_info.get('wiz', 0))
-    
-    total_score += s_speed + s_stamina + s_power + s_guts + s_wiz
-
-    skill_scores = mdb.get_skill_score_dict()
-    skill_conditions = mdb.get_skill_conditions_dict()
-    unique_skill_id = None
-    unique_skill_level = 1
-    stars = chara_info.get('talent_level', 1)
-    
-    for skill in chara_info.get('skill_array', []):
-        if str(skill.get('skill_id', '')).startswith('1'):
-            unique_skill_id = skill['skill_id']
-            unique_skill_level = skill.get('level', 1)
-            break
-
-    for sid, info in skill_data.items():
-        if str(sid).startswith('1'):
-            continue
-        base_score = skill_scores.get(sid, 0)
-        cond = skill_conditions.get(sid, "")
-        multiplier = 1.0
-        if "distance_type==" in cond:
-            if "distance_type==1" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_distance_short', 1))
-            elif "distance_type==2" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_distance_mile', 1))
-            elif "distance_type==3" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_distance_middle', 1))
-            elif "distance_type==4" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_distance_long', 1))
-        elif "ground_type==" in cond:
-            if "ground_type==1" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_ground_turf', 1))
-            elif "ground_type==2" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_ground_dirt', 1))
-        elif "running_style==" in cond:
-            if "running_style==1" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_running_style_nige', 1))
-            elif "running_style==2" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_running_style_senko', 1))
-            elif "running_style==3" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_running_style_sashi', 1))
-            elif "running_style==4" in cond: multiplier = get_aptitude_multiplier(chara_info.get('proper_running_style_oikomi', 1))
-        final_s = round(base_score * multiplier)
-        if info.get('is_acquired'):
-            total_score += final_s
-        skill_scores_map[str(sid)] = final_s
-    unique_mult = 170 if stars >= 3 else 120
-    u_score = unique_skill_level * unique_mult
-    total_score += u_score
-    print(f"UMA RANK CALC DEBUG -> Unique Skill ID: {unique_skill_id} | Lvl: {unique_skill_level} | Stars: {stars} | Score Added: {u_score} | Base Mult: {unique_mult}")
-    if unique_skill_id:
-        skill_scores_map[str(unique_skill_id)] = u_score
-    return {"score": total_score, "rank": get_rank_str(total_score), "skill_scores": skill_scores_map}
 
 def unpack(data: bytes, key: bytes, iv: bytes) -> bytes:
     logger.debug(f"Unpacking:\nData: {data.hex()}\nKey: {key.hex()}\nIV: {iv.hex()}")
@@ -254,6 +92,8 @@ class CarrotJuicer:
         self.skill_name_dict = mdb.get_skill_name_dict()
         self.skill_costs_dict = mdb.get_skill_costs_dict()
         self.skill_conditions_dict = mdb.get_skill_conditions_dict()
+        self.skill_score_dict = mdb.get_skill_score_dict()
+        self.group_id_dict = mdb.get_group_id_dict()
 
         self.skill_data = {}
         self.skills_list = []
@@ -263,6 +103,170 @@ class CarrotJuicer:
         self.restart_time()
 
         self.helper_table = helper_table.HelperTable(self)
+
+    def get_stat_score(self, val):
+        x = val + 1
+        if x <= 0: return 0
+        if x <= 1200:
+            return STAT_SCORES[x]
+        if x <= 1209:
+            return round((x - 1200) * 7.888 + 3841)
+        
+        multipliers_10 = {
+            1210: 8.0, 1220: 8.1, 1230: 8.3, 1240: 8.4, 1250: 8.5, 1260: 8.6, 1270: 8.8, 1280: 8.9, 1290: 9.0,
+            1300: 9.2, 1310: 9.3, 1320: 9.4, 1330: 9.6, 1340: 9.7, 1350: 9.8, 1360: 10.0, 1370: 10.1, 1380: 10.2, 1390: 10.3,
+            1400: 10.5, 1410: 10.6, 1420: 10.7, 1430: 10.9, 1440: 11.0, 1450: 11.1, 1460: 11.3, 1470: 11.4, 1480: 11.5, 1490: 11.7,
+            1500: 11.8, 1510: 11.9, 1520: 12.1, 1530: 12.2, 1540: 12.3, 1550: 12.4, 1560: 12.6, 1570: 12.7, 1580: 12.8, 1590: 13.0,
+            1600: 13.1, 1610: 13.2, 1620: 13.4, 1630: 13.5, 1640: 13.6, 1650: 13.8, 1660: 13.9, 1670: 14.0, 1680: 14.1, 1690: 14.3,
+            1700: 14.4, 1710: 14.5, 1720: 14.7, 1730: 14.8, 1740: 14.9, 1750: 15.1, 1760: 15.2, 1770: 15.3, 1780: 15.5, 1790: 15.6,
+            1800: 15.7, 1810: 15.9, 1820: 16.0, 1830: 16.1, 1840: 16.2, 1850: 16.4, 1860: 16.5, 1870: 16.6, 1880: 16.8, 1890: 16.9,
+            1900: 17.0, 1910: 17.2, 1920: 17.3, 1930: 17.4, 1940: 17.6, 1950: 17.7, 1960: 17.8, 1970: 17.9, 1980: 18.1, 1990: 18.2,
+            2000: 18.3
+        }
+        block_key = (x // 10) * 10
+        mult = multipliers_10.get(block_key, multipliers_10[min(multipliers_10.keys(), key=lambda k: abs(k-block_key))]) # Fallback to nearest
+        return round((x - 1209) * mult + 3912)
+
+    def get_aptitude_multiplier(self, apt_val):
+        if apt_val >= 7: return 1.1     # S or A
+        if apt_val >= 5: return 0.9   # B or C
+        if apt_val >= 2: return 0.8   # D, E, F
+        return 0.7                    # G
+
+    def get_rank_str(self, score):
+        if score < 300: return "G"
+        if score < 600: return "G+"
+        if score < 900: return "F"
+        if score < 1300: return "F+"
+        if score < 1800: return "E"
+        if score < 2300: return "E+"
+        if score < 2900: return "D"
+        if score < 3500: return "D+"
+        if score < 4900: return "C"
+        if score < 6500: return "C+"
+        if score < 8200: return "B"
+        if score < 10000: return "B+"
+        if score < 12100: return "A"
+        if score < 14500: return "A+"
+        if score < 15900: return "S"
+        if score < 17500: return "S+"
+        if score < 19200: return "SS"
+        if score < 19600: return "SS+"
+        if score < 23900:
+            sub = (score - 19600) // 400
+            return f"UG{sub}" if sub > 0 else "UG"
+        if score < 28800:
+            sub = (score - 23900) // 500
+            return f"UF{sub}" if sub > 0 else "UF"
+        if score < 34400:
+            sub = (score - 28800) // 560
+            return f"UE{sub}" if sub > 0 else "UE"
+        if score < 40700:
+            sub = (score - 34400) // 630
+            return f"UD{sub}" if sub > 0 else "UD"
+        if score < 47600:
+            sub = (score - 40700) // 700
+            return f"UC{sub}" if sub > 0 else "UC"
+        if score < 55200:
+            sub = (score - 47600) // 760
+            return f"UB{sub}" if sub > 0 else "UB"
+        sub = (score - 55200) // 800
+        return f"UA{sub}" if sub > 0 else "UA"
+
+    def get_next_rank_req(self, score):
+        if score < 300: return 300 - score
+        if score < 600: return 600 - score
+        if score < 900: return 900 - score
+        if score < 1300: return 1300 - score
+        if score < 1800: return 1800 - score
+        if score < 2300: return 2300 - score
+        if score < 2900: return 2900 - score
+        if score < 3500: return 3500 - score
+        if score < 4900: return 4900 - score
+        if score < 6500: return 6500 - score
+        if score < 8200: return 8200 - score
+        if score < 10000: return 10000 - score
+        if score < 12100: return 12100 - score
+        if score < 14500: return 14500 - score
+        if score < 15900: return 15900 - score
+        if score < 17500: return 17500 - score
+        if score < 19200: return 19200 - score
+        if score < 19600: return 19600 - score
+        if score < 23900:
+            base, step, bound = 19600, 400, 23900
+            return min(bound, base + ((score - base) // step + 1) * step) - score
+        if score < 28800:
+            base, step, bound = 23900, 500, 28800
+            return min(bound, base + ((score - base) // step + 1) * step) - score
+        if score < 34400:
+            base, step, bound = 28800, 560, 34400
+            return min(bound, base + ((score - base) // step + 1) * step) - score
+        if score < 40700:
+            base, step, bound = 34400, 630, 40700
+            return min(bound, base + ((score - base) // step + 1) * step) - score
+        if score < 47600:
+            base, step, bound = 40700, 700, 47600
+            return min(bound, base + ((score - base) // step + 1) * step) - score
+        if score < 55200:
+            base, step, bound = 47600, 760, 55200
+            return min(bound, base + ((score - base) // step + 1) * step) - score
+        base, step = 55200, 800
+        return base + ((score - base) // step + 1) * step - score
+
+    def calculate_uma_rank_score(self, chara_info, skill_data):
+        total_score = 0
+        skill_scores_map = {}
+        
+        s_speed = self.get_stat_score(chara_info.get('speed', 0))
+        s_stamina = self.get_stat_score(chara_info.get('stamina', 0))
+        s_power = self.get_stat_score(chara_info.get('power', 0))
+        s_guts = self.get_stat_score(chara_info.get('guts', 0))
+        s_wiz = self.get_stat_score(chara_info.get('wiz', 0))
+        
+        total_score += s_speed + s_stamina + s_power + s_guts + s_wiz
+
+        skill_scores = self.skill_score_dict
+        skill_conditions = self.skill_conditions_dict
+        unique_skill_id = None
+        unique_skill_level = 1
+        stars = chara_info.get('talent_level', 1)
+        
+        for skill in chara_info.get('skill_array', []):
+            if str(skill.get('skill_id', '')).startswith('1'):
+                unique_skill_id = skill['skill_id']
+                unique_skill_level = skill.get('level', 1)
+                break
+
+        for sid, info in skill_data.items():
+            if str(sid).startswith('1'):
+                continue
+            base_score = skill_scores.get(sid, 0)
+            cond = skill_conditions.get(sid, "")
+            multiplier = 1.0
+            if "distance_type==" in cond:
+                if "distance_type==1" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_distance_short', 1))
+                elif "distance_type==2" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_distance_mile', 1))
+                elif "distance_type==3" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_distance_middle', 1))
+                elif "distance_type==4" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_distance_long', 1))
+            elif "ground_type==" in cond:
+                if "ground_type==1" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_ground_turf', 1))
+                elif "ground_type==2" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_ground_dirt', 1))
+            elif "running_style==" in cond:
+                if "running_style==1" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_running_style_nige', 1))
+                elif "running_style==2" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_running_style_senko', 1))
+                elif "running_style==3" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_running_style_sashi', 1))
+                elif "running_style==4" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_running_style_oikomi', 1))
+            final_s = round(base_score * multiplier)
+            if info.get('is_acquired'):
+                total_score += final_s
+            skill_scores_map[str(sid)] = final_s
+        unique_mult = 170 if stars >= 3 else 120
+        u_score = unique_skill_level * unique_mult
+        total_score += u_score
+        print(f"UMA RANK CALC DEBUG -> Unique Skill ID: {unique_skill_id} | Lvl: {unique_skill_level} | Stars: {stars} | Score Added: {u_score} | Base Mult: {unique_mult}")
+        if unique_skill_id:
+            skill_scores_map[str(unique_skill_id)] = u_score
+        return {"score": total_score, "rank": self.get_rank_str(total_score), "skill_scores": skill_scores_map}
 
         # Remove existing geckodriver.log
         if os.path.exists("geckodriver.log"):
@@ -1065,7 +1069,7 @@ class CarrotJuicer:
             results = self.run_simulation(util.get_asset("_assets/umasim-cli.exe"), mock_payload)
 
         discount_map = {0: 0, 1: 10, 2: 20, 3: 30, 4: 35, 5: 40}
-        rating_calc = calculate_uma_rank_score(self.last_data['chara_info'], self.skill_data)
+        rating_calc = self.calculate_uma_rank_score(self.last_data['chara_info'], self.skill_data)
         rating_scores = rating_calc.get("skill_scores", {})
         uma_score = rating_calc.get("score", 0)
         uma_rank = rating_calc.get("rank", "")
@@ -1076,29 +1080,32 @@ class CarrotJuicer:
             score = rating_scores.get(skill_id_str, 0)
             skill_info = self.skill_data.get(skill_id_int, {})
             skill_rarity = skill_info.get("rarity", 1)
-            
-            # Whether Gold/Evolve (rarity >= 2) or Double Circle (rarity == 1)
-            # The lower-rank prerequisite skill ALWAYS has an ID of (current_skill_id + 1).
-            prev_id = skill_id_int + 1
-            prev_info = self.skill_data.get(prev_id, {})
-            if prev_info and prev_info.get("is_acquired", False):
-                prev_score = rating_scores.get(str(prev_id), 0)
-                score = score - prev_score
+            # Calculate Delta Score from highest acquired prerequisite
+            prereq_ids = mdb.get_prerequisite_skill_ids(skill_id_int)
+            highest_acquired_score = 0
+            for pid in reversed(prereq_ids):
+                pinfo = self.skill_data.get(pid, {})
+                if pinfo.get("is_acquired", False):
+                    highest_acquired_score = rating_scores.get(str(pid), 0)
+                    break
+            score -= highest_acquired_score
+
+            # Calculate total SP cost including all unacquired prerequisites
             base_cost = skill_info.get("base_cost", 0)
             hint_level = skill_info.get("hint_level", 0)
-            skill_rarity = skill_info.get("rarity", 1)
             effective_hint_level = min(hint_level, 5)
             discount_percent = discount_map.get(effective_hint_level, 0)
             total_sp_cost = int(base_cost * (100 - discount_percent) / 100)
-            if skill_rarity == 2:
-                white_skill_id = skill_id_int + 1
-                white_skill_info = self.skill_data.get(white_skill_id, {})
-                if white_skill_info and not white_skill_info.get("is_acquired", False):
-                    white_base_cost = white_skill_info.get("base_cost", 0)
-                    white_hint_level = white_skill_info.get("hint_level", 0)
-                    white_discount_percent = discount_map.get(min(white_hint_level, 5), 0)
-                    white_sp_cost = int(white_base_cost * (100 - white_discount_percent) / 100)
-                    total_sp_cost += white_sp_cost
+
+            for pid in prereq_ids:
+                pinfo = self.skill_data.get(pid, {})
+                if not pinfo.get("is_acquired", False):
+                    p_base_cost = pinfo.get("base_cost", 0)
+                    p_hint_level = pinfo.get("hint_level", 0)
+                    p_discount_percent = discount_map.get(min(p_hint_level, 5), 0)
+                    p_sp_cost = int(p_base_cost * (100 - p_discount_percent) / 100)
+                    total_sp_cost += p_sp_cost
+
             eff = (score / total_sp_cost) if total_sp_cost > 0 else 0
             rating_data[skill_id_str] = {
                 "score": score,
@@ -1110,13 +1117,7 @@ class CarrotJuicer:
         available_sp = self.last_data['chara_info'].get('skill_point', 0)
         
         skill_ids = [int(sid) for sid in rating_data.keys()]
-        id_to_group = {}
-        if skill_ids:
-            with mdb.Connection() as (_, cursor):
-                placeholders = ','.join('?' * len(skill_ids))
-                cursor.execute(f"SELECT id, group_id FROM skill_data WHERE id IN ({placeholders})", skill_ids)
-                for row in cursor.fetchall():
-                    id_to_group[str(row[0])] = row[1]
+        id_to_group = mdb.get_group_id_dict(skill_ids)
 
         groups = {}
         for sid_str, detail in rating_data.items():
@@ -1136,10 +1137,10 @@ class CarrotJuicer:
                 
         max_score_gain = dp[available_sp] if available_sp >= 0 else 0
         projected_score = uma_score + max_score_gain
-        projected_rank = get_rank_str(projected_score)
+        projected_rank = self.get_rank_str(projected_score)
         
-        uma_next = get_next_rank_req(uma_score)
-        proj_next = get_next_rank_req(projected_score)
+        uma_next = self.get_next_rank_req(uma_score)
+        proj_next = self.get_next_rank_req(projected_score)
 
         sim_summary = {}
 
@@ -1253,11 +1254,21 @@ class CarrotJuicer:
 
                 sim_summary[skill_id_str] = data_obj
 
-        all_conditions = {}
+        all_sk_data = {}
+        effects_dict = mdb.get_skill_effects_dict()
         for skill_id in self.skills_list:
-            cond = self.skill_conditions_dict.get(int(skill_id), "") or self.skill_conditions_dict.get(str(skill_id),
-                                                                                                       "")
-            all_conditions[str(skill_id)] = cond
+            sk_id_str = str(skill_id)
+            cond_old = self.skill_conditions_dict.get(int(skill_id), "") or self.skill_conditions_dict.get(sk_id_str, "")
+            eff_info = effects_dict.get(sk_id_str, {})
+            eff_str = eff_info.get("effects", "")
+            cond_new = eff_info.get("conditions", "")
+            if not cond_new:
+                cond_new = cond_old
+                
+            all_sk_data[sk_id_str] = {
+                "effects": eff_str,
+                "conditions": cond_new
+            }
 
         if global_box_min == float('inf'): global_box_min = 0.0
         if global_box_max == float('-inf'): global_box_max = 0.0
@@ -1271,7 +1282,8 @@ class CarrotJuicer:
             let globalBoxMin = arguments[4];
             let globalBoxMax = arguments[5];
             let acquired_list = arguments[6] || [];
-            let all_conditions = arguments[7] || {};
+            let all_sk_data = arguments[7] || {};
+
             let baseMedianAbs = arguments[8] || 0.0;
             let rating_data = arguments[9] || {};
             let uma_score = arguments[10] || 0;
@@ -1283,13 +1295,13 @@ class CarrotJuicer:
     
             function formatCondition(cond) {
                 if (!cond) return "";
-                return cond.replace(/([a-zA-Z_]+)|(==|>=|<=|!=|>|<|=|&|!)|(\\b\\d+(?:\\.\\d+)?\\b)/g, function(match, word, op, num) {
+                return cond.replace(/([a-zA-Z_]+)|(==|>=|<=|!=|>|<|=|&|!)|(\d+(?:\.\d+)?s?)/g, function(match, word, op, num) {
                     if (word) {
                         if (word === 'OR') return `<span style="color: #d65d8a;">${word}</span>`;
-                        return `<span style="color: #73c991;">${word}</span>`;
+                        return `<span style="color: #c084fc;">${word}</span>`;
                     }
                     if (op) return `<span style="color: #60a5fa;">${op}</span>`;
-                    if (num) return `<span style="color: #c084fc;">${num}</span>`;
+                    if (num) return `<span style="color: #73c991;">${num}</span>`;
                     return match;
                 });
             }
@@ -1317,6 +1329,43 @@ class CarrotJuicer:
     
             let pageTitle = document.querySelector("h1");
             if (pageTitle && !document.getElementById("ul-badge-toggle")) {
+            
+                let tooltipStyle = document.createElement("style");
+                tooltipStyle.id = "ul-custom-tooltips";
+                tooltipStyle.innerHTML = `
+                    .ul-tooltip { position: relative; cursor: help; width: 100%; display: block; }
+                    .ul-tooltip-row-text { 
+                        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; 
+                        width: 100%; display: block; 
+                    }
+                    .ul-tooltip-content {
+                        position: absolute; bottom: 100%; left: 0;
+                        background: rgba(17, 24, 39, 0.95); color: #e5e7eb; padding: 8px 12px; border-radius: 6px;
+                        font-size: 13px; white-space: pre-wrap; z-index: 9999;
+                        opacity: 0; visibility: hidden; pointer-events: none;
+                        transition: none; width: max-content; max-width: 100%;
+                        text-shadow: none; font-weight: normal; font-family: monospace;
+                        text-align: left; border: 1px solid #4b5563;
+                        line-height: 1.4;
+                        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+                        box-sizing: border-box;
+                    }
+                    .ul-tooltip:hover .ul-tooltip-content { opacity: 1; visibility: visible; }
+                    /* Dont truncate tooltip content inside */
+                    .ul-tooltip-content * { white-space: pre-wrap !important; }
+                    
+                    /* Utility for elements at the right edge of the screen */
+                    .ul-tooltip-right .ul-tooltip-content { right: 0; left: auto; }
+                    
+                    /* Layout Fix: Force full width by removing sidebar padding */
+                    div[class*='Layout_content_'], div[class*='Layout_container_'], main { 
+                        padding-right: 0 !important; 
+                        padding-left: 0 !important; 
+                        max-width: 100% !important; 
+                        width: 100% !important;
+                    }
+                `;
+                document.head.appendChild(tooltipStyle);
                 
                 let toggleDiv = document.createElement("div");
                 toggleDiv.id = "ul-badge-toggle";
@@ -1459,13 +1508,14 @@ class CarrotJuicer:
                 
                 let rankDisp = document.createElement("div");
                 rankDisp.id = "ul-rank-display";
-                rankDisp.style.marginLeft = "auto";
-                rankDisp.style.marginRight = "8px";
+                rankDisp.style.marginLeft = "20px";
+                rankDisp.style.marginRight = "auto";
                 rankDisp.style.fontSize = "1em";
                 rankDisp.style.fontWeight = "bold";
                 rankDisp.style.color = "#fcd34d";
-                rankDisp.style.textAlign = "right";
+                rankDisp.style.textAlign = "left";
                 rankDisp.style.lineHeight = "0.9";
+                rankDisp.style.whiteSpace = "normal";
                 rankDisp.style.textShadow = "1px 1px 2px black, -1px -1px 2px black";
 
                 toggleDiv.appendChild(btnHist);
@@ -1479,6 +1529,7 @@ class CarrotJuicer:
                 pageTitle.appendChild(rankDisp);
                 pageTitle.style.display = "flex";
                 pageTitle.style.alignItems = "center";
+                pageTitle.style.width = "100%";
     
             } else if (window.updateToggleColors) {
                 window.updateToggleColors();
@@ -1487,9 +1538,9 @@ class CarrotJuicer:
             let rankDispExists = document.getElementById("ul-rank-display");
             if (rankDispExists) {
                 if (proj_score > uma_score) {
-                    rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank}</span> <span style="font-size:0.45em;font-weight:normal;">(${uma_score})</span> <span style="color:#d1d5db;font-weight:normal;font-size:0.45em;">[+${uma_next}]</span> <span style="color:#a8a29e;font-size:0.5em;">| Max: ${proj_rank}</span> <span style="font-size:0.45em;font-weight:normal;color:#a8a29e;">(${proj_score})</span> <span style="color:#a8a29e;font-weight:normal;font-size:0.45em;">[+${proj_next}]</span>`;
+                    rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank} ${uma_score}<span style="font-weight:normal;color:#d1d5db;margin-left:4px;font-size:0.85em;"> +${uma_next}</span></span> <span style="color:#a8a29e;font-size:0.5em;margin-left:8px;">Max: ${proj_rank}<span style="font-weight:normal;margin-left:4px;font-size:0.85em;"> +${proj_next}</span></span>`;
                 } else {
-                    rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank}</span> <span style="font-size:0.45em;font-weight:normal;">(${uma_score})</span> <span style="color:#d1d5db;font-weight:normal;font-size:0.45em;">[+${uma_next}]</span>`;
+                    rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank} ${uma_score}<span style="font-weight:normal;color:#d1d5db;margin-left:4px;font-size:0.85em;"> +${uma_next}</span></span>`;
                 }
             }
     
@@ -1532,8 +1583,13 @@ class CarrotJuicer:
                         badge.style.boxSizing = "border-box";
                         badge.style.display = "block";
     
-                        let condRaw = all_conditions[skill_id.toString()] || "";
-                        let condHtml = `<div style="color: #d1d5db; font-family: monospace; white-space: pre-wrap; line-height: 1.2;">${formatCondition(condRaw)} <span style="color: #6b7280; font-size: 0.85em;">(${skill_id})</span></div>`;
+                        let skData = all_sk_data[skill_id.toString()] || {};
+                        let effRaw = skData.effects || "";
+                        let condRaw = skData.conditions || "";
+                        
+                        let displayVal = effRaw ? effRaw : condRaw;
+                        
+                        let condHtml = `<div class="ul-tooltip"><div class="ul-tooltip-row-text" style="color: #d1d5db; font-family: monospace; line-height: 1.2;">${formatCondition(displayVal)} <span style="color: #6b7280; font-size: 0.85em;">(${skill_id})</span></div><div class="ul-tooltip-content">${formatCondition(condRaw)}</div></div>`;
     
                         if (row.children.length >= 3) {
                             let descCell = row.children[2];
@@ -1567,10 +1623,10 @@ class CarrotJuicer:
                                 let lightness = 85 - t * 45;
                                 let bgColor = `hsla(45, ${saturation}%, ${lightness}%, ${0.08 + t * 0.17})`;
                                 let borderColor = `hsl(45, ${saturation}%, ${Math.max(lightness - 20, 30)}%)`;
-                                let rColor = eff >= 2 ? "#fcd34d" : (eff >= 1 ? "#e5c547" : "#b8a860");
+                                let rColor = eff >= 2.5 ? "#ffbe28" : (eff >= 2 ? "#fcd34d" : (eff >= 1 ? "#fff59d" : "#94a3b8"));
                                 let ratingDisplay = window.UL_MODE_PREF === 'rating' ? 'flex' : 'none';
                                 ratingHtml = `
-                                    <div class="ul-badge-rating" style="display: ${ratingDisplay}; position: relative; width: 100%; height: 100%; background: ${bgColor}; border: 1px solid ${borderColor}; border-radius: 4px; box-sizing: border-box; overflow: hidden; align-items: center; justify-content: space-between; padding: 0 8px;">
+                                    <div class="ul-badge-rating" style="display: ${ratingDisplay}; position: relative; width: 100%; height: 100%; background: #313131; border: 1px solid ${borderColor}; border-radius: 4px; box-sizing: border-box; overflow: hidden; align-items: center; justify-content: space-between; padding: 0 8px;">
                                         <div style="display: flex; flex-direction: column; justify-content: center; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black; text-align: left;">
                                             <div style="font-size: 0.7em; color: rgba(255,255,255,0.9);">Lv ${rdata.hint_level || 0} | ${rdata.sp_cost || "?"} SP</div>
                                             <div style="font-size: 0.65em; color: ${rColor}; white-space: nowrap;">${rdata.efficiency.toFixed(2)} Pt/SP</div>
@@ -1640,7 +1696,7 @@ class CarrotJuicer:
     
                                 badge.innerHTML = `
                                     ${ratingHtml}
-                                    <div class="ul-badge-hist" style="display: ${histDisplay}; position: relative; width: 100%; height: 100%; background: var(--c-bg-main-hover); border: 1px solid ${color}; border-radius: 4px; overflow: hidden;">
+                                    <div class="ul-badge-hist" style="display: ${histDisplay}; position: relative; width: 100%; height: 100%; background: #313131; border: 1px solid ${color}; border-radius: 4px; overflow: hidden;">
                                         ${histogramHtml}
                                         
                                         <div style="position: absolute; top: 1px; left: 4px; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">
@@ -1654,7 +1710,7 @@ class CarrotJuicer:
                                         </div>
                                     </div>
     
-                                    <div class="ul-badge-box" style="display: ${boxDisplay}; position: relative; width: 100%; height: 100%; background: var(--c-bg-main-hover); border: 1px solid ${color}; border-radius: 4px; box-sizing: border-box; overflow: hidden;">
+                                    <div class="ul-badge-box" style="display: ${boxDisplay}; position: relative; width: 100%; height: 100%; background: #313131; border: 1px solid ${color}; border-radius: 4px; box-sizing: border-box; overflow: hidden;">
                                         
                                         <div style="position: absolute; left: ${baseMedianPct}%; top: 0; bottom: 0; width: 0px; border-left: 1px dashed white; z-index: 2;"></div>
     
@@ -1692,8 +1748,10 @@ class CarrotJuicer:
             for (let i = 0; i < skill_elements.length; i++) {
                 const item = skill_elements[i];
                 item.style.display = "grid";
+                item.style.width = "100%";
+                item.style.boxSizing = "border-box";
                 item.style.gridTemplateAreas = '"badge image jpname desc"';
-                item.style.gridTemplateColumns = "165px 40px 250px auto";
+                item.style.gridTemplateColumns = "165px 40px 250px minmax(0, 1fr)";
     
                 if (color_class) {
                     if (i % 2 == 0) item.classList.add(color_class);
@@ -1702,7 +1760,7 @@ class CarrotJuicer:
                 skills_table.appendChild(item);
             }
             """, self.skills_list, sim_summary, global_hist_min, global_hist_max, global_box_min, global_box_max,
-            acquired_skills_list, all_conditions, base_median_abs, rating_data, uma_score, uma_rank, projected_score, projected_rank, uma_next, proj_next)
+            acquired_skills_list, all_sk_data, base_median_abs, rating_data, uma_score, uma_rank, projected_score, projected_rank, uma_next, proj_next)
 
     def run_simulation(self, exe_path, payload):
         json_payload = json.dumps(payload)
