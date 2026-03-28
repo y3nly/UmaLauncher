@@ -66,6 +66,13 @@ class DefaultSettings(se.NewSettings):
             se.SettingType.BOOL,
             hidden=False
         ),
+        "save_race_schedule_packets": se.Setting(
+            "Save race schedule packets.",
+            "Save incoming race schedule list to json.",
+            False,
+            se.SettingType.BOOL,
+            hidden=False
+        ),
         "discord_rich_presence": se.Setting(
             "Discord rich presence",
             "Display your current status in Discord.",

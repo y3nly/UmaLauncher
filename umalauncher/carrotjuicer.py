@@ -508,6 +508,10 @@ class CarrotJuicer:
 
                     self.to_json(trained_chara_array, "friend.json")
 
+            if self.threader.settings['save_race_schedule_packets']:
+                if 'reserved_race_array' in data:
+                    self.to_json(data['reserved_race_array'], "race_schedule.json")
+
             if self.threader.settings['save_race_packets']:
                 if data.get('race_scenario') or data.get('room_info') or data.get('race_result_info'):
                     race_array = (
