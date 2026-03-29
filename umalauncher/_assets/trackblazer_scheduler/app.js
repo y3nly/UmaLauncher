@@ -1163,7 +1163,7 @@ window.setAutoSchedulerSettings = function(raceBonus, aptitudes) {
         changed = true;
     }
     
-    if (state.settings.race_bonus_pct !== raceBonus) {
+    if (raceBonus != null && state.settings.race_bonus_pct !== raceBonus) {
         state.settings.race_bonus_pct = raceBonus;
         ids.raceBonus.value = raceBonus;
         changed = true;

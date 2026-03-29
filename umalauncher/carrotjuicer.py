@@ -1884,28 +1884,29 @@ class CarrotJuicer:
                 
                 logger.debug(f"Syncing schedule window. Current turn index: {current_turn}")
 
-                race_bonus = 0
-                aptitudes = {}
+                race_bonus = getattr(self, 'current_race_bonus', None)
+                aptitudes = None
+                
                 if self.last_data and 'chara_info' in self.last_data:
                     cinfo = self.last_data['chara_info']
-                    race_bonus = getattr(self, 'current_race_bonus', 0)
-                    
-                    apt_map = {1: 'G', 2: 'F', 3: 'E', 4: 'D', 5: 'C', 6: 'B', 7: 'A', 8: 'S'}
-                    aptitudes = {
-                        "Sprint": apt_map.get(cinfo.get('proper_distance_short', 1), 'G'),
-                        "Mile": apt_map.get(cinfo.get('proper_distance_mile', 1), 'G'),
-                        "Medium": apt_map.get(cinfo.get('proper_distance_middle', 1), 'G'),
-                        "Long": apt_map.get(cinfo.get('proper_distance_long', 1), 'G'),
-                        "Turf": apt_map.get(cinfo.get('proper_ground_turf', 1), 'G'),
-                        "Dirt": apt_map.get(cinfo.get('proper_ground_dirt', 1), 'G')
-                    }
-                    
-                    logger.debug(f"Trackblazer API payload: RB {race_bonus}% | Aptitudes {aptitudes}")
+                    if 'proper_distance_short' in cinfo:
+                        apt_map = {1: 'G', 2: 'F', 3: 'E', 4: 'D', 5: 'C', 6: 'B', 7: 'A', 8: 'S'}
+                        aptitudes = {
+                            "Sprint": apt_map.get(cinfo.get('proper_distance_short', 1), 'G'),
+                            "Mile": apt_map.get(cinfo.get('proper_distance_mile', 1), 'G'),
+                            "Medium": apt_map.get(cinfo.get('proper_distance_middle', 1), 'G'),
+                            "Long": apt_map.get(cinfo.get('proper_distance_long', 1), 'G'),
+                            "Turf": apt_map.get(cinfo.get('proper_ground_turf', 1), 'G'),
+                            "Dirt": apt_map.get(cinfo.get('proper_ground_dirt', 1), 'G')
+                        }
+                        logger.debug(f"Trackblazer API payload: RB {race_bonus}% | Aptitudes {aptitudes}")
                 
                 json_data = json.dumps(self.completed_races)
-                json_apt = json.dumps(aptitudes)
+                json_apt = json.dumps(aptitudes) if aptitudes else 'null'
+                rb_val = race_bonus if race_bonus is not None else 'null'
+                
                 ct = current_turn if current_turn is not None else 'null'
-                self.schedule_browser.execute_script(f"""window.setAutoSchedulerSettings({race_bonus}, {json_apt}); window.syncCompletedRaces({json_data}, {ct});""")
+                self.schedule_browser.execute_script(f"""window.setAutoSchedulerSettings({rb_val}, {json_apt}); window.syncCompletedRaces({json_data}, {ct});""")
             except Exception as e:
                 logger.error(f"Failed to sync trackblazer schedule: {e}")
 
