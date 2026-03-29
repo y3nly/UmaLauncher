@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="favicon.ico">
+  <title>Uma Musume Trackblazer Scheduler</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Settings drawer overlay -->
+  <div id="drawerBackdrop" class="drawer-backdrop"></div>
+  <aside id="settingsDrawer" class="settings-drawer">
+    <div class="drawer-header">
+      <h2 class="section-title">Settings</h2>
+      <button id="drawerClose" class="drawer-close">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div class="form-group">
+        <label class="label toggle-label" for="solverToggle">
+          <input type="checkbox" id="solverToggle" checked>
+          <span>Auto-solver</span>
+        </label>
+        <div class="helper">Disable to pick races manually.</div>
+      </div>
+
+      <div class="row-2" style="margin-bottom:10px;">
+        <button id="rebuildBtn" class="button primary" style="margin-top:0;">Rebuild schedule</button>
+        <button id="clearLocksBtn" class="button secondary" style="margin-top:0;">Reset locks</button>
+      </div>
+
+      <div class="form-group">
+        <label class="label" for="presetInput">Character preset</label>
+        <div class="combo-wrap" id="presetCombo">
+          <input type="text" id="presetInput" class="combo-input" autocomplete="off" placeholder="Search character...">
+          <div class="combo-dropdown" id="presetDropdown"></div>
+        </div>
+        <input type="hidden" id="preset">
+        <div class="helper" style="margin-top:4px;">Presets set default aptitudes. Override any below.</div>
+      </div>
+
+      <div class="form-group">
+        <div class="label">Distance aptitudes</div>
+        <div class="row-2">
+          <div><label class="label" for="sprint">Sprint</label><select id="sprint"></select></div>
+          <div><label class="label" for="mile">Mile</label><select id="mile"></select></div>
+          <div><label class="label" for="medium">Medium</label><select id="medium"></select></div>
+          <div><label class="label" for="long">Long</label><select id="long"></select></div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="label">Surface aptitudes</div>
+        <div class="row-2">
+          <div><label class="label" for="turf">Turf</label><select id="turf"></select></div>
+          <div><label class="label" for="dirt">Dirt</label><select id="dirt"></select></div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="label" for="threshold">Min aptitude floor</label>
+        <select id="threshold"></select>
+      </div>
+
+      <div class="form-group">
+        <label class="label" for="maxConsec">Max races in a row</label>
+        <input id="maxConsec" type="number" min="0" step="1">
+        <div class="helper" style="margin-top:4px;">Hard constraint. 0 = no cap.</div>
+      </div>
+
+      <details class="advanced" id="forcedEpithetsSection">
+        <summary>Forced Epithets</summary>
+        <div class="helper" style="margin-top:4px;margin-bottom:8px;">Force the solver to achieve selected epithets. The solver will return infeasible if impossible with current aptitudes.</div>
+        <div class="forced-epithet-search-wrap">
+          <input type="text" id="forcedEpithetSearch" class="combo-input" placeholder="Filter epithets..." style="margin-bottom:6px;">
+        </div>
+        <div id="forcedEpithetList" class="forced-epithet-list"></div>
+      </details>
+
+      <details class="advanced" open>
+        <summary>Advanced scoring</summary>
+        <div class="form-group" style="margin-top:8px;">
+          <label class="label" for="raceBonus">Race Bonus %</label>
+          <input id="raceBonus" type="number" min="0" step="1">
+        </div>
+        <div class="row-2">
+          <div class="form-group">
+            <label class="label" for="statWeight">Stat wt</label>
+            <input id="statWeight" type="number" step="0.1">
+          </div>
+          <div class="form-group">
+            <label class="label" for="spWeight">SP wt</label>
+            <input id="spWeight" type="number" step="0.1">
+          </div>
+          <div class="form-group">
+            <label class="label" for="hintWeight">Hint wt</label>
+            <input id="hintWeight" type="number" step="0.1">
+          </div>
+          <div class="form-group">
+            <label class="label" for="epithetMultiplier">Epithet mult</label>
+            <input id="epithetMultiplier" type="number" step="0.1">
+          </div>
+          <div class="form-group">
+            <label class="label" for="threeRacePenalty">3-race pen</label>
+            <input id="threeRacePenalty" type="number" step="0.1">
+          </div>
+          <div class="form-group">
+            <label class="label" for="raceCost">Race cost %</label>
+            <input id="raceCost" type="number" step="5">
+          </div>
+        </div>
+        <div class="weight-explainer">
+          <div><strong>Stat wt</strong> = value per stat point</div>
+          <div><strong>SP wt</strong> = value per skill point</div>
+          <div><strong>Hint wt</strong> = value for +1 hint epithet</div>
+          <div><strong>Epithet mult</strong> = multiplier for epithet rewards</div>
+          <div><strong>3-race pen</strong> = penalty per 3 consecutive races</div>
+          <div><strong>Race cost %</strong> = opportunity cost per race as % of G2/G3 value (100 = only race for epithets)</div>
+        </div>
+      </details>
+
+      <div class="footer-note">
+        Each turn: <strong>Auto</strong>, <strong>No race</strong>, or a specific race. Manual picks lock earlier turns.
+      </div>
+    </div>
+  </aside>
+
+  <div class="app-shell">
+    <!-- Top bar -->
+    <header class="top-bar">
+      <button id="settingsToggle" class="settings-toggle" title="Open settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+      <button id="themeToggle" class="theme-toggle" title="Toggle dark mode"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
+      <button id="shareBtn" class="share-toggle" title="Share schedule">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+      </button>
+      <a href="https://discord.gg/hsm" target="_blank" rel="noopener" class="discord-link" title="Join our Discord">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.095 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.095 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+      </a>
+      <h1 class="top-title">Uma Musume Trackblazer</h1>
+      <div class="top-credits">Originally by <a href="https://github.com/SkyeNat21/umamusume_trackblazer_scheduler" target="_blank" rel="noopener">SkyeNat21</a>, forked by <a href="https://github.com/daftuyda/umamusume_trackblazer_scheduler" target="_blank" rel="noopener">daftuyda</a></div>
+      <div class="top-metrics">
+        <div class="top-metric">
+          <span class="tm-label">Races</span>
+          <span class="tm-value" id="metricRaces">0</span>
+        </div>
+        <div class="top-metric">
+          <span class="tm-label">Epithets</span>
+          <span class="tm-value" id="metricEpithets">0</span>
+        </div>
+        <div class="top-metric accent">
+          <span class="tm-label">Race Stats</span>
+          <span class="tm-value" id="metricRaceStats">0</span>
+        </div>
+        <div class="top-metric accent">
+          <span class="tm-label">Race SP</span>
+          <span class="tm-value" id="metricRaceSP">0</span>
+        </div>
+        <div class="top-metric accent">
+          <span class="tm-label">Epithet Stats</span>
+          <span class="tm-value" id="metricEpithetStats">0</span>
+        </div>
+        <div class="top-metric">
+          <span class="tm-label">Hints</span>
+          <span class="tm-value tm-small" id="metricHints">-</span>
+        </div>
+        <div class="top-metric">
+          <span class="tm-label">Score</span>
+          <span class="tm-value" id="metricValue">0</span>
+        </div>
+        <div class="top-metric status-area">
+          <div id="statusPill" class="status-pill"><span>Solver</span> <strong id="statusText">Loading...</strong></div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Hidden compat spans -->
+    <div style="display:none"><span id="metricEpithetsSub"></span><span id="metricValueSub"></span><span id="metricRacesSub"></span><span id="metricBreakdownSub"></span><span id="metricBreakdown"></span></div>
+
+    <!-- Status detail row -->
+    <div class="status-detail-row">
+      <div class="status-note" id="statusNote"></div>
+      <div class="summary-note" id="summaryLine"></div>
+    </div>
+
+    <!-- Calendar -->
+    <div class="schedule-shell">
+      <div id="scheduleYears" class="year-sections"></div>
+    </div>
+
+    <!-- Epithets -->
+    <div class="epithet-panel">
+      <div class="epithet-heading">Epithets from Current Schedule</div>
+      <div id="epithetList" class="epithet-list"></div>
+    </div>
+  </div>
+
+  <!-- Tooltip container -->
+  <div id="raceTooltip" class="race-tooltip"></div>
+
+  <!-- Share modal -->
+  <div id="shareBackdrop" class="share-backdrop"></div>
+  <div id="shareModal" class="share-modal">
+    <div class="share-modal-header">
+      <h3>Share Schedule</h3>
+      <button id="shareClose" class="drawer-close">&times;</button>
+    </div>
+    <div class="share-modal-body">
+      <label class="label">Share link</label>
+      <div class="share-link-row">
+        <input type="text" id="shareLink" class="share-link-input" readonly>
+        <button id="copyLinkBtn" class="button primary share-copy-btn">Copy</button>
+      </div>
+      <div class="share-divider"></div>
+      <label class="label">Or paste a share link / code to import</label>
+      <div class="share-link-row">
+        <input type="text" id="importInput" class="share-link-input" placeholder="Paste link or code here...">
+        <button id="importBtn" class="button secondary share-copy-btn">Import</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

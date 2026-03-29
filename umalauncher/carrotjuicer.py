@@ -73,6 +73,9 @@ class CarrotJuicer:
     open_skill_window = False
     skill_browser = None
     last_skills_rect = None
+    open_schedule_window = False
+    schedule_browser = None
+    last_schedule_rect = None
     skipped_msgpacks = []
 
     sock: socket = None
@@ -640,6 +643,12 @@ class CarrotJuicer:
                     mdb.update_mdb_cache()
                     self.training_tracker = training_tracker.TrainingTracker(training_id, data['chara_info']['card_id'])
 
+                if getattr(self, 'current_training_id', None) != training_id:
+                    self.current_training_id = training_id
+                    self.completed_races = {}
+                    if self.schedule_browser and self.schedule_browser.alive():
+                        self.schedule_browser.execute_script("window.clearCompletedRaces();")
+
                 self.skill_data = {}
                 self.style = data['chara_info']['race_running_style']
 
@@ -761,6 +770,22 @@ class CarrotJuicer:
                     self.open_helper()
 
                 self.update_helper_table(data)
+                
+                history = data['chara_info'].get('race_history') or data.get('race_history')
+                if history:
+                    for race in history:
+                        if race.get('result_rank', 0) == 1:
+                            turn = race.get('turn', 1) - 1
+                            program_id = race.get('program_id')
+                            grade = mdb.get_program_id_grade(program_id)
+                            if grade in (100, 200, 300):
+                                race_name = mdb.get_race_program_name_dict().get(program_id, "")
+                                if race_name:
+                                    self.completed_races[str(turn)] = race_name
+                                    logger.debug(f"Trackblazer Sync: Locked race '{race_name}' at turn index {turn}")
+                
+                current_turn = data['chara_info'].get('turn', 1) - 1
+                self.sync_schedule_window(current_turn)
 
             if 'unchecked_event_array' in data and data['unchecked_event_array']:
                 # Training event.
@@ -1832,6 +1857,70 @@ class CarrotJuicer:
         logger.info(f"Event element: {ranked_elements[0][2]}")
         return ranked_elements[0][1]
 
+    def save_schedule_window_rect(self):
+        if self.last_schedule_rect:
+            self.threader.settings['schedule_position'] = [
+                self.last_schedule_rect['x'],
+                self.last_schedule_rect['y'],
+                self.last_schedule_rect['width'],
+                self.last_schedule_rect['height']
+            ]
+            self.last_schedule_rect = None
+
+    def sync_schedule_window(self, current_turn=None):
+        if self.schedule_browser and self.schedule_browser.alive():
+            try:
+                if current_turn is None and self.last_data and 'chara_info' in self.last_data:
+                    current_turn = self.last_data['chara_info'].get('turn', 1) - 1
+                
+                race_bonus = 0
+                aptitudes = {}
+                if self.last_data and 'chara_info' in self.last_data:
+                    cinfo = self.last_data['chara_info']
+                    deck = cinfo.get('support_card_array', [])
+                    if deck:
+                        race_bonus = mdb.get_deck_race_bonus(deck)
+                    
+                    apt_map = {1: 'G', 2: 'F', 3: 'E', 4: 'D', 5: 'C', 6: 'B', 7: 'A', 8: 'S'}
+                    aptitudes = {
+                        "Sprint": apt_map.get(cinfo.get('proper_distance_short', 1), 'G'),
+                        "Mile": apt_map.get(cinfo.get('proper_distance_mile', 1), 'G'),
+                        "Medium": apt_map.get(cinfo.get('proper_distance_middle', 1), 'G'),
+                        "Long": apt_map.get(cinfo.get('proper_distance_long', 1), 'G'),
+                        "Turf": apt_map.get(cinfo.get('proper_ground_turf', 1), 'G'),
+                        "Dirt": apt_map.get(cinfo.get('proper_ground_dirt', 1), 'G')
+                    }
+                
+                json_data = json.dumps(self.completed_races)
+                json_apt = json.dumps(aptitudes)
+                ct = current_turn if current_turn is not None else 'null'
+                self.schedule_browser.execute_script(f"""window.setAutoSchedulerSettings({race_bonus}, {json_apt}); window.syncCompletedRaces({json_data}, {ct});""")
+            except Exception as e:
+                logger.error(f"Failed to sync trackblazer schedule: {e}")
+
+    def update_schedule_window(self):
+        if self.should_stop:
+            return
+
+        if not self.schedule_browser:
+            url = f"file:///{util.get_asset('_assets/trackblazer_scheduler/index.html').replace(chr(92), '/')}"
+            rect = self.threader.settings['schedule_position']
+            # if not rect:
+            #     rect = [50, 50, 1000, 800]
+            self.schedule_browser = horsium.BrowserWindow(
+                url,
+                self.threader,
+                rect=rect,
+                run_at_launch=setup_schedule_window
+            )
+        else:
+            self.schedule_browser.ensure_tab_open()
+
+        if self.browser and self.browser.alive():
+            self.browser.execute_script("""window.schedule_window_opened();""")
+            
+        self.sync_schedule_window()
+
     def set_browser_topmost(self, is_topmost):
         self.browser_topmost = is_topmost
         logger.debug(f"Setting browser topmost to {is_topmost}")
@@ -1882,6 +1971,8 @@ class CarrotJuicer:
                         self.browser.quit()
                     if self.skill_browser and self.skill_browser.alive():
                         self.skill_browser.quit()
+                    if self.schedule_browser and self.schedule_browser.alive():
+                        self.schedule_browser.quit()
                     continue
 
                 if self.browser and self.browser.alive():
@@ -1908,6 +1999,16 @@ class CarrotJuicer:
                         pass
                     else:
                         self.save_skill_window_rect()
+
+                if self.open_schedule_window:
+                    self.open_schedule_window = False
+                    self.update_schedule_window()
+
+                if self.schedule_browser:
+                    if self.schedule_browser.alive():
+                        pass
+                    else:
+                        self.save_schedule_window_rect()
 
                 if os.path.exists(util.get_relative("debug.in")) and util.is_debug:
                     try:
@@ -2007,8 +2108,13 @@ class CarrotJuicer:
             logger.debug("Closing skill browser.")
             self.skill_browser.quit()
 
+        if self.schedule_browser:
+            logger.debug("Closing schedule browser.")
+            self.schedule_browser.quit()
+
         self.save_last_browser_rect()
         self.save_skill_window_rect()
+        self.save_schedule_window_rect()
 
         return
 
@@ -2063,10 +2169,17 @@ def setup_helper_page(browser: horsium.BrowserWindow):
     ul_skills.style = "position: fixed; right: 50px; top: 0; width: 3.5rem; height: 1.6rem; background-color: var(--c-bg-main); text-align: center; z-index: 101; line-height: 1.5rem; border-left: 2px solid var(--c-topnav); border-bottom: 2px solid var(--c-topnav); border-right: 2px solid var(--c-topnav); border-bottom-left-radius: 0.5rem; border-bottom-right-radius: 0.5rem; cursor: pointer; transition: top 0.5s ease 0s;";
     ul_skills.textContent = "Skills";
     window.UL_OVERLAY.appendChild(ul_skills);
+
+    var ul_schedule = document.createElement("div");
+    ul_schedule.id = "ul-schedule";
+    ul_schedule.classList.add("ul-overlay-button");
+    ul_schedule.style = "position: fixed; right: 108px; top: 0; width: 4.5rem; height: 1.6rem; background-color: var(--c-bg-main); text-align: center; z-index: 101; line-height: 1.5rem; border-left: 2px solid var(--c-topnav); border-bottom: 2px solid var(--c-topnav); border-right: 2px solid var(--c-topnav); border-bottom-left-radius: 0.5rem; border-bottom-right-radius: 0.5rem; cursor: pointer; transition: top 0.5s ease 0s;";
+    ul_schedule.textContent = "Schedule";
+    window.UL_OVERLAY.appendChild(ul_schedule);
     
     var ul_topmost_div = document.createElement("div");
     ul_topmost_div.classList.add("ul-overlay-button");
-    ul_topmost_div.style = "position: fixed; right: 108px; top: 0; width: 9rem; height: 1.6rem; background-color: var(--c-bg-main); text-align: center; z-index: 101; line-height: 1.5rem; border-left: 2px solid var(--c-topnav); border-bottom: 2px solid var(--c-topnav); border-right: 2px solid var(--c-topnav); border-bottom-left-radius: 0.5rem; border-bottom-right-radius: 0.5rem; transition: top 0.5s ease 0s;";
+    ul_topmost_div.style = "position: fixed; right: 182px; top: 0; width: 9rem; height: 1.6rem; background-color: var(--c-bg-main); text-align: center; z-index: 101; line-height: 1.5rem; border-left: 2px solid var(--c-topnav); border-bottom: 2px solid var(--c-topnav); border-right: 2px solid var(--c-topnav); border-bottom-left-radius: 0.5rem; border-bottom-right-radius: 0.5rem; transition: top 0.5s ease 0s;";
     ul_topmost_div.id = "ul-topmost-div"
     
     var ul_topmost = document.createElement("input");
@@ -2165,6 +2278,25 @@ def setup_helper_page(browser: horsium.BrowserWindow):
     }
 
     ul_skills.addEventListener("click", window.await_skill_window);
+
+    // Trackblazer Schedule window.
+    window.await_schedule_window_timeout = null;
+    window.await_schedule_window = function() {
+        window.await_schedule_window_timeout = setTimeout(function() {
+            ul_schedule.style.filter = "";
+        }, 15000);
+
+        ul_schedule.style.filter = "brightness(0.5)";
+        fetch('http://127.0.0.1:3150/open-schedule-window', { method: 'POST' });
+    }
+    window.schedule_window_opened = function() {
+        if (window.await_schedule_window_timeout) {
+            clearTimeout(window.await_schedule_window_timeout);
+        }
+        ul_schedule.style.filter = "";
+    }
+
+    ul_schedule.addEventListener("click", window.await_schedule_window);
 
     // Always on top toggle
     window.await_topmost = function() {
@@ -2312,6 +2444,21 @@ def setup_skill_window(browser: horsium.BrowserWindow):
     gametora_remove_cookies_banner(browser)
     gametora_close_ad_banner(browser)
 
+
+def setup_schedule_window(browser: horsium.BrowserWindow):
+    browser.execute_script("""
+    window.send_screen_rect = function() {
+        let rect = {
+            'x': window.screenX,
+            'y': window.screenY,
+            'width': window.outerWidth,
+            'height': window.outerHeight
+        };
+        fetch('http://127.0.0.1:3150/schedule-window-rect', { method: 'POST', body: JSON.stringify(rect), headers: { 'Content-Type': 'text/plain' } });
+        setTimeout(window.send_screen_rect, 2000);
+    }
+    setTimeout(window.send_screen_rect, 2000);
+    """)
 
 def gametora_dark_mode(browser):
     browser.execute_script("""

@@ -697,6 +697,60 @@ def get_skill_id_dict(force=False):
     
     return SKILL_ID_DICT
 
+def get_deck_race_bonus(deck_array):
+    if not deck_array:
+        return 0
+    
+    total_rb = 0
+    with Connection() as (_, cur):
+        levels = ["init", "limit_lv5", "limit_lv10", "limit_lv15", "limit_lv20", "limit_lv25", "limit_lv30", "limit_lv35", "limit_lv40", "limit_lv45", "limit_lv50"]
+        for card in deck_array:
+            cid = card.get("support_card_id")
+            lb = card.get("limit_break_count", 0)
+            if not cid: continue
+            
+            cur.execute("SELECT rarity, effect_id FROM support_card_data WHERE id=?", (cid,))
+            data = cur.fetchone()
+            if not data: continue
+            
+            rarity, effect_id = data
+            if effect_id == 0: effect_id = cid
+            
+            base_levels = {1: 20, 2: 25, 3: 30}
+            max_lv = base_levels.get(rarity, 30) + (5 * lb)
+            
+            cur.execute("SELECT init, limit_lv5, limit_lv10, limit_lv15, limit_lv20, limit_lv25, limit_lv30, limit_lv35, limit_lv40, limit_lv45, limit_lv50 FROM support_card_effect_table WHERE id=? AND type=15", (effect_id,))
+            row = cur.fetchone()
+            
+            rb_value = 0
+            if row:
+                for i, lv_name in enumerate(levels):
+                    current_col_lv = 0 if i == 0 else int(lv_name.replace("limit_lv", ""))
+                    if current_col_lv > max_lv:
+                        break
+                    val = row[i]
+                    if val != -1:
+                        rb_value = val
+                        
+            try:
+                cur.execute("SELECT * FROM support_card_unique_effect WHERE id=?", (cid,))
+                u_row = cur.fetchone()
+                if u_row:
+                    col_names = [desc[0] for desc in cur.description]
+                    u_data = dict(zip(col_names, u_row))
+                    if max_lv >= u_data.get('lv', 0):
+                        for i in range(5):
+                            t_col = f'type_{i}'
+                            v_col = f'value_{i}'
+                            if t_col in u_data and u_data[t_col] == 15:
+                                rb_value += u_data.get(v_col, 0)
+            except sqlite3.OperationalError:
+                pass
+                
+            total_rb += rb_value
+            
+    return total_rb
+
 SCOUTING_SCORE_TO_RANK_DICT = {}
 def get_scouting_score_to_rank_dict(force=False):
     global SCOUTING_SCORE_TO_RANK_DICT
