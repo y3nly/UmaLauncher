@@ -648,6 +648,7 @@ class CarrotJuicer:
                     self.completed_races = {}
                     
                     self.current_race_bonus = 0
+                    self.last_synced_turn = -1
                     deck = data['chara_info'].get('support_card_array', [])
                     if deck:
                         self.current_race_bonus = mdb.get_deck_race_bonus(deck)
@@ -791,7 +792,9 @@ class CarrotJuicer:
                                     logger.debug(f"Trackblazer Sync: Locked race '{race_name}' at turn index {turn}")
                 
                 current_turn = data['chara_info'].get('turn', 1) - 1
-                self.sync_schedule_window(current_turn)
+                if getattr(self, 'last_synced_turn', -1) != current_turn:
+                    self.sync_schedule_window(current_turn)
+                    self.last_synced_turn = current_turn
 
             if 'unchecked_event_array' in data and data['unchecked_event_array']:
                 # Training event.
