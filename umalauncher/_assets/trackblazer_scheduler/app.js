@@ -1153,15 +1153,6 @@ async function init() {
 // Global API for UmaLauncher external injection
 window.setAutoSchedulerSettings = function(raceBonus, aptitudes) {
     let changed = false;
-
-    if (!window.UL_PREFS_SET) {
-        state.settings.max_consecutive_races = 4;
-        ids.maxConsec.value = 4;
-        state.settings.threshold = 'B';
-        ids.threshold.value = 'B';
-        window.UL_PREFS_SET = true;
-        changed = true;
-    }
     
     if (raceBonus != null && state.settings.race_bonus_pct !== raceBonus) {
         state.settings.race_bonus_pct = raceBonus;
