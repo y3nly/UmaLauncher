@@ -788,6 +788,13 @@ class CarrotJuicer:
                             if grade in (100, 200, 300):
                                 race_name = mdb.get_race_program_name_dict().get(program_id, "")
                                 if race_name:
+                                    if race_name == "Tokyo Yushun (Japanese Derby)":
+                                        race_name = "Japanese Derby (Tokyo Yushun)"
+                                    elif race_name == "Milers Cup":
+                                        race_name = "Milers Cup (Yomiuri)"
+                                    elif race_name == "JBC Ladies’ Classic" or race_name == "JBC Ladies' Classic":
+                                        race_name = "JBC Ladies' Classic"
+                                        
                                     self.completed_races[str(turn)] = race_name
                                     logger.debug(f"Trackblazer Sync: Locked race '{race_name}' at turn index {turn}")
                 
