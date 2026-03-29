@@ -271,14 +271,6 @@ class CarrotJuicer:
             skill_scores_map[str(unique_skill_id)] = u_score
         return {"score": total_score, "rank": self.get_rank_str(total_score), "skill_scores": skill_scores_map}
 
-        # Remove existing geckodriver.log
-        if os.path.exists("geckodriver.log"):
-            try:
-                os.remove("geckodriver.log")
-            except PermissionError:
-                logger.warning("Could not delete geckodriver.log because it is already in use!")
-                return
-
     def restart_time(self):
         self.start_time = math.floor(time.time() * 1000)
 
@@ -1138,7 +1130,7 @@ class CarrotJuicer:
             results = self.run_simulation(util.get_asset("_assets/umasim-cli.exe"), mock_payload)
 
         discount_map = {0: 0, 1: 10, 2: 20, 3: 30, 4: 35, 5: 40}
-        rating_calc = self.calculate_uma_rank_score(self.last_data['chara_info'], self.skill_data)
+        rating_calc = self.calculate_uma_rank_score(self.last_data.get('chara_info', {}), self.skill_data)
         rating_scores = rating_calc.get("skill_scores", {})
         uma_score = rating_calc.get("score", 0)
         uma_rank = rating_calc.get("rank", "")
