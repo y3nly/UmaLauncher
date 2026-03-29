@@ -159,11 +159,7 @@ const PRESETS = {
 
 // Default summer training blocks (no-race turns).
 // Junior: Early Jul → Early Aug; Classic & Senior: Early Jul → Late Aug.
-const DEFAULT_SUMMER_BLOCKS = [
-  12, 13, 14,           // Junior Jul-E, Jul-L, Aug-E
-  36, 37, 38, 39,       // Classic Jul-E, Jul-L, Aug-E, Aug-L
-  60, 61, 62, 63        // Senior Jul-E, Jul-L, Aug-E, Aug-L
-];
+const DEFAULT_SUMMER_BLOCKS = [];
 
 function clone(obj) {
   return JSON.parse(JSON.stringify(obj));
@@ -210,14 +206,14 @@ function defaultSettings() {
   return {
     preset: '',
     aptitudes: { Sprint: 'A', Mile: 'A', Medium: 'A', Long: 'A', Turf: 'A', Dirt: 'G' },
-    threshold: 'C',
+    threshold: 'B',
     race_bonus_pct: 50.0,
     stat_weight: 1.0,
     sp_weight: 1.0,
-    hint_weight: 8.0,
+    hint_weight: 1.0,
     epithet_multiplier: 1.0,
     three_race_penalty_weight: 10.0,
-    max_consecutive_races: 3,
+    max_consecutive_races: 0,
     race_cost: 100,
     forced_epithets: []
   };
@@ -348,7 +344,7 @@ function completedEpithets(selectedRaces, data) {
 
   const stunning = ['Satsuki Sho', 'Japanese Derby (Tokyo Yushun)', 'Kikuka Sho'].every(n => hasRaceYear(counts, 'Classic', n));
   const lady = ['Oka Sho', 'Japanese Oaks', 'Shuka Sho'].every(n => hasRaceYear(counts, 'Classic', n));
-  const springChampion = ['Osaka Hai', 'Tenno Sho (Spring)', 'Takarazuka Kinen'].every(n => hasRaceYear(counts, 'Senior', n));
+  const springChampion = ['Osaka Hai', 'Tenno Sho (Spring)'].every(n => hasRaceYear(counts, 'Senior', n)) && (hasRaceYear(counts, 'Senior', 'Takarazuka Kinen') || hasRaceYear(counts, 'Classic', 'Takarazuka Kinen'));
   const fallChampion = ['Tenno Sho (Autumn)', 'Japan Cup', 'Arima Kinen'].every(n => hasRaceYear(counts, 'Senior', n));
 
   if (stunning) done.add('Stunning');
