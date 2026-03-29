@@ -974,7 +974,8 @@ function saveStateToStorage() {
     const data = {
       s: settingsFromUI(),
       l: state.manual_locks,
-      f: state.freeze_before_index
+      f: state.freeze_before_index,
+      e: state.extra_race_info
     };
     localStorage.setItem('uma-schedule', JSON.stringify(data));
   } catch (e) { /* quota exceeded — ignore */ }
@@ -1139,6 +1140,7 @@ async function init() {
   } else if (saved) {
     state.manual_locks = saved.l || {};
     state.freeze_before_index = saved.f ?? null;
+    state.extra_race_info = saved.e || {};
     if (saved.s) loadSettingsToUI(saved.s);
   } else {
     for (const idx of DEFAULT_SUMMER_BLOCKS) {
