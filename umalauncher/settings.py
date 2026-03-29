@@ -170,6 +170,13 @@ class DefaultSettings(se.NewSettings):
             se.SettingType.XYWHSPINBOXES,
             tab="Position"
         ),
+        "schedule_position": se.Setting(
+            "Schedule browser position",
+            "Position of the schedule browser window.",
+            None,
+            se.SettingType.XYWHSPINBOXES,
+            tab="Position"
+        ),
         "maximize_safezone": se.Setting(
             "Safezone for \"Maximize + center game\" in tray menu",
             "Amount of pixels to leave around the game window when maximizing.<br><b>If you are having issues streaming the game on Discord,</b> try adding a safezone of at least 8 pixels where your taskbar is.",

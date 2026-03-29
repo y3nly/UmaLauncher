@@ -530,15 +530,8 @@ def get_race_name_dict(force=False):
 
     if force or not downloaded_race_name_dict:
         race_name_dict = mdb.get_race_program_name_dict()
-        logger.info("Requesting race names from umapyoi.net")
-        response = do_get_request("https://umapyoi.net/api/v1/race_program")
-        if not response:
-            return race_name_dict
-        
-        for race_program in response.json():
-            race_name_dict[race_program['id']] = race_program['name']
-        
         downloaded_race_name_dict.update(race_name_dict)
+        
     return downloaded_race_name_dict
 
 def create_gametora_helper_url(card_id, scenario_id, support_ids, language="English", server="ja"):

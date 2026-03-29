@@ -26,6 +26,14 @@ def open_skills_window():
 
     return '', 200
 
+@app.route('/open-schedule-window', methods=['POST'])
+def open_schedule_window():
+    global threader
+    if threader.carrotjuicer:
+        threader.carrotjuicer.open_schedule_window = True
+
+    return '', 200
+
 @app.route('/helper-window-rect', methods=['POST'])
 def helper_window_rect():
     global threader
@@ -45,6 +53,17 @@ def skills_window_rect():
     
     if threader.carrotjuicer:
         threader.carrotjuicer.last_skills_rect = json_data
+
+    return '', 200
+
+@app.route('/schedule-window-rect', methods=['POST'])
+def schedule_window_rect():
+    global threader
+    # Json is sent as text/plain in body.
+    json_data = json.loads(request.data.decode('utf-8'))
+    
+    if threader.carrotjuicer:
+        threader.carrotjuicer.last_schedule_rect = json_data
 
     return '', 200
 
