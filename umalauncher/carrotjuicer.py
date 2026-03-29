@@ -2216,7 +2216,7 @@ def setup_helper_page(browser: horsium.BrowserWindow):
     ul_schedule.id = "ul-schedule";
     ul_schedule.classList.add("ul-overlay-button");
     ul_schedule.style = "position: fixed; right: 108px; top: 0; width: 4.5rem; height: 1.6rem; background-color: var(--c-bg-main); text-align: center; z-index: 101; line-height: 1.5rem; border-left: 2px solid var(--c-topnav); border-bottom: 2px solid var(--c-topnav); border-right: 2px solid var(--c-topnav); border-bottom-left-radius: 0.5rem; border-bottom-right-radius: 0.5rem; cursor: pointer; transition: top 0.5s ease 0s;";
-    ul_schedule.textContent = "Schedule";
+    ul_schedule.textContent = "Sched";
     window.UL_OVERLAY.appendChild(ul_schedule);
     
     var ul_topmost_div = document.createElement("div");
