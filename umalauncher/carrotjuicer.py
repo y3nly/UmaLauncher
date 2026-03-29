@@ -422,6 +422,8 @@ class CarrotJuicer:
             self.training_tracker = None
         if self.skill_browser and self.skill_browser.alive():
             self.skill_browser.close()
+        if self.schedule_browser and self.schedule_browser.alive():
+            self.schedule_browser.close()
         self.close_browser()
         return
 
@@ -646,6 +648,7 @@ class CarrotJuicer:
                 if getattr(self, 'current_training_id', None) != training_id:
                     self.current_training_id = training_id
                     self.completed_races = {}
+                    self.extra_race_info = {}
                     
                     self.current_race_bonus = 0
                     self.last_synced_turn = -1
@@ -785,7 +788,7 @@ class CarrotJuicer:
                             turn = race.get('turn', 1) - 1
                             program_id = race.get('program_id')
                             grade = mdb.get_program_id_grade(program_id)
-                            if grade in (100, 200, 300):
+                            if grade in (100, 200, 300, 900):
                                 race_name = mdb.get_race_program_name_dict().get(program_id, "")
                                 if race_name:
                                     if race_name == "Tokyo Yushun (Japanese Derby)":
@@ -796,6 +799,25 @@ class CarrotJuicer:
                                         race_name = "JBC Ladies' Classic"
                                         
                                     self.completed_races[str(turn)] = race_name
+                                    
+                                    if grade == 900:
+                                        length = mdb.get_race_distance_dict().get(program_id)
+                                        surface_id = mdb.get_race_surface_dict().get(program_id)
+                                        surface = "Turf" if surface_id == 1 else "Dirt"
+                                        
+                                        dist_str = "Long"
+                                        if length <= 1400: dist_str = "Sprint"
+                                        elif length <= 1800: dist_str = "Mile"
+                                        elif length <= 2400: dist_str = "Medium"
+                                        
+                                        self.extra_race_info[race_name] = {
+                                            "name": race_name,
+                                            "length": length,
+                                            "distance": dist_str,
+                                            "surface": surface,
+                                            "grade": "Pre-OP" # Treat Debut as Pre-OP/EX for scheduler display
+                                        }
+                                    
                                     logger.debug(f"Trackblazer Sync: Locked race '{race_name}' at turn index {turn}")
                 
                 current_turn = data['chara_info'].get('turn', 1) - 1
@@ -1909,11 +1931,12 @@ class CarrotJuicer:
                         logger.debug(f"Trackblazer API payload: RB {race_bonus}% | Aptitudes {aptitudes}")
                 
                 json_data = json.dumps(self.completed_races)
+                json_extra = json.dumps(self.extra_race_info)
                 json_apt = json.dumps(aptitudes) if aptitudes else 'null'
                 rb_val = race_bonus if race_bonus is not None else 'null'
                 
                 ct = current_turn if current_turn is not None else 'null'
-                self.schedule_browser.execute_script(f"""window.setAutoSchedulerSettings({rb_val}, {json_apt}); window.syncCompletedRaces({json_data}, {ct});""")
+                self.schedule_browser.execute_script(f"""window.setAutoSchedulerSettings({rb_val}, {json_apt}); window.syncCompletedRaces({json_data}, {ct}, {json_extra});""")
             except Exception as e:
                 logger.error(f"Failed to sync trackblazer schedule: {e}")
 
@@ -2477,6 +2500,10 @@ def setup_schedule_window(browser: horsium.BrowserWindow):
         setTimeout(window.send_screen_rect, 2000);
     }
     setTimeout(window.send_screen_rect, 2000);
+    
+    if (window.clearCompletedRaces) {
+        window.clearCompletedRaces();
+    }
     """)
 
 def gametora_dark_mode(browser):

@@ -238,17 +238,17 @@ function showTooltip(card, w) {
           </div>
         </div>
         ${(() => {
-          const raceStats = w.race_stats || 0;
-          const epithetStats = newEpithets.reduce((sum, name) => {
-            const ep = state.epithets.find(e => e.name === name);
-            return sum + (ep && ep.reward_kind === 'stat' ? (ep.amount || 0) : 0);
-          }, 0);
-          const shopCoins = 100;
-          const shopStats = Math.floor(shopCoins / 30) * 15;
-          const shopRemainder = shopCoins - Math.floor(shopCoins / 30) * 30;
-          const shopExtra = Math.floor(shopRemainder / 15) * 7;
-          const totalStats = raceStats + epithetStats + shopStats + shopExtra;
-          return `
+        const raceStats = w.race_stats || 0;
+        const epithetStats = newEpithets.reduce((sum, name) => {
+          const ep = state.epithets.find(e => e.name === name);
+          return sum + (ep && ep.reward_kind === 'stat' ? (ep.amount || 0) : 0);
+        }, 0);
+        const shopCoins = 100;
+        const shopStats = Math.floor(shopCoins / 30) * 15;
+        const shopRemainder = shopCoins - Math.floor(shopCoins / 30) * 30;
+        const shopExtra = Math.floor(shopRemainder / 15) * 7;
+        const totalStats = raceStats + epithetStats + shopStats + shopExtra;
+        return `
           <div class="tt-section-label">Stat Breakdown</div>
           <div class="tt-breakdown">
             <div class="tt-bk-row"><span class="tt-bk-label">Race</span><span class="tt-bk-val">+${raceStats}</span></div>
@@ -256,26 +256,26 @@ function showTooltip(card, w) {
             <div class="tt-bk-row"><span class="tt-bk-label">Shop <span class="tt-bk-hint">${shopCoins} coins</span></span><span class="tt-bk-val">+${shopStats + shopExtra}</span></div>
             <div class="tt-bk-row tt-bk-total"><span class="tt-bk-label">Total</span><span class="tt-bk-val">+${totalStats}</span></div>
           </div>`;
-        })()}
+      })()}
         ${linkedOnly.length ? `
           <div class="tt-section-label">Contributes to Epithets</div>
           <div class="tt-epithet-list">
             ${linkedOnly.map(name => {
-              const ep = state.epithets.find(e => e.name === name);
-              const reward = ep ? ep.reward_text : '';
-              const c = getEpithetColor(name);
-              return `<div class="tt-epithet-item"><span class="tt-edot" style="background:${c}"></span><span>${name}</span><span class="tt-stat-bonus">${reward}</span></div>`;
-            }).join('')}
+        const ep = state.epithets.find(e => e.name === name);
+        const reward = ep ? ep.reward_text : '';
+        const c = getEpithetColor(name);
+        return `<div class="tt-epithet-item"><span class="tt-edot" style="background:${c}"></span><span>${name}</span><span class="tt-stat-bonus">${reward}</span></div>`;
+      }).join('')}
           </div>` : ''}
         ${newEpithets.length ? `
           <div class="tt-section-label">Completes Epithets</div>
           <div class="tt-epithet-list">
             ${newEpithets.map(name => {
-              const ep = state.epithets.find(e => e.name === name);
-              const reward = ep ? ep.reward_text : '';
-              const c = getEpithetColor(name);
-              return `<div class="tt-epithet-item"><span class="tt-edot" style="background:${c};box-shadow:0 0 3px ${c}"></span><span>${name}</span><span class="tt-stat-bonus">${reward}</span></div>`;
-            }).join('')}
+        const ep = state.epithets.find(e => e.name === name);
+        const reward = ep ? ep.reward_text : '';
+        const c = getEpithetColor(name);
+        return `<div class="tt-epithet-item"><span class="tt-edot" style="background:${c};box-shadow:0 0 3px ${c}"></span><span>${name}</span><span class="tt-stat-bonus">${reward}</span></div>`;
+      }).join('')}
           </div>` : ''}
         <div class="tt-divider"></div>
         <div class="tt-select-wrap" id="ttSelectWrap"></div>
@@ -817,7 +817,7 @@ function renderTurnCell(w) {
   card.addEventListener('mouseenter', () => {
     if (tooltipPinned) return;
     clearTimeout(hoverTimer);
-    hoverTimer = setTimeout(() => showTooltip(card, w), 180);
+    hoverTimer = setTimeout(() => showTooltip(card, w), 400);
   });
   card.addEventListener('mouseleave', () => {
     if (tooltipPinned) return;
@@ -1005,7 +1005,7 @@ async function postSolve() {
   ids.statusNote.textContent = 'Recomputing\u2026';
   try {
     const payload = await solveWithManualLocks(
-      settingsFromUI(), state.current_selected, state.manual_locks, state.freeze_before_index
+      settingsFromUI(), state.current_selected, state.manual_locks, state.freeze_before_index, state.extra_race_info
     );
     if (seq !== solveSequence) return;
     applyPayload(payload);
@@ -1151,80 +1151,84 @@ async function init() {
 }
 
 // Global API for UmaLauncher external injection
-window.setAutoSchedulerSettings = function(raceBonus, aptitudes) {
-    let changed = false;
-    
-    if (raceBonus != null && state.settings.race_bonus_pct !== raceBonus) {
-        state.settings.race_bonus_pct = raceBonus;
-        ids.raceBonus.value = raceBonus;
+window.setAutoSchedulerSettings = function (raceBonus, aptitudes) {
+  let changed = false;
+
+  if (raceBonus != null && state.settings.race_bonus_pct !== raceBonus) {
+    state.settings.race_bonus_pct = raceBonus;
+    ids.raceBonus.value = raceBonus;
+    changed = true;
+  }
+
+  if (aptitudes) {
+    const aptMap = {
+      'Sprint': ids.sprint,
+      'Mile': ids.mile,
+      'Medium': ids.medium,
+      'Long': ids.long,
+      'Turf': ids.turf,
+      'Dirt': ids.dirt
+    };
+
+    for (const key of Object.keys(aptitudes)) {
+      const val = aptitudes[key];
+      if (state.settings.aptitudes && state.settings.aptitudes[key] !== val) {
+        state.settings.aptitudes[key] = val;
+        if (aptMap[key]) aptMap[key].value = val;
         changed = true;
+      }
     }
+  }
 
-    if (aptitudes) {
-        const aptMap = {
-            'Sprint': ids.sprint,
-            'Mile': ids.mile,
-            'Medium': ids.medium,
-            'Long': ids.long,
-            'Turf': ids.turf,
-            'Dirt': ids.dirt
-        };
-
-        for (const key of Object.keys(aptitudes)) {
-            const val = aptitudes[key];
-            if (state.settings.aptitudes && state.settings.aptitudes[key] !== val) {
-                state.settings.aptitudes[key] = val;
-                if (aptMap[key]) aptMap[key].value = val;
-                changed = true;
-            }
-        }
-    }
-
-    if (changed) {
-        queueSolve(0);
-    }
-};
-
-window.syncCompletedRaces = function(completedRacesDict, currentTurnIndex) {
-    let changed = false;
-    for (const [turnStr, raceName] of Object.entries(completedRacesDict)) {
-        if (state.manual_locks[turnStr] !== raceName) {
-            state.manual_locks[turnStr] = raceName;
-            changed = true;
-        }
-    }
-    
-    // Auto-lock blanks for missing races if we have advanced past their turns?
-    // Let's let Trackblazer handle blanks just by advancing the freeze_before_index.
-    let newFreeze = null;
-    if (currentTurnIndex != null) {
-        newFreeze = currentTurnIndex;
-        // Also auto-lock past turns to '[No race]' if they aren't in completedRacesDict
-        for (let i = 0; i < currentTurnIndex; i++) {
-            if (!completedRacesDict[String(i)] && !state.manual_locks[String(i)]) {
-                state.manual_locks[String(i)] = '[No race]';
-                changed = true;
-            }
-        }
-    }
-    
-    if (newFreeze !== null && state.freeze_before_index !== newFreeze) {
-        state.freeze_before_index = newFreeze;
-        changed = true;
-    }
-    
-    if (changed) {
-        queueSolve(0);
-    }
-};
-
-window.clearCompletedRaces = function() {
-    state.manual_locks = {};
-    for (const idx of DEFAULT_SUMMER_BLOCKS) {
-      state.manual_locks[String(idx)] = '[No race]';
-    }
-    state.freeze_before_index = null;
+  if (changed) {
     queueSolve(0);
+  }
+};
+
+window.syncCompletedRaces = function (completedRacesDict, currentTurnIndex, extraRaceInfo) {
+  let changed = false;
+  if (extraRaceInfo) {
+    state.extra_race_info = extraRaceInfo;
+    changed = true;
+  }
+  for (const [turnStr, raceName] of Object.entries(completedRacesDict)) {
+    if (state.manual_locks[turnStr] !== raceName) {
+      state.manual_locks[turnStr] = raceName;
+      changed = true;
+    }
+  }
+
+  // Auto-lock blanks for missing races if we have advanced past their turns?
+  // Let's let Trackblazer handle blanks just by advancing the freeze_before_index.
+  let newFreeze = null;
+  if (currentTurnIndex != null) {
+    newFreeze = currentTurnIndex;
+    // Also auto-lock past turns to '[No race]' if they aren't in completedRacesDict
+    for (let i = 0; i < currentTurnIndex; i++) {
+      if (!completedRacesDict[String(i)] && !state.manual_locks[String(i)]) {
+        state.manual_locks[String(i)] = '[No race]';
+        changed = true;
+      }
+    }
+  }
+
+  if (newFreeze !== null && state.freeze_before_index !== newFreeze) {
+    state.freeze_before_index = newFreeze;
+    changed = true;
+  }
+
+  if (changed) {
+    queueSolve(0);
+  }
+};
+
+window.clearCompletedRaces = function () {
+  state.manual_locks = {};
+  for (const idx of DEFAULT_SUMMER_BLOCKS) {
+    state.manual_locks[String(idx)] = '[No race]';
+  }
+  state.freeze_before_index = null;
+  queueSolve(0);
 };
 
 init().catch(err => {

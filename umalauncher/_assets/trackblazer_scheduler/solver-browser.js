@@ -307,8 +307,8 @@ function selectedCounts(selectedRaces) {
   return {
     byName,
     byYearName,
-    standard: countSelected(selectedRaces, r => isStandardDistance(r)),
-    nonstandard: countSelected(selectedRaces, r => !isStandardDistance(r)),
+    standard: countSelected(selectedRaces, r => isStandardDistance(r) || r.name === 'Junior Make Debut'),
+    nonstandard: countSelected(selectedRaces, r => !isStandardDistance(r) || r.name === 'Junior Make Debut'),
     dirt: countSelected(selectedRaces, r => r.surface === 'Dirt'),
     dirt_g1: countSelected(selectedRaces, r => r.surface === 'Dirt' && r.grade === 'G1'),
     op_plus: countSelected(selectedRaces, r => ['G1', 'G2', 'G3', 'OP', 'Pre-OP'].includes(r.grade)),
@@ -449,8 +449,8 @@ function epithetRacePredicates(completedNames) {
     }
   }
 
-  if (has('Standard Distance Leader')) preds['Standard Distance Leader'] = r => isStandardDistance(r);
-  if (has('Non-Standard Distance Leader')) preds['Non-Standard Distance Leader'] = r => !isStandardDistance(r);
+  if (has('Standard Distance Leader')) preds['Standard Distance Leader'] = r => isStandardDistance(r) || r.name === 'Junior Make Debut';
+  if (has('Non-Standard Distance Leader')) preds['Non-Standard Distance Leader'] = r => !isStandardDistance(r) || r.name === 'Junior Make Debut';
   if (has('Eat My Dust')) preds['Eat My Dust'] = r => r.surface === 'Dirt';
   else if (has('Playing Dirty')) preds['Playing Dirty'] = r => r.surface === 'Dirt';
   else if (has('Dirty Work')) preds['Dirty Work'] = r => r.surface === 'Dirt';
@@ -507,14 +507,30 @@ function epithetsWeightedValue(epithets, settings, data) {
   return Number(epithets.reduce((sum, name) => sum + epithetObjectiveValue(name, settings, data), 0).toFixed(2));
 }
 
-function buildActions(settings, windows, forcedChoiceNames = {}) {
+function buildActions(settings, windows, forcedChoiceNames = {}, extraRaceInfo = {}) {
+  const rb = Math.max(0, settings.race_bonus_pct || 0) / 100;
   return windows.map(window => {
     const forcedName = forcedChoiceNames[window.index];
     const actions = [{ kind: 'none', choice: NO_RACE, race: null, stats: 0, sp: 0, value: 0 }];
+    
+    // Add races from standard window data
     for (const race of window.races) {
       if (!raceIsEligible(race, settings) && forcedName !== race.name) continue;
       const { stats, sp, value } = weightedRaceValue(race, settings);
       actions.push({ kind: 'race', choice: race.name, race, stats, sp, value });
+    }
+    
+    // If a forced race is not in the standard list, check extraRaceInfo (e.g. Debut)
+    if (forcedName && !actions.some(a => a.choice === forcedName)) {
+      const extra = extraRaceInfo[forcedName];
+      if (extra) {
+        const race = { ...extra };
+        const base = BASE_REWARD[race.grade] || { stats: 0, sp: 0 };
+        race.stats = Math.floor(base.stats * (1 + rb));
+        race.sp = Math.floor(base.sp * (1 + rb));
+        const { stats, sp, value } = weightedRaceValue(race, settings);
+        actions.push({ kind: 'race', choice: race.name, race, stats, sp, value });
+      }
     }
     return actions;
   });
@@ -553,7 +569,7 @@ function mergeExprs(...exprs) {
   return merged;
 }
 
-async function optimizeSchedule(settingsInput = null, fixedChoices = {}) {
+async function optimizeSchedule(settingsInput = null, fixedChoices = {}, extraRaceInfo = {}) {
   const data = await loadData();
   const { windows, epithets, glpk } = data;
   const settings = normalizeSettings(settingsInput);
@@ -572,7 +588,7 @@ async function optimizeSchedule(settingsInput = null, fixedChoices = {}) {
     }
   }
 
-  const actionsByWindow = buildActions(settings, windows, fixed);
+  const actionsByWindow = buildActions(settings, windows, fixed, extraRaceInfo);
 
   const xVars = [];
   const actionLookup = new Map();
@@ -745,8 +761,8 @@ async function optimizeSchedule(settingsInput = null, fixedChoices = {}) {
 
   const exprDirtG1 = actionSum(r => r.surface === 'Dirt' && r.grade === 'G1');
   const exprDirt = actionSum(r => r.surface === 'Dirt');
-  const exprStandard = actionSum(r => isStandardDistance(r));
-  const exprNonStandard = actionSum(r => !isStandardDistance(r));
+  const exprStandard = actionSum(r => isStandardDistance(r) || r.name === 'Junior Make Debut');
+  const exprNonStandard = actionSum(r => !isStandardDistance(r) || r.name === 'Junior Make Debut');
   const exprOpPlus = actionSum(r => ['G1', 'G2', 'G3', 'OP', 'Pre-OP'].includes(r.grade));
   const exprJuniorStakes = actionSum(r => String(r.name).includes('Junior Stakes'));
   const exprCountry = actionSum(r => COUNTRY_WORDS.some(word => String(r.name).includes(word)));
@@ -976,7 +992,7 @@ async function optimizeSchedule(settingsInput = null, fixedChoices = {}) {
   };
 }
 
-export async function solveWithManualLocks(settingsInput, currentSelected = [], manualLocks = {}, freezeBeforeIndex = null) {
+export async function solveWithManualLocks(settingsInput, currentSelected = [], manualLocks = {}, freezeBeforeIndex = null, extraRaceInfo = {}) {
   const settings = normalizeSettings(settingsInput);
   const locks = Object.fromEntries(
     Object.entries(manualLocks || {})
@@ -1000,7 +1016,7 @@ export async function solveWithManualLocks(settingsInput, currentSelected = [], 
     }
   }
   fixed = { ...fixed, ...locks };
-  const result = await optimizeSchedule(settings, fixed);
+  const result = await optimizeSchedule(settings, fixed, extraRaceInfo);
   return formatPayload(result, manualLocks, result.selected_choices || []);
 }
 
@@ -1085,7 +1101,7 @@ function formatPayload(result, manualLocks = {}, currentSelected = []) {
 
 export async function initialPayload() {
   await loadData();
-  const result = await optimizeSchedule(defaultSettings(), {});
+  const result = await optimizeSchedule(defaultSettings(), {}, {});
   return formatPayload(result, {}, result.selected_choices || []);
 }
 
