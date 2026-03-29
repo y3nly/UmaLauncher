@@ -646,6 +646,12 @@ class CarrotJuicer:
                 if getattr(self, 'current_training_id', None) != training_id:
                     self.current_training_id = training_id
                     self.completed_races = {}
+                    
+                    self.current_race_bonus = 0
+                    deck = data['chara_info'].get('support_card_array', [])
+                    if deck:
+                        self.current_race_bonus = mdb.get_deck_race_bonus(deck)
+
                     if self.schedule_browser and self.schedule_browser.alive():
                         self.schedule_browser.execute_script("window.clearCompletedRaces();")
 
@@ -1873,13 +1879,13 @@ class CarrotJuicer:
                 if current_turn is None and self.last_data and 'chara_info' in self.last_data:
                     current_turn = self.last_data['chara_info'].get('turn', 1) - 1
                 
+                logger.debug(f"Syncing schedule window. Current turn index: {current_turn}")
+
                 race_bonus = 0
                 aptitudes = {}
                 if self.last_data and 'chara_info' in self.last_data:
                     cinfo = self.last_data['chara_info']
-                    deck = cinfo.get('support_card_array', [])
-                    if deck:
-                        race_bonus = mdb.get_deck_race_bonus(deck)
+                    race_bonus = getattr(self, 'current_race_bonus', 0)
                     
                     apt_map = {1: 'G', 2: 'F', 3: 'E', 4: 'D', 5: 'C', 6: 'B', 7: 'A', 8: 'S'}
                     aptitudes = {
@@ -1890,6 +1896,8 @@ class CarrotJuicer:
                         "Turf": apt_map.get(cinfo.get('proper_ground_turf', 1), 'G'),
                         "Dirt": apt_map.get(cinfo.get('proper_ground_dirt', 1), 'G')
                     }
+                    
+                    logger.debug(f"Trackblazer API payload: RB {race_bonus}% | Aptitudes {aptitudes}")
                 
                 json_data = json.dumps(self.completed_races)
                 json_apt = json.dumps(aptitudes)
