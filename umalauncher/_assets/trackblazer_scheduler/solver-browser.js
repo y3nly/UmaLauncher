@@ -444,7 +444,7 @@ function epithetRacePredicates(completedNames) {
     const best = has('Dirt G1 Dominator') ? 'Dirt G1 Dominator' : has('Dirt G1 Powerhouse') ? 'Dirt G1 Powerhouse' : has('Dirt G1 Star') ? 'Dirt G1 Star' : 'Dirt G1 Achiever';
     preds[best] = r => r.surface === 'Dirt' && r.grade === 'G1';
     // Remove lesser tiers if the best is set
-    for (const n of ['Dirt G1 Achiever','Dirt G1 Star','Dirt G1 Powerhouse','Dirt G1 Dominator']) {
+    for (const n of ['Dirt G1 Achiever', 'Dirt G1 Star', 'Dirt G1 Powerhouse', 'Dirt G1 Dominator']) {
       if (n !== best && has(n)) preds[n] = preds[best];
     }
   }
@@ -462,14 +462,14 @@ function epithetRacePredicates(completedNames) {
   if (has('Turf Tussler')) preds['Turf Tussler'] = r => r.surface === 'Turf' && ['Sprint', 'Mile', 'Medium', 'Long'].includes(r.distance);
   if (has('Dirt Sprinter')) preds['Dirt Sprinter'] = r => r.year && r.name === 'JBC Sprint';
   if (has('Kicking Up Dust')) preds['Kicking Up Dust'] = r => r.year === 'Classic' && ['Unicorn Stakes', 'Leopard Stakes', 'Japan Dirt Derby'].includes(r.name);
-  if (has('Kanto Conqueror')) preds['Kanto Conqueror'] = r => ['G1','G2','G3'].includes(r.grade) && KANTO_TRACKS.has(r.track);
-  if (has('West Japan Whiz')) preds['West Japan Whiz'] = r => ['G1','G2','G3'].includes(r.grade) && WEST_TRACKS.has(r.track);
-  if (has('Tohoku Top Dog')) preds['Tohoku Top Dog'] = r => ['G1','G2','G3'].includes(r.grade) && TOHOKU_TRACKS.has(r.track);
-  if (has('Hokkaido Hotshot')) preds['Hokkaido Hotshot'] = r => ['G1','G2','G3'].includes(r.grade) && HOKKAIDO_TRACKS.has(r.track);
-  if (has('Kokura Constable')) preds['Kokura Constable'] = r => ['G1','G2','G3'].includes(r.grade) && KOKURA_TRACKS.has(r.track);
+  if (has('Kanto Conqueror')) preds['Kanto Conqueror'] = r => ['G1', 'G2', 'G3'].includes(r.grade) && KANTO_TRACKS.has(r.track);
+  if (has('West Japan Whiz')) preds['West Japan Whiz'] = r => ['G1', 'G2', 'G3'].includes(r.grade) && WEST_TRACKS.has(r.track);
+  if (has('Tohoku Top Dog')) preds['Tohoku Top Dog'] = r => ['G1', 'G2', 'G3'].includes(r.grade) && TOHOKU_TRACKS.has(r.track);
+  if (has('Hokkaido Hotshot')) preds['Hokkaido Hotshot'] = r => ['G1', 'G2', 'G3'].includes(r.grade) && HOKKAIDO_TRACKS.has(r.track);
+  if (has('Kokura Constable')) preds['Kokura Constable'] = r => ['G1', 'G2', 'G3'].includes(r.grade) && KOKURA_TRACKS.has(r.track);
   if (has('Legendary')) preds['Legendary'] = r =>
-    (r.year === 'Classic' && ['Satsuki Sho','Japanese Derby (Tokyo Yushun)','Kikuka Sho','Oka Sho','Japanese Oaks','Shuka Sho'].includes(r.name)) ||
-    (r.year === 'Senior' && ['Osaka Hai','Tenno Sho (Spring)','Takarazuka Kinen','Tenno Sho (Autumn)','Japan Cup','Arima Kinen'].includes(r.name));
+    (r.year === 'Classic' && ['Satsuki Sho', 'Japanese Derby (Tokyo Yushun)', 'Kikuka Sho', 'Oka Sho', 'Japanese Oaks', 'Shuka Sho'].includes(r.name)) ||
+    (r.year === 'Senior' && ['Osaka Hai', 'Tenno Sho (Spring)', 'Takarazuka Kinen', 'Tenno Sho (Autumn)', 'Japan Cup', 'Arima Kinen'].includes(r.name));
 
   return preds;
 }
@@ -512,14 +512,14 @@ function buildActions(settings, windows, forcedChoiceNames = {}, extraRaceInfo =
   return windows.map(window => {
     const forcedName = forcedChoiceNames[window.index];
     const actions = [{ kind: 'none', choice: NO_RACE, race: null, stats: 0, sp: 0, value: 0 }];
-    
+
     // Add races from standard window data
     for (const race of window.races) {
       if (!raceIsEligible(race, settings) && forcedName !== race.name) continue;
       const { stats, sp, value } = weightedRaceValue(race, settings);
       actions.push({ kind: 'race', choice: race.name, race, stats, sp, value });
     }
-    
+
     // If a forced race is not in the standard list, check extraRaceInfo (e.g. Debut)
     if (forcedName && !actions.some(a => a.choice === forcedName)) {
       const extra = extraRaceInfo[forcedName];
