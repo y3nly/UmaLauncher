@@ -42,7 +42,7 @@ STAT_SCORES[1200] = 3841
 
 
 def unpack(data: bytes, key: bytes, iv: bytes) -> bytes:
-    logger.debug(f"Unpacking:\nData: {data.hex()}\nKey: {key.hex()}\nIV: {iv.hex()}")
+    # logger.debug(f"Unpacking:\nData: {data.hex()}\nKey: {key.hex()}\nIV: {iv.hex()}")
     cipher = AES.new(key, AES.MODE_CBC, iv=iv)
     decrypted = cipher.decrypt(data)
     decrypted = decrypted[4:]
@@ -473,8 +473,8 @@ class CarrotJuicer:
             return
 
         if self.threader.settings["save_packets"]:
-            logger.debug("Response:")
-            logger.debug(json.dumps(data))
+            # logger.debug("Response:")
+            # logger.debug(json.dumps(data))
             self.to_json(data, str(datetime.now()).replace(":", "-") + "_packet_in.json")
 
         try:
@@ -947,8 +947,8 @@ class CarrotJuicer:
             return
 
         if self.threader.settings["save_packets"]:
-            logger.debug("Request:")
-            logger.debug(json.dumps(data))
+            # logger.debug("Request:")
+            # logger.debug(json.dumps(data))
             self.to_json(data, str(datetime.now()).replace(":", "-") + "_packet_out.json")
 
         self.previous_request = data
@@ -2125,7 +2125,7 @@ class CarrotJuicer:
                             logger.error("Got unexpected multipart message chunk!")
                             continue
                         chunks_left -= 1
-                        logger.debug(f"Got chunk of size {msg_len}: {message.hex()}")
+                        # logger.debug(f"Got chunk of size {msg_len}: {message.hex()}")
                         self.encrypted_data += message
                     else:
                         logger.error(f"Invalid message (invalid type): {message.hex()}")

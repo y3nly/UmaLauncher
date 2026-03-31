@@ -129,7 +129,7 @@ class ScreenStateHandler():
     rpc_last_update = 0
     rpc_latest_state = None
 
-    sleep_time = 0.25
+    sleep_time = 2
 
     available_chara_icons = None
     available_music_icons = None
@@ -144,19 +144,19 @@ class ScreenStateHandler():
     def __init__(self, threader):
         self.threader = threader
 
-        self.get_available_icons()
-        self.chara_names_dict = util.get_character_name_dict()
-        self.outfit_names_dict = util.get_outfit_name_dict()
+        # self.get_available_icons()
+        # self.chara_names_dict = util.get_character_name_dict()
+        # self.outfit_names_dict = util.get_outfit_name_dict()
         self.screen_state = ScreenState(self)
 
         self.last_seen = time.perf_counter()
         
-        self.vpn = None
+        # self.vpn = None
 
-        dmm_handle = dmm.get_dmm_handle()
-        if dmm_handle:
-            self.dmm_handle = dmm_handle
-            self.dmm_seen = True
+        # dmm_handle = dmm.get_dmm_handle()
+        # if dmm_handle:
+        #     self.dmm_handle = dmm_handle
+        #     self.dmm_seen = True
 
         self.check_game('IS_UL_GLOBAL' in os.environ, 'IS_JP_STEAM' in os.environ)
         return
@@ -246,17 +246,17 @@ class ScreenStateHandler():
     def run(self):
         # TODO: remove Carotene entirely
         # If Carotene was enabled in the past, run the deprecation procedure.
-        if "enable_english_patch" in self.threader.settings and self.threader.settings["enable_english_patch"]:
-            logger.info("Disabling Carotene as it has been deprecated.")
-            util.show_warning_box("Carotene end of life", """<h2>Support for Carotene English Patch has ended</h2><p>Carotene English Patch will no longer receive updates. Thank you for using my mod!</p><p>Carotene has merged with <b><a href="https://hachimi.leadrdrk.com/">Hachimi</a></b> and translation updates will continue there.<br>Because Hachimi updates itself while the game is running, patching using Uma Launcher is no longer needed and Carotene is automatically being uninstalled.</p><p><b>Installation instructions</b> for Hachimi together with CarrotJuicer can be found <a href="https://umapyoi.net/uma-launcher">on the Uma Launcher website</a>.<p>""")
-            self.threader.settings["enable_english_patch"] = False
-            umapatcher.unpatch(self.threader)
+        # if "enable_english_patch" in self.threader.settings and self.threader.settings["enable_english_patch"]:
+        #     logger.info("Disabling Carotene as it has been deprecated.")
+        #     util.show_warning_box("Carotene end of life", """<h2>Support for Carotene English Patch has ended</h2><p>Carotene English Patch will no longer receive updates. Thank you for using my mod!</p><p>Carotene has merged with <b><a href="https://hachimi.leadrdrk.com/">Hachimi</a></b> and translation updates will continue there.<br>Because Hachimi updates itself while the game is running, patching using Uma Launcher is no longer needed and Carotene is automatically being uninstalled.</p><p><b>Installation instructions</b> for Hachimi together with CarrotJuicer can be found <a href="https://umapyoi.net/uma-launcher">on the Uma Launcher website</a>.<p>""")
+        #     self.threader.settings["enable_english_patch"] = False
+        #     umapatcher.unpatch(self.threader)
 
         # Enable VPN if needed
         # TODO: vpn to USA if on global and flag is set
-        if 'IS_UL_GLOBAL' not in os.environ and self.threader.settings["vpn_enabled"] and not self.threader.settings["vpn_dmm_only"]:
-            self.vpn = vpn.create_client(self.threader, cygames=True)
-            self.vpn.connect()
+        # if 'IS_UL_GLOBAL' not in os.environ and self.threader.settings["vpn_enabled"] and not self.threader.settings["vpn_dmm_only"]:
+        #     self.vpn = vpn.create_client(self.threader, cygames=True)
+        #     self.vpn.connect()
 
         onetime = True
 
@@ -305,85 +305,85 @@ class ScreenStateHandler():
                 self.stop()
                 continue
 
-            # Close DMM
-            if ('IS_UL_GLOBAL' not in os.environ and 'IS_JP_STEAM' not in os.environ) and not self.dmm_closed and self.threader.settings["autoclose_dmm"]:
-                # Attempt to close DMM, even if it doesn't exist
-                new_dmm_handle = dmm.get_dmm_handle()
-                if new_dmm_handle:
-                    logger.info("Closing DMM.")
-                    win32gui.PostMessage(new_dmm_handle, win32con.WM_CLOSE, 0, 0)
-                self.dmm_closed = True
+        #     # Close DMM
+        #     if ('IS_UL_GLOBAL' not in os.environ and 'IS_JP_STEAM' not in os.environ) and not self.dmm_closed and self.threader.settings["autoclose_dmm"]:
+        #         # Attempt to close DMM, even if it doesn't exist
+        #         new_dmm_handle = dmm.get_dmm_handle()
+        #         if new_dmm_handle:
+        #             logger.info("Closing DMM.")
+        #             win32gui.PostMessage(new_dmm_handle, win32con.WM_CLOSE, 0, 0)
+        #         self.dmm_closed = True
 
-                # Disconnect VPN
-                if self.vpn and self.threader.settings["vpn_dmm_only"]:
-                    self.vpn.disconnect()
-                    self.vpn = None
+        #         # Disconnect VPN
+        #         if self.vpn and self.threader.settings["vpn_dmm_only"]:
+        #             self.vpn.disconnect()
+        #             self.vpn = None
 
-            if 'IS_UL_GLOBAL' not in os.environ and not self.carrotjuicer_closed and self.threader.settings["hide_carrotjuicer"]:
-                self.carrotjuicer_handle = util.get_window_handle("Umapyoi", type=util.EXACT)
-                if self.carrotjuicer_handle:
-                    logger.info("Attempting to minimize CarrotJuicer.")
-                    success1 = util.show_window(self.carrotjuicer_handle, win32con.SW_MINIMIZE)
-                    success2 = util.hide_window_from_taskbar(self.carrotjuicer_handle)
-                    success = success1 and success2
-                    if not success:
-                        logger.error("Failed to minimize CarrotJuicer")
-                    else:
-                        self.carrotjuicer_closed = True
-                        time.sleep(0.25)
+        #     if 'IS_UL_GLOBAL' not in os.environ and not self.carrotjuicer_closed and self.threader.settings["hide_carrotjuicer"]:
+        #         self.carrotjuicer_handle = util.get_window_handle("Umapyoi", type=util.EXACT)
+        #         if self.carrotjuicer_handle:
+        #             logger.info("Attempting to minimize CarrotJuicer.")
+        #             success1 = util.show_window(self.carrotjuicer_handle, win32con.SW_MINIMIZE)
+        #             success2 = util.hide_window_from_taskbar(self.carrotjuicer_handle)
+        #             success = success1 and success2
+        #             if not success:
+        #                 logger.error("Failed to minimize CarrotJuicer")
+        #             else:
+        #                 self.carrotjuicer_closed = True
+        #                 time.sleep(0.25)
             
-            if 'IS_UL_GLOBAL' not in os.environ and self.carrotjuicer_closed and not self.threader.settings["hide_carrotjuicer"]:
-                logger.debug(f"CarrotJuicer handle: {self.carrotjuicer_handle}")
-                if self.carrotjuicer_handle:
-                    logger.info("Attempting to restore CarrotJuicer.")
-                    success1 = util.show_window(self.carrotjuicer_handle, win32con.SW_RESTORE)
-                    success2 = util.unhide_window_from_taskbar(self.carrotjuicer_handle)
-                    success = success1 and success2
-                    if not success:
-                        logger.error("Failed to restore CarrotJuicer")
-                    else:
-                        self.carrotjuicer_closed = False
-                        time.sleep(0.25)
+        #     if 'IS_UL_GLOBAL' not in os.environ and self.carrotjuicer_closed and not self.threader.settings["hide_carrotjuicer"]:
+        #         logger.debug(f"CarrotJuicer handle: {self.carrotjuicer_handle}")
+        #         if self.carrotjuicer_handle:
+        #             logger.info("Attempting to restore CarrotJuicer.")
+        #             success1 = util.show_window(self.carrotjuicer_handle, win32con.SW_RESTORE)
+        #             success2 = util.unhide_window_from_taskbar(self.carrotjuicer_handle)
+        #             success = success1 and success2
+        #             if not success:
+        #                 logger.error("Failed to restore CarrotJuicer")
+        #             else:
+        #                 self.carrotjuicer_closed = False
+        #                 time.sleep(0.25)
 
-            self.sleep_time = 1.0  # TODO: Maybe 2.0?
+        #     self.sleep_time = 1.0  # TODO: Maybe 2.0?
 
-            # Game is open, DMM is closed. Do screen state stuff
+        #     # Game is open, DMM is closed. Do screen state stuff
 
-            self.update()
-            cur_update = time.time()
+        #     self.update()
+        #     cur_update = time.time()
 
-            if self.threader.settings["discord_rich_presence"]:
-                if not self.rpc:
-                    try:
-                        self.rpc_latest_state = None
-                        self.event_loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(self.event_loop)
-                        self.rpc = pypresence.Presence(self.rpc_client_id)
-                        self.rpc.connect()
-                    except Exception:
-                        continue
+        #     if self.threader.settings["discord_rich_presence"]:
+        #         if not self.rpc:
+        #             try:
+        #                 self.rpc_latest_state = None
+        #                 self.event_loop = asyncio.new_event_loop()
+        #                 asyncio.set_event_loop(self.event_loop)
+        #                 self.rpc = pypresence.Presence(self.rpc_client_id)
+        #                 self.rpc.connect()
+        #             except Exception:
+        #                 continue
 
-                # Get the latest screen state.
-                if self.rpc and cur_update - self.rpc_last_update > 15:
-                    if self.rpc_latest_state != self.screen_state:
-                        logger.debug(f"Updating Rich Presence state: {self.screen_state.main}, {self.screen_state.sub}")
-                    self.rpc_last_update = cur_update
-                    self.rpc_latest_state = self.screen_state
-                    try:
-                        self.rpc.update(**self.screen_state.to_dict())
-                    except Exception:
-                        # RPC not connected. Continue
-                        self.close_rpc()
-                        pass
-            elif self.rpc:
-                self.close_rpc()
+        #         # Get the latest screen state.
+        #         if self.rpc and cur_update - self.rpc_last_update > 15:
+        #             if self.rpc_latest_state != self.screen_state:
+        #                 logger.debug(f"Updating Rich Presence state: {self.screen_state.main}, {self.screen_state.sub}")
+        #             self.rpc_last_update = cur_update
+        #             self.rpc_latest_state = self.screen_state
+        #             try:
+        #                 self.rpc.update(**self.screen_state.to_dict())
+        #             except Exception:
+        #                 # RPC not connected. Continue
+        #                 self.close_rpc()
+        #                 pass
+        #     elif self.rpc:
+        #         self.close_rpc()
 
-        if self.rpc:
-            self.close_rpc()
+        # if self.rpc:
+        #     self.close_rpc()
 
-        if self.vpn:
-            self.vpn.disconnect()
-            self.vpn = None
+        # if self.vpn:
+        #     self.vpn.disconnect()
+        #     self.vpn = None
         return
 
     def close_rpc(self):
