@@ -15,12 +15,7 @@ class UmaTray():
     def __init__(self, threader):
         self.threader = threader
         menu_items = []
-        menu_items.append(pystray.MenuItem("Lock game window", lambda: self.flip_setting("lock_game_window"), checked=lambda _: self.check_setting("lock_game_window")))
-        menu_items.append(pystray.Menu.SEPARATOR)
         menu_items.append(pystray.MenuItem("Preferences", lambda: self.show_preferences()))
-        menu_items.append(pystray.MenuItem("Maximize + center game", self.threader.windowmover.try_maximize))
-        menu_items.append(pystray.MenuItem("Copy screenshot to clipboard", self.threader.screenstate.screenshot_to_clipboard))
-        menu_items.append(pystray.MenuItem("Export Training CSV", lambda: self.show_training_csv_dialog()))
         menu_items.append(pystray.Menu.SEPARATOR)
         menu_items.append(pystray.MenuItem("Close", lambda: close_clicked(self)))
         # if util.is_debug:
@@ -50,14 +45,6 @@ class UmaTray():
     def reset_title(self):
         self.icon_thread.title = self.default_title
     
-    def set_connecting(self):
-        self.icon_thread.icon = self.connecting_icon
-        self.set_title("Connecting to VPN...")
-    
-    def set_connected(self):
-        self.icon_thread.icon = self.connected_icon
-        self.set_title("Uma Launcher - Connected to VPN")
-    
     def reset_status(self):
         self.icon_thread.icon = self.default_icon
         self.reset_title()
@@ -76,9 +63,6 @@ class UmaTray():
 
     def show_helper_table_dialog(self):
         self.threader.show_helper_table_dialog = True
-
-    def show_training_csv_dialog(self):
-        self.threader.show_training_csv_dialog = True
 
 def close_clicked(tray: UmaTray):
     tray.threader.stop()
