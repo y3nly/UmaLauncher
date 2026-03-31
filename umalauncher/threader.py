@@ -9,9 +9,9 @@ if gzips:
     training_tracker.training_csv_dialog(gzips)
     sys.exit()
 
-if not util.elevate():
-    util.show_warning_box("Launch Error", "Uma Launcher needs administrator privileges to start.")
-    sys.exit()
+# if not util.elevate():
+#     util.show_warning_box("Launch Error", "Uma Launcher needs administrator privileges to start.")
+#     sys.exit()
 
 import threading
 import time
@@ -65,7 +65,7 @@ class Threader():
             return
 
         # Ping the server to track usage
-        self.settings.notify_server()
+        # self.settings.notify_server()
 
         self.umaserver = umaserver.UmaServer(self)
         THREAD_OBJECTS.append(self.umaserver)
@@ -89,9 +89,9 @@ class Threader():
         THREAD_OBJECTS.append(self.carrotjuicer)
         THREADS.append(threading.Thread(target=self.carrotjuicer.run_with_catch, name="CarrotJuicer"))
 
-        self.windowmover = windowmover.WindowMover(self)
-        THREAD_OBJECTS.append(self.windowmover)
-        THREADS.append(threading.Thread(target=self.windowmover.run_with_catch, name="WindowMover"))
+        # self.windowmover = windowmover.WindowMover(self)
+        # THREAD_OBJECTS.append(self.windowmover)
+        # THREADS.append(threading.Thread(target=self.windowmover.run_with_catch, name="WindowMover"))
 
         self.tray = umatray.UmaTray(self)
         THREAD_OBJECTS.append(self.tray)
