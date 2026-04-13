@@ -1112,11 +1112,11 @@ class CarrotJuicer:
                     "charaName": "Place Holder",
                     "speed": u_speed, "stamina": u_stamina, "power": u_power, "guts": u_guts, "wisdom": u_wisdom,
                     "condition": "BEST", "style": STYLE_INTERNAL_MAP[self.style],
-                    "distanceFit": "A", "surfaceFit": "A", "styleFit": "A",
+                    "distanceFit": "S", "surfaceFit": "A", "styleFit": "A",
                     "popularity": 1, "gateNumber": 0,
                 },
                 "track": {
-                    "location": 10009, "course": 10914, "condition": "BAD", "gateCount": 9
+                    "location": 10005, "course": 10504, "condition": "BEST", "gateCount": 9
                 }
             },
             "acquiredSkillIds": acquired_skills_list,
@@ -1888,14 +1888,9 @@ class CarrotJuicer:
         return ranked_elements[0][1]
 
     def save_schedule_window_rect(self):
-        if self.last_schedule_rect:
-            self.threader.settings['schedule_position'] = [
-                self.last_schedule_rect['x'],
-                self.last_schedule_rect['y'],
-                self.last_schedule_rect['width'],
-                self.last_schedule_rect['height']
-            ]
-            self.last_schedule_rect = None
+        if self.schedule_browser:
+            self.schedule_browser.last_window_rect = self.last_schedule_rect
+        self.save_rect(self.last_schedule_rect, "schedule_position")
 
     def sync_schedule_window(self, current_turn=None):
         if self.schedule_browser and self.schedule_browser.alive():
