@@ -216,16 +216,10 @@ class CarrotJuicer:
         return base + ((score - base) // step + 1) * step - score
 
     def calculate_uma_rank_score(self, chara_info, skill_data):
-        total_score = 0
         skill_scores_map = {}
         
-        s_speed = self.get_stat_score(chara_info.get('speed', 0))
-        s_stamina = self.get_stat_score(chara_info.get('stamina', 0))
-        s_power = self.get_stat_score(chara_info.get('power', 0))
-        s_guts = self.get_stat_score(chara_info.get('guts', 0))
-        s_wiz = self.get_stat_score(chara_info.get('wiz', 0))
-        
-        total_score += s_speed + s_stamina + s_power + s_guts + s_wiz
+        stat_keys = ('speed', 'stamina', 'power', 'guts', 'wiz')
+        total_score = sum(self.get_stat_score(chara_info.get(k, 0)) for k in stat_keys)
 
         skill_scores = self.skill_score_dict
         skill_conditions = self.skill_conditions_dict
@@ -239,35 +233,52 @@ class CarrotJuicer:
                 unique_skill_level = skill.get('level', 1)
                 break
 
+        ignored_sids = set()
+        for sid, info in skill_data.items():
+            if info.get('is_acquired') and not str(sid).startswith('1'):
+                ignored_sids.update(mdb.get_prerequisite_skill_ids(int(sid)))
+
+        cond_map = {
+            "distance_type==1": 'proper_distance_short',
+            "distance_type==2": 'proper_distance_mile',
+            "distance_type==3": 'proper_distance_middle',
+            "distance_type==4": 'proper_distance_long',
+            "ground_type==1": 'proper_ground_turf',
+            "ground_type==2": 'proper_ground_dirt',
+            "running_style==1": 'proper_running_style_nige',
+            "running_style==2": 'proper_running_style_senko',
+            "running_style==3": 'proper_running_style_sashi',
+            "running_style==4": 'proper_running_style_oikomi',
+        }
+
         for sid, info in skill_data.items():
             if str(sid).startswith('1'):
                 continue
+                
             base_score = skill_scores.get(sid, 0)
             cond = skill_conditions.get(sid, "")
+            
             multiplier = 1.0
-            if "distance_type==" in cond:
-                if "distance_type==1" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_distance_short', 1))
-                elif "distance_type==2" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_distance_mile', 1))
-                elif "distance_type==3" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_distance_middle', 1))
-                elif "distance_type==4" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_distance_long', 1))
-            elif "ground_type==" in cond:
-                if "ground_type==1" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_ground_turf', 1))
-                elif "ground_type==2" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_ground_dirt', 1))
-            elif "running_style==" in cond:
-                if "running_style==1" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_running_style_nige', 1))
-                elif "running_style==2" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_running_style_senko', 1))
-                elif "running_style==3" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_running_style_sashi', 1))
-                elif "running_style==4" in cond: multiplier = self.get_aptitude_multiplier(chara_info.get('proper_running_style_oikomi', 1))
+            for cond_str, apt_key in cond_map.items():
+                if cond_str in cond:
+                    multiplier = self.get_aptitude_multiplier(chara_info.get(apt_key, 1))
+                    break
+                    
             final_s = round(base_score * multiplier)
-            if info.get('is_acquired'):
-                total_score += final_s
             skill_scores_map[str(sid)] = final_s
+            
+            if info.get('is_acquired') and int(sid) not in ignored_sids:
+                total_score += final_s
+                # print(f"UMA RANK CALC DEBUG -> Acquired Skill ID: {sid} | Base Score: {base_score} | Multiplier: {multiplier} | Score Added: {final_s}")
+
         unique_mult = 170 if stars >= 3 else 120
         u_score = unique_skill_level * unique_mult
         total_score += u_score
-        print(f"UMA RANK CALC DEBUG -> Unique Skill ID: {unique_skill_id} | Lvl: {unique_skill_level} | Stars: {stars} | Score Added: {u_score} | Base Mult: {unique_mult}")
+        # print(f"UMA RANK CALC DEBUG -> Unique Skill ID: {unique_skill_id} | Lvl: {unique_skill_level} | Stars: {stars} | Score Added: {u_score} | Base Mult: {unique_mult}")
+        
         if unique_skill_id:
             skill_scores_map[str(unique_skill_id)] = u_score
+            
         return {"score": total_score, "rank": self.get_rank_str(total_score), "skill_scores": skill_scores_map}
 
     def restart_time(self):
@@ -1111,11 +1122,11 @@ class CarrotJuicer:
                     "charaName": "Place Holder",
                     "speed": u_speed, "stamina": u_stamina, "power": u_power, "guts": u_guts, "wisdom": u_wisdom,
                     "condition": "BEST", "style": STYLE_INTERNAL_MAP[self.style],
-                    "distanceFit": "A", "surfaceFit": "A", "styleFit": "A",
+                    "distanceFit": "S", "surfaceFit": "A", "styleFit": "A",
                     "popularity": 1, "gateNumber": 0,
                 },
                 "track": {
-                    "location": 10009, "course": 10914, "condition": "BAD", "gateCount": 9
+                    "location": 10005, "course": 10504, "condition": "BEST", "gateCount": 9
                 }
             },
             "acquiredSkillIds": acquired_skills_list,
@@ -1181,6 +1192,8 @@ class CarrotJuicer:
 
         groups = {}
         for sid_str, detail in rating_data.items():
+            if self.skill_data.get(int(sid_str), {}).get("is_acquired", False):
+                continue
             cost = detail.get('sp_cost', 0)
             gain = detail.get('score', 0)
             if cost > 0 and gain > 0:
@@ -1887,14 +1900,9 @@ class CarrotJuicer:
         return ranked_elements[0][1]
 
     def save_schedule_window_rect(self):
-        if self.last_schedule_rect:
-            self.threader.settings['schedule_position'] = [
-                self.last_schedule_rect['x'],
-                self.last_schedule_rect['y'],
-                self.last_schedule_rect['width'],
-                self.last_schedule_rect['height']
-            ]
-            self.last_schedule_rect = None
+        if self.schedule_browser:
+            self.schedule_browser.last_window_rect = self.last_schedule_rect
+        self.save_rect(self.last_schedule_rect, "schedule_position")
 
     def sync_schedule_window(self, current_turn=None):
         if self.schedule_browser and self.schedule_browser.alive():
