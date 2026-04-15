@@ -1,5 +1,4 @@
 import util
-import sys
 import steam
 import threading
 import time
@@ -15,7 +14,6 @@ import umatray
 import gui
 import umaserver
 import horsium
-import mdb
 
 THREAD_OBJECTS = []
 THREADS = []
