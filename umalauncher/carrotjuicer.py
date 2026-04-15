@@ -1121,12 +1121,16 @@ class CarrotJuicer:
                 "umaStatus": {
                     "charaName": "Place Holder",
                     "speed": u_speed, "stamina": u_stamina, "power": u_power, "guts": u_guts, "wisdom": u_wisdom,
-                    "condition": "BEST", "style": STYLE_INTERNAL_MAP[self.style],
+                    "condition": "GOOD", "style": STYLE_INTERNAL_MAP[self.style],
                     "distanceFit": "S", "surfaceFit": "A", "styleFit": "A",
                     "popularity": 1, "gateNumber": 0,
                 },
                 "track": {
-                    "location": 10005, "course": 10504, "condition": "BEST", "gateCount": 9
+                    # GOOD(1, "良"),
+                    # YAYAOMO(2, "稍重"),
+                    # OMO(3, "重"),
+                    # BAD(4, "不良"),
+                    "location": 10005, "course": 10504, "condition": "GOOD", "gateCount": 9
                 }
             },
             "acquiredSkillIds": acquired_skills_list,
