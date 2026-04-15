@@ -1,13 +1,12 @@
 import util
 import sys
-
-
-
+import steam
 import threading
 import time
 import psutil
 import os
 import win32api
+import win32gui
 from loguru import logger
 import requests
 import settings
@@ -77,14 +76,58 @@ class Threader():
             if not thread.is_alive() and not thread.ident:
                 thread.start()
 
-        if 'IS_UL_GLOBAL' in os.environ or 'IS_JP_STEAM' in os.environ:
-            import steam
-            steam.start()
-
         win32api.SetConsoleCtrlHandler(self.stop_signal, True)
+
+        self.game_handle = None
+        self.game_seen = False
+        self.game_closed = False
+        self.last_seen = time.perf_counter()
+        onetime = True
 
         while not self.should_stop:
             time.sleep(0.2)
+
+            # Check if game exists
+            if self.game_handle and not win32gui.IsWindow(self.game_handle):
+                self.game_handle = None
+            if self.game_handle:
+                onetime = False
+                self.last_seen = time.perf_counter()
+
+            # Game tracking
+            if not self.game_seen:
+                if 'IS_UL_GLOBAL' in os.environ:
+                    self.game_handle = util.get_game_handle_global()
+                elif 'IS_JP_STEAM' in os.environ:
+                    self.game_handle = util.get_game_handle_jp_steam()
+                else:
+                    self.game_handle = util.get_game_handle()
+
+                if self.game_handle:
+                    self.game_seen = True
+                    self.game_closed = False
+
+                if onetime:
+                    onetime = False
+                    if not self.game_seen:
+                        if 'IS_UL_GLOBAL' in os.environ or 'IS_JP_STEAM' in os.environ:
+                            steam.start()
+
+            # Game closed handling
+            if not self.game_handle:
+                if self.game_seen:
+                    # We just lost the game window
+                    time_since_seen = time.perf_counter() - self.last_seen
+                    if time_since_seen < 15.0:
+                        self.game_seen = False
+                        self.game_closed = True
+                    else:
+                        self.stop()
+                elif self.game_closed:
+                    # In the 15-second grace period
+                    time_since_seen = time.perf_counter() - self.last_seen
+                    if time_since_seen >= 15.0:
+                        self.stop()
 
             if self.show_preferences:
                 self.settings.display_preferences()
