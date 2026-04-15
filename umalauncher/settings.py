@@ -103,12 +103,7 @@ class DefaultSettings(se.NewSettings):
             'open_training_logs',
             se.SettingType.COMMANDBUTTON,
         ),
-        "autoclose_dmm": se.Setting(
-            "Autoclose DMM Game Player",
-            "Automatically close DMM Game Player when the game is launched.",
-            True,
-            se.SettingType.BOOL,
-        ),
+
         "beta_optin": se.Setting(
             "Beta opt-in",
             "Opt-in to the beta version. (Pre-release versions)",
@@ -121,34 +116,7 @@ class DefaultSettings(se.NewSettings):
             False,
             se.SettingType.BOOL,
         ),
-        # "game_install_path = se.Setting(
-        #     "Game install path",
-        #     "Path to the game's installation folder. (Where DMM installed the game and umamusume.exe is located.)",
-        #     "%userprofile%/Umamusume",
-        #     se.SettingType.FOLDERDIALOG,
-        #     hidden=True
-        # ),
-        "game_position_portrait": se.Setting(
-            "Game position (portrait)",
-            "Position of the game window in portrait mode.",
-            None,
-            se.SettingType.XYWHSPINBOXES,
-            hidden=True
-        ),
-        "game_position_landscape": se.Setting(
-            "Game position (landscape)",
-            "Position of the game window in landscape mode.",
-            None,
-            se.SettingType.XYWHSPINBOXES,
-            hidden=True
-        ),
-        "lock_game_window": se.Setting(
-            "Lock game window",
-            "Lock the game window to prevent accidental resizing.",
-            True,
-            se.SettingType.BOOL,
-            tab="Position"
-        ),
+
         "browser_position": se.Setting(
             "Browser position",
             "Position of the browser window.",
@@ -293,80 +261,7 @@ class DefaultSettings(se.NewSettings):
             se.SettingType.DICT,
             hidden=True
         ),
-        "vpn_message": se.Setting(
-            "VPN Help",
-            """<p>Automatic VPN is still experimental. Please report any issues you encounter.<br>For a guide on how to set up automatic VPN, see the guide on the <a href="https://github.com/qwcan/UmaLauncher/blob/main/FAQ.md">Frequently Asked Questions</a> page.</p>""",
-            None,
-            se.SettingType.MESSAGE,
-            tab="VPN"
-        ),
-        "vpn_enabled": se.Setting(
-            "Auto-VPN enabled",
-            "Connect to VPN when Uma Launcher is started.<br>For OpenVPN and SoftEther: A random JP server<br>will be chosen from VPN Gate to connect to.<br>NordVPN will connect to Japan.",
-            False,
-            se.SettingType.BOOL,
-            tab="VPN"
-        ),
-        "vpn_dmm_only": se.Setting(
-            "VPN for DMM only",
-            "Disconnect from VPN after DMM Game Player is closed.<br>If unchecked, VPN will stay connected until Uma Launcher is closed.",
-            True,
-            se.SettingType.BOOL,
-            tab="VPN"
-        ),
-        "vpn_client": se.Setting(
-            "VPN client",
-            "Choose VPN client to use.<br>Restart Uma Launcher after changing this setting.",
-            {
-                "OpenVPN": True,
-                "SoftEther": False,
-                "NordVPN": False
-            },
-            se.SettingType.RADIOBUTTONS,
-            tab="VPN"
-        ),
-        "vpn_client_path": se.Setting(
-            "VPN client path (OpenVPN/NordVPN)",
-            "Path to the VPN client executable (openvpn.exe or nordvpn.exe).<br>Not required for SoftEther.",
-            None,
-            se.SettingType.FILEDIALOG,
-            tab="VPN"
-        ),
-        "vpn_ip_override": se.Setting(
-            "VPN override (OpenVPN/SoftEther)",
-            "OpenVPN: Place a path to a custom ovpn profile.<br>SoftEther: Place an IP to override (no port, port is assumed to be 443.)",
-            "",
-            se.SettingType.STRING,
-            tab="VPN"
-        ),
-        "english_patch_help": se.Setting(
-            "English Patch Info",
-            """<a href=\"https://umapyoi.net/carotene-english-patch\">Carotene English Patch</a> is a community-driven translation project for Umamusume (DMM Version).<br>Like CarrotJuicer, using it is against the Terms of Service of the game, so use at your own risk.<br><br>Carotene will automatically install the <a href="https://github.com/Hachimi-Hachimi/Cellar">Cellar modloader</a>. Cellar is not affiliated with Carotene or its developer.<br><br>This feature is currently experimental, so please reach out on the <a href="https://discord.gg/xd4EbvKBaf">Uma Launcher Discord Server</a> if you encounter any issues!""",
-            None,
-            se.SettingType.MESSAGE,
-            hidden=True
-        ),
-        "enable_english_patch": se.Setting(
-            "Enable Carotene English patch on startup",
-            "Applies the latest version of the patch before the game is launched.",
-            False,
-            se.SettingType.BOOL,
-            hidden=True
-        ),
-        "english_patch_customize_btn": se.Setting(
-            "Customize Patch",
-            "Choose what parts of the game should be translated.",
-            "patch_customize",
-            se.SettingType.COMMANDBUTTON,
-            hidden=True
-        ),
-        "english_patch_unpatch_btn": se.Setting(
-            "Unpatch",
-            "Undo the English patch.",
-            "patch_unpatch",
-            se.SettingType.COMMANDBUTTON,
-            hidden=True
-        ),
+
     }
 
     # Enable global-specific config and hide jp-only config
@@ -400,9 +295,7 @@ class DefaultSettings(se.NewSettings):
         _settings.get("hide_carrotjuicer").hidden=True
 
 
-    # Hide broken settings
-    if 'IS_UL_GLOBAL' in os.environ or 'IS_JP_STEAM' in os.environ:
-        _settings.get("lock_game_window").hidden=True
+
 
 
 class SettingsHandler():

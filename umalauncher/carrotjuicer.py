@@ -12,7 +12,6 @@ import select
 from loguru import logger
 from msgpack import Unpacker
 from selenium.common.exceptions import NoSuchWindowException
-import screenstate_utils
 import util
 import constants
 import mdb
@@ -102,7 +101,7 @@ class CarrotJuicer:
         self.skills_list = []
         self.style = ''
 
-        self.screen_state_handler = threader.screenstate
+
         self.restart_time()
 
         self.helper_table = helper_table.HelperTable(self)

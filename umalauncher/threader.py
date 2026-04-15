@@ -1,35 +1,19 @@
 import util
-import sys
-
-gzips = list([path for path in sys.argv if path.endswith(".gz")])
-if gzips:
-    # User dropped file(s) on the launcher.
-    # Use them for CSV generation.
-    import training_tracker
-    training_tracker.training_csv_dialog(gzips)
-    sys.exit()
-
-# if not util.elevate():
-#     util.show_warning_box("Launch Error", "Uma Launcher needs administrator privileges to start.")
-#     sys.exit()
-
+import steam
 import threading
 import time
 import psutil
 import os
 import win32api
+import win32gui
 from loguru import logger
 import requests
 import settings
 import carrotjuicer
 import umatray
-import screenstate
-import windowmover
-import training_tracker
 import gui
 import umaserver
 import horsium
-import mdb
 
 THREAD_OBJECTS = []
 THREADS = []
@@ -40,13 +24,10 @@ class Threader():
     settings = None
     tray = None
     carrotjuicer = None
-    windowmover = None
-    screenstate = None
     umaserver = None
     should_stop = False
     show_preferences = False
     show_helper_table_dialog = False
-    show_training_csv_dialog = False
     widget_queue = []
 
     def __init__(self):
@@ -65,7 +46,7 @@ class Threader():
             return
 
         # Ping the server to track usage
-        # self.settings.notify_server()
+        self.settings.notify_server()
 
         self.umaserver = umaserver.UmaServer(self)
         THREAD_OBJECTS.append(self.umaserver)
@@ -81,17 +62,9 @@ class Threader():
             except:
                 pass
 
-        self.screenstate = screenstate.ScreenStateHandler(self)
-        THREAD_OBJECTS.append(self.screenstate)
-        THREADS.append(threading.Thread(target=self.screenstate.run_with_catch, name="ScreenStateHandler"))
-
         self.carrotjuicer = carrotjuicer.CarrotJuicer(self)
         THREAD_OBJECTS.append(self.carrotjuicer)
         THREADS.append(threading.Thread(target=self.carrotjuicer.run_with_catch, name="CarrotJuicer"))
-
-        # self.windowmover = windowmover.WindowMover(self)
-        # THREAD_OBJECTS.append(self.windowmover)
-        # THREADS.append(threading.Thread(target=self.windowmover.run_with_catch, name="WindowMover"))
 
         self.tray = umatray.UmaTray(self)
         THREAD_OBJECTS.append(self.tray)
@@ -103,8 +76,56 @@ class Threader():
 
         win32api.SetConsoleCtrlHandler(self.stop_signal, True)
 
+        self.game_handle = None
+        self.game_seen = False
+        self.game_closed = False
+        self.last_seen = time.perf_counter()
+        onetime = True
+
         while not self.should_stop:
             time.sleep(0.2)
+
+            # Check if game exists
+            if self.game_handle and not win32gui.IsWindow(self.game_handle):
+                self.game_handle = None
+            if self.game_handle:
+                onetime = False
+                self.last_seen = time.perf_counter()
+
+            # Game tracking
+            if not self.game_seen:
+                if 'IS_UL_GLOBAL' in os.environ:
+                    self.game_handle = util.get_game_handle_global()
+                elif 'IS_JP_STEAM' in os.environ:
+                    self.game_handle = util.get_game_handle_jp_steam()
+                else:
+                    self.game_handle = util.get_game_handle()
+
+                if self.game_handle:
+                    self.game_seen = True
+                    self.game_closed = False
+
+                if onetime:
+                    onetime = False
+                    if not self.game_seen:
+                        if 'IS_UL_GLOBAL' in os.environ or 'IS_JP_STEAM' in os.environ:
+                            steam.start()
+
+            # Game closed handling
+            if not self.game_handle:
+                if self.game_seen:
+                    # We just lost the game window
+                    time_since_seen = time.perf_counter() - self.last_seen
+                    if time_since_seen < 15.0:
+                        self.game_seen = False
+                        self.game_closed = True
+                    else:
+                        self.stop()
+                elif self.game_closed:
+                    # In the 15-second grace period
+                    time_since_seen = time.perf_counter() - self.last_seen
+                    if time_since_seen >= 15.0:
+                        self.stop()
 
             if self.show_preferences:
                 self.settings.display_preferences()
@@ -114,10 +135,7 @@ class Threader():
                 self.settings.update_helper_table()
                 self.show_helper_table_dialog = False
             
-            if self.show_training_csv_dialog:
-                training_tracker.training_csv_dialog()
-                self.show_training_csv_dialog = False
-            
+
             while len(self.widget_queue) > 0:
                 widget_tuple = self.widget_queue.pop(0)
                 gui.show_widget(widget_tuple[0], *widget_tuple[1], **widget_tuple[2])

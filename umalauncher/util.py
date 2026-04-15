@@ -54,35 +54,7 @@ def get_asset(asset_path):
     """
     return os.path.join(unpack_dir, asset_path)
 
-def elevate():
-    """Elevate the script if it's not already running as admin.
-    Based on PyUAC https://github.com/Preston-Landers/pyuac
-    """
 
-    if ctypes.windll.shell32.IsUserAnAdmin():
-        return True
-    
-    # Elevate the script.
-    proc_info = None
-    executable = sys.executable
-    params = " ".join(sys.argv if is_script else sys.argv[1:])  # Add the script path if it's a script.
-    try:
-        proc_info = ShellExecuteEx(
-            nShow=win32con.SW_SHOWNORMAL,
-            fMask=shellcon.SEE_MASK_NOCLOSEPROCESS | shellcon.SEE_MASK_NO_CONSOLE,
-            lpVerb="runas",
-            lpFile=executable,
-            lpParameters=params,
-        )
-    except Exception as e:
-        return False
-
-    if not proc_info:
-        return False
-    
-    handle = proc_info["hProcess"]
-    _ = win32event.WaitForSingleObject(handle, win32event.INFINITE)
-    sys.exit(1)
 
 
 def log_reset():
