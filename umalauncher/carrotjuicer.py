@@ -35,10 +35,37 @@ _score_scaled = 0
 for _i in range(1, 1201):
     _block = (_i - 1) // 50
     _score_scaled += int(STAT_BLOCK_MULTIPLIERS[_block] * 10)
-    STAT_SCORES[_i] = _score_scaled // 10
+    STAT_SCORES[_i - 1] = _score_scaled // 10
 STAT_SCORES[1200] = 3841
 
+STAT_MULTIPLIERS_10 = {
+    1210: 8.0, 1220: 8.1, 1230: 8.3, 1240: 8.4, 1250: 8.5, 1260: 8.6, 1270: 8.8, 1280: 8.9, 1290: 9.0,
+    1300: 9.2, 1310: 9.3, 1320: 9.4, 1330: 9.6, 1340: 9.7, 1350: 9.8, 1360: 10.0, 1370: 10.1, 1380: 10.2, 1390: 10.3,
+    1400: 10.5, 1410: 10.6, 1420: 10.7, 1430: 10.9, 1440: 11.0, 1450: 11.1, 1460: 11.3, 1470: 11.4, 1480: 11.5, 1490: 11.7,
+    1500: 11.8, 1510: 11.9, 1520: 12.1, 1530: 12.2, 1540: 12.3, 1550: 12.4, 1560: 12.6, 1570: 12.7, 1580: 12.8, 1590: 13.0,
+    1600: 13.1, 1610: 13.2, 1620: 13.4, 1630: 13.5, 1640: 13.6, 1650: 13.8, 1660: 13.9, 1670: 14.0, 1680: 14.1, 1690: 14.3,
+    1700: 14.4, 1710: 14.5, 1720: 14.7, 1730: 14.8, 1740: 14.9, 1750: 15.1, 1760: 15.2, 1770: 15.3, 1780: 15.5, 1790: 15.6,
+    1800: 15.7, 1810: 15.9, 1820: 16.0, 1830: 16.1, 1840: 16.2, 1850: 16.4, 1860: 16.5, 1870: 16.6, 1880: 16.8, 1890: 16.9,
+    1900: 17.0, 1910: 17.2, 1920: 17.3, 1930: 17.4, 1940: 17.6, 1950: 17.7, 1960: 17.8, 1970: 17.9, 1980: 18.1, 1990: 18.2,
+    2000: 18.3
+}
 
+BASE_RANKS = [
+    (300, "G"), (600, "G+"), (900, "F"), (1300, "F+"), (1800, "E"),
+    (2300, "E+"), (2900, "D"), (3500, "D+"), (4900, "C"), (6500, "C+"),
+    (8200, "B"), (10000, "B+"), (12100, "A"), (14500, "A+"), (15900, "S"),
+    (17500, "S+"), (19200, "SS"), (19600, "SS+")
+]
+
+HIGH_RANKS = [
+    (19600, 400, 23900, "UG"),
+    (23900, 500, 28800, "UF"),
+    (28800, 560, 34400, "UE"),
+    (34400, 630, 40700, "UD"),
+    (40700, 700, 47600, "UC"),
+    (47600, 760, 55200, "UB"),
+    (55200, 800, float('inf'), "UA")
+]
 
 def unpack(data: bytes, key: bytes, iv: bytes) -> bytes:
     # logger.debug(f"Unpacking:\nData: {data.hex()}\nKey: {key.hex()}\nIV: {iv.hex()}")
@@ -107,27 +134,15 @@ class CarrotJuicer:
         self.helper_table = helper_table.HelperTable(self)
 
     def get_stat_score(self, val):
-        x = val + 1
-        if x <= 0: return 0
-        if x <= 1200:
-            return STAT_SCORES[x]
-        if x <= 1209:
-            return round((x - 1200) * 7.888 + 3841)
+        if val <= 0: return 0
+        if val <= 1200:
+            return STAT_SCORES[val]
+        if val <= 1209:
+            return round((val - 1200) * 7.888 + 3841)
         
-        multipliers_10 = {
-            1210: 8.0, 1220: 8.1, 1230: 8.3, 1240: 8.4, 1250: 8.5, 1260: 8.6, 1270: 8.8, 1280: 8.9, 1290: 9.0,
-            1300: 9.2, 1310: 9.3, 1320: 9.4, 1330: 9.6, 1340: 9.7, 1350: 9.8, 1360: 10.0, 1370: 10.1, 1380: 10.2, 1390: 10.3,
-            1400: 10.5, 1410: 10.6, 1420: 10.7, 1430: 10.9, 1440: 11.0, 1450: 11.1, 1460: 11.3, 1470: 11.4, 1480: 11.5, 1490: 11.7,
-            1500: 11.8, 1510: 11.9, 1520: 12.1, 1530: 12.2, 1540: 12.3, 1550: 12.4, 1560: 12.6, 1570: 12.7, 1580: 12.8, 1590: 13.0,
-            1600: 13.1, 1610: 13.2, 1620: 13.4, 1630: 13.5, 1640: 13.6, 1650: 13.8, 1660: 13.9, 1670: 14.0, 1680: 14.1, 1690: 14.3,
-            1700: 14.4, 1710: 14.5, 1720: 14.7, 1730: 14.8, 1740: 14.9, 1750: 15.1, 1760: 15.2, 1770: 15.3, 1780: 15.5, 1790: 15.6,
-            1800: 15.7, 1810: 15.9, 1820: 16.0, 1830: 16.1, 1840: 16.2, 1850: 16.4, 1860: 16.5, 1870: 16.6, 1880: 16.8, 1890: 16.9,
-            1900: 17.0, 1910: 17.2, 1920: 17.3, 1930: 17.4, 1940: 17.6, 1950: 17.7, 1960: 17.8, 1970: 17.9, 1980: 18.1, 1990: 18.2,
-            2000: 18.3
-        }
-        block_key = (x // 10) * 10
-        mult = multipliers_10.get(block_key, multipliers_10[min(multipliers_10.keys(), key=lambda k: abs(k-block_key))]) # Fallback to nearest
-        return round((x - 1209) * mult + 3912)
+        block_key = (val // 10) * 10
+        mult = STAT_MULTIPLIERS_10.get(block_key, STAT_MULTIPLIERS_10[min(STAT_MULTIPLIERS_10.keys(), key=lambda k: abs(k-block_key))]) # Fallback to nearest
+        return round((val - 1209) * mult + 3912)
 
     def get_aptitude_multiplier(self, apt_val):
         if apt_val >= 7: return 1.1     # S or A
@@ -136,84 +151,23 @@ class CarrotJuicer:
         return 0.7                    # G
 
     def get_rank_str(self, score):
-        if score < 300: return "G"
-        if score < 600: return "G+"
-        if score < 900: return "F"
-        if score < 1300: return "F+"
-        if score < 1800: return "E"
-        if score < 2300: return "E+"
-        if score < 2900: return "D"
-        if score < 3500: return "D+"
-        if score < 4900: return "C"
-        if score < 6500: return "C+"
-        if score < 8200: return "B"
-        if score < 10000: return "B+"
-        if score < 12100: return "A"
-        if score < 14500: return "A+"
-        if score < 15900: return "S"
-        if score < 17500: return "S+"
-        if score < 19200: return "SS"
-        if score < 19600: return "SS+"
-        if score < 23900:
-            sub = (score - 19600) // 400
-            return f"UG{sub}" if sub > 0 else "UG"
-        if score < 28800:
-            sub = (score - 23900) // 500
-            return f"UF{sub}" if sub > 0 else "UF"
-        if score < 34400:
-            sub = (score - 28800) // 560
-            return f"UE{sub}" if sub > 0 else "UE"
-        if score < 40700:
-            sub = (score - 34400) // 630
-            return f"UD{sub}" if sub > 0 else "UD"
-        if score < 47600:
-            sub = (score - 40700) // 700
-            return f"UC{sub}" if sub > 0 else "UC"
-        if score < 55200:
-            sub = (score - 47600) // 760
-            return f"UB{sub}" if sub > 0 else "UB"
-        sub = (score - 55200) // 800
-        return f"UA{sub}" if sub > 0 else "UA"
+        for threshold, rank in BASE_RANKS:
+            if score < threshold:
+                return rank
+        for base, step, bound, prefix in HIGH_RANKS:
+            if score < bound:
+                sub = (score - base) // step
+                return f"{prefix}{sub}" if sub > 0 else prefix
+        return "UA"
 
     def get_next_rank_req(self, score):
-        if score < 300: return 300 - score
-        if score < 600: return 600 - score
-        if score < 900: return 900 - score
-        if score < 1300: return 1300 - score
-        if score < 1800: return 1800 - score
-        if score < 2300: return 2300 - score
-        if score < 2900: return 2900 - score
-        if score < 3500: return 3500 - score
-        if score < 4900: return 4900 - score
-        if score < 6500: return 6500 - score
-        if score < 8200: return 8200 - score
-        if score < 10000: return 10000 - score
-        if score < 12100: return 12100 - score
-        if score < 14500: return 14500 - score
-        if score < 15900: return 15900 - score
-        if score < 17500: return 17500 - score
-        if score < 19200: return 19200 - score
-        if score < 19600: return 19600 - score
-        if score < 23900:
-            base, step, bound = 19600, 400, 23900
-            return min(bound, base + ((score - base) // step + 1) * step) - score
-        if score < 28800:
-            base, step, bound = 23900, 500, 28800
-            return min(bound, base + ((score - base) // step + 1) * step) - score
-        if score < 34400:
-            base, step, bound = 28800, 560, 34400
-            return min(bound, base + ((score - base) // step + 1) * step) - score
-        if score < 40700:
-            base, step, bound = 34400, 630, 40700
-            return min(bound, base + ((score - base) // step + 1) * step) - score
-        if score < 47600:
-            base, step, bound = 40700, 700, 47600
-            return min(bound, base + ((score - base) // step + 1) * step) - score
-        if score < 55200:
-            base, step, bound = 47600, 760, 55200
-            return min(bound, base + ((score - base) // step + 1) * step) - score
-        base, step = 55200, 800
-        return base + ((score - base) // step + 1) * step - score
+        for threshold, _ in BASE_RANKS:
+            if score < threshold:
+                return threshold - score
+        for base, step, bound, _ in HIGH_RANKS:
+            if score < bound:
+                return min(bound, base + ((score - base) // step + 1) * step) - score
+        return 0
 
     def calculate_uma_rank_score(self, chara_info, skill_data):
         skill_scores_map = {}
