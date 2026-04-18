@@ -1383,11 +1383,12 @@ class UmaErrorPopup(qtw.QMessageBox):
 
 
     def upload_error_report(self, traceback_str, user_id):
+        DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1495113132752769186/uCppkg6R4VYr0VhM0jPiZVy93K-XH_U-P1_99SL7uCWZVrrAbjzd-VbxbW9587eeukto"
 
-        # Run this on a thread so the UI doesn't block (request takes a while because the bot needs to connect to Discord)
-        def do_error_request(url, json):
+        # Run this on a thread so the UI doesn't block
+        def do_error_request(webhook_url, embed_payload):
             try:
-                resp = requests.post(url, json=json)
+                resp = requests.post(webhook_url, json=embed_payload)
                 resp.raise_for_status()
                 logger.info(f"Uploaded error report.")
                 util.show_info_box( "Success", "Error report successfully uploaded." )
@@ -1401,7 +1402,26 @@ class UmaErrorPopup(qtw.QMessageBox):
         if util.is_script:
             version_str += ".script"
         version_str += " (" + util.get_game_variant_string() + ")"
-        thread = threading.Thread(target=do_error_request, args = ( "https://umalauncher.uc.r.appspot.com/api/v2/umalauncher/error", {"traceback": traceback_str, "user_id": user_id, "version": version_str} ) )
+
+        # Truncate traceback to fit Discord's embed description limit
+        max_tb_len = 4000
+        tb_display = traceback_str if len(traceback_str) <= max_tb_len else "..." + traceback_str[-(max_tb_len - 3):]
+
+        payload = {
+            "embeds": [
+                {
+                    "title": "Uma Launcher Error Report",
+                    "color": 0xFF4444,
+                    "fields": [
+                        {"name": "Version", "value": version_str, "inline": True},
+                        {"name": "User ID", "value": user_id, "inline": True},
+                    ],
+                    "description": f"```\n{tb_display}\n```",
+                }
+            ]
+        }
+
+        thread = threading.Thread(target=do_error_request, args=(DISCORD_WEBHOOK_URL, payload))
         thread.start()
 
 
