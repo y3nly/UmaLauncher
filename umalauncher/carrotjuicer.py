@@ -1055,6 +1055,22 @@ class CarrotJuicer:
             4: "OI"
         }
 
+        CM_CONFIGS = {
+            12: {"name": "Aries Cup", "location": 10005, "course": 10504, "season": 1, "weather": 1, "ground_condition": "GOOD"},
+            13: {"name": "Taurus Cup", "location": 10006, "course": 10606, "season": 1, "weather": 1, "ground_condition": "GOOD"},
+            14: {"name": "Gemini Cup", "location": 10006, "course": 10602, "season": 1, "weather": 1, "ground_condition": "GOOD"},
+            15: {"name": "Cancer Cup", "location": 10009, "course": 10906, "season": 2, "weather": 2, "ground_condition": "YAYAOMO"}, # Cloudy/Good
+            16: {"name": "Leo Cup", "location": 10005, "course": 10501, "season": 2, "weather": 1, "ground_condition": "GOOD"},
+            17: {"name": "Virgo Cup", "location": 10101, "course": 11103, "season": 3, "weather": 1, "ground_condition": "GOOD"},
+            18: {"name": "Libra Cup", "location": 10009, "course": 10903, "season": 3, "weather": 2, "ground_condition": "GOOD"}, # Cloudy/Firm
+            19: {"name": "Scorpio Cup", "location": 10008, "course": 10808, "season": 3, "weather": 1, "ground_condition": "GOOD"},
+            20: {"name": "Sagittarius Cup", "location": 10005, "course": 10506, "season": 4, "weather": 2, "ground_condition": "YAYAOMO"}, # Cloudy/Good
+            21: {"name": "Capricorn Cup", "location": 10007, "course": 10701, "season": 4, "weather": 1, "ground_condition": "GOOD"},
+            22: {"name": "Aquarius Cup", "location": 10006, "course": 10611, "season": 4, "weather": 4, "ground_condition": "OMO"}, # Snowy/Soft
+            23: {"name": "Pisces Cup", "location": 10005, "course": 10504, "season": 1, "weather": 1, "ground_condition": "GOOD"},
+            24: {"name": "Aries Cup", "location": 10008, "course": 10811, "season": 1, "weather": 1, "ground_condition": "GOOD"},
+        }
+
         total_iterations = 2000
 
         if is_ace_mode:
@@ -1070,6 +1086,7 @@ class CarrotJuicer:
             u_guts = 1100
             u_wisdom = 1100
 
+        cm_data = CM_CONFIGS[12]
         mock_payload = {
             "baseSetting": {
                 "umaStatus": {
@@ -1084,8 +1101,14 @@ class CarrotJuicer:
                     # YAYAOMO(2, "稍重"),
                     # OMO(3, "重"),
                     # BAD(4, "不良"),
-                    "location": 10005, "course": 10504, "condition": "GOOD", "gateCount": 9
-                }
+                    "location": cm_data["location"], 
+                    "course": cm_data["course"], 
+                    "condition": cm_data["ground_condition"], 
+                    "gateCount": 9
+                },
+                "season": cm_data["season"],
+                "weather": cm_data["weather"],
+                "positionKeepMode": "NONE"
             },
             "acquiredSkillIds": acquired_skills_list,
             "unacquiredSkillIds": unacquired_skills_list,
