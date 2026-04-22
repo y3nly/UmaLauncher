@@ -11,7 +11,7 @@ import util
 import gui
 import glob
 
-VERSION = "1.18.15"
+VERSION = "1.18.16"
 
 def parse_version(version_string: str):
     """Convert version string to tuple."""
