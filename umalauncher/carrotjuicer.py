@@ -159,6 +159,7 @@ class CarrotJuicer:
                     simControlDiv.id = "ul-sim-controls";
                     simControlDiv.style.display = "inline-flex";
                     simControlDiv.style.alignItems = "center";
+                    simControlDiv.style.gap = "4px";
                     simControlDiv.style.marginRight = "0";
                     simControlDiv.style.fontSize = "12px";
                     simControlDiv.style.zIndex = "10000";
@@ -1232,7 +1233,7 @@ class CarrotJuicer:
 
         self.selected_cm_definition = selected_cm_definition
         cm_options = [
-            {"id": cm_id, "label": f"{cm_id} {CM_CONFIGS[cm_id]['name']}"}
+            {"id": cm_id, "label": f"{cm_id} {CM_CONFIGS[cm_id]['name'].replace(' Cup', '')}"}
             for cm_id in available_cm_definitions
         ]
 
@@ -1586,6 +1587,7 @@ class CarrotJuicer:
                     simControlDiv.id = "ul-sim-controls";
                     simControlDiv.style.display = "inline-flex";
                     simControlDiv.style.alignItems = "center";
+                    simControlDiv.style.gap = "4px";
                     simControlDiv.style.marginRight = "0";
                     simControlDiv.style.fontSize = "12px";
                     simControlDiv.style.zIndex = "10000";
@@ -1679,6 +1681,41 @@ class CarrotJuicer:
                 statusEl.style.cursor = status === "running" ? "default" : "pointer";
                 statusEl.style.opacity = status === "running" ? "0.75" : "1";
             };
+
+            window.ensureCmDefinitionSelect = () => {
+                let cmSelect = document.getElementById("ul-cm-definition-select");
+                if (!cmSelect) {
+                    cmSelect = document.createElement("select");
+                    cmSelect.id = "ul-cm-definition-select";
+                    cmSelect.style.padding = "4px 5px";
+                    cmSelect.style.borderRadius = "4px";
+                    cmSelect.style.border = "1px solid #60a5fa";
+                    cmSelect.style.background = "transparent";
+                    cmSelect.style.color = "var(--c-text)";
+                    cmSelect.style.cursor = "pointer";
+                    cmSelect.style.fontSize = "12px";
+                    cmSelect.style.verticalAlign = "middle";
+                    cmSelect.style.maxWidth = "76px";
+
+                    cmSelect.onchange = () => {
+                        window.UL_CM_DEF = cmSelect.value;
+                        localStorage.setItem('UL_CM_DEF', window.UL_CM_DEF);
+                        window.UL_SIM_STATUS = "running";
+                        window.UL_SIM_MESSAGE = "";
+                        window.updateSimStatus();
+                        cmSelect.disabled = true;
+                        fetch('http://127.0.0.1:3150/skill-window-cm-definition', {
+                            method: 'POST',
+                            body: window.UL_CM_DEF,
+                            headers: { 'Content-Type': 'text/plain' }
+                        }).finally(() => {
+                            setTimeout(() => { cmSelect.disabled = false; }, 300);
+                        });
+                    };
+                }
+                syncCmDefinitionSelect(cmSelect);
+                return cmSelect;
+            };
     
             let pageTitle = document.querySelector("h1");
             if (pageTitle && !document.getElementById("ul-badge-toggle")) {
@@ -1771,18 +1808,7 @@ class CarrotJuicer:
                 btnRating.style.borderLeft = "none";
                 btnRating.style.cursor = "pointer";
 
-                let cmSelect = document.createElement("select");
-                cmSelect.id = "ul-cm-definition-select";
-                cmSelect.style.marginLeft = "10px";
-                cmSelect.style.padding = "4px 8px";
-                cmSelect.style.borderRadius = "4px";
-                cmSelect.style.border = "1px solid #60a5fa";
-                cmSelect.style.background = "transparent";
-                cmSelect.style.color = "var(--c-text)";
-                cmSelect.style.cursor = "pointer";
-                cmSelect.style.fontSize = "0.5em";
-                cmSelect.style.verticalAlign = "middle";
-                syncCmDefinitionSelect(cmSelect);
+                let cmSelect = window.ensureCmDefinitionSelect();
     
                 window.updateToggleColors = () => {
                     if (window.UL_BADGE_PREF === 'hist') {
@@ -1870,22 +1896,6 @@ class CarrotJuicer:
                     window.updateToggleColors();
                 };
 
-                cmSelect.onchange = () => {
-                    window.UL_CM_DEF = cmSelect.value;
-                    localStorage.setItem('UL_CM_DEF', window.UL_CM_DEF);
-                    window.UL_SIM_STATUS = "running";
-                    window.UL_SIM_MESSAGE = "";
-                    window.updateSimStatus();
-                    cmSelect.disabled = true;
-                    fetch('http://127.0.0.1:3150/skill-window-cm-definition', {
-                        method: 'POST',
-                        body: window.UL_CM_DEF,
-                        headers: { 'Content-Type': 'text/plain' }
-                    }).finally(() => {
-                        setTimeout(() => { cmSelect.disabled = false; }, 300);
-                    });
-                };
-    
                 window.updateToggleColors();
                 
                 let rankDisp = document.createElement("div");
@@ -1908,7 +1918,6 @@ class CarrotJuicer:
                 
                 pageTitle.appendChild(toggleDiv);
                 pageTitle.appendChild(modeToggleDiv);
-                pageTitle.appendChild(cmSelect);
                 pageTitle.appendChild(rankDisp);
                 pageTitle.style.display = "flex";
                 pageTitle.style.alignItems = "center";
@@ -1916,8 +1925,17 @@ class CarrotJuicer:
     
             } else if (window.updateToggleColors) {
                 window.updateToggleColors();
-                let cmSelect = document.getElementById("ul-cm-definition-select");
-                if (cmSelect) syncCmDefinitionSelect(cmSelect);
+            }
+
+            let simControlDiv = window.ensureSimControls();
+            let cmSelect = window.ensureCmDefinitionSelect();
+            let simStatus = document.getElementById("ul-sim-status");
+            if (simControlDiv && cmSelect) {
+                if (simStatus && cmSelect.nextSibling !== simStatus) {
+                    simControlDiv.insertBefore(cmSelect, simStatus);
+                } else if (!simStatus && cmSelect.parentElement !== simControlDiv) {
+                    simControlDiv.appendChild(cmSelect);
+                }
             }
 
             window.updateSimStatus();
