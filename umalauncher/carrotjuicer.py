@@ -99,6 +99,7 @@ class CarrotJuicer:
     open_skill_window = False
     skill_browser = None
     last_skills_rect = None
+    selected_cm_definition = 12
     open_schedule_window = False
     schedule_browser = None
     last_schedule_rect = None
@@ -127,11 +128,135 @@ class CarrotJuicer:
         self.skill_data = {}
         self.skills_list = []
         self.style = ''
+        self.selected_cm_definition = 12
 
 
         self.restart_time()
 
         self.helper_table = helper_table.HelperTable(self)
+
+    def set_skill_window_sim_status(self, status, message=None):
+        if not self.skill_browser or not self.skill_browser.alive():
+            return
+
+        self.skill_browser.execute_script(
+            """
+            window.UL_SIM_STATUS = arguments[0];
+            window.UL_SIM_MESSAGE = arguments[1] || "";
+
+            window.rerunSkillSimulation = () => {
+                if (window.UL_SIM_STATUS === "running") return;
+                window.UL_SIM_STATUS = "running";
+                window.UL_SIM_MESSAGE = "";
+                window.updateSimStatus();
+                fetch('http://127.0.0.1:3150/rerun-skill-simulation', { method: 'POST' });
+            };
+
+            window.ensureSimControls = () => {
+                let simControlDiv = document.getElementById("ul-sim-controls");
+                if (!simControlDiv) {
+                    simControlDiv = document.createElement("div");
+                    simControlDiv.id = "ul-sim-controls";
+                    simControlDiv.style.display = "inline-flex";
+                    simControlDiv.style.alignItems = "center";
+                    simControlDiv.style.marginRight = "0";
+                    simControlDiv.style.fontSize = "12px";
+                    simControlDiv.style.zIndex = "10000";
+
+                    let statusEl = document.createElement("button");
+                    statusEl.id = "ul-sim-status";
+                    statusEl.type = "button";
+                    statusEl.title = "Rerun simulation";
+                    statusEl.style.padding = "4px 5px";
+                    statusEl.style.border = "1px solid #6b7280";
+                    statusEl.style.borderRadius = "4px";
+                    statusEl.style.whiteSpace = "nowrap";
+                    statusEl.style.lineHeight = "1";
+                    statusEl.style.cursor = "pointer";
+                    statusEl.onclick = (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        window.rerunSkillSimulation();
+                    };
+
+                    simControlDiv.appendChild(statusEl);
+                }
+
+                let staleRerunButton = document.getElementById("ul-sim-rerun");
+                if (staleRerunButton) staleRerunButton.remove();
+
+                let settingsButton = document.querySelector("div.styles_header_settings__hx4QQ[aria-expanded='false'], div.styles_header_settings__hx4QQ");
+                let header = settingsButton ? (settingsButton.closest("header") || settingsButton.parentElement) : null;
+                if (header) {
+                    simControlDiv.style.position = "";
+                    simControlDiv.style.top = "";
+                    simControlDiv.style.right = "";
+                    if (simControlDiv.parentElement !== header) {
+                        header.insertBefore(simControlDiv, settingsButton);
+                    }
+                    header.style.gridTemplateColumns = "1fr max-content 75px";
+                    header.style.alignItems = "center";
+                    simControlDiv.style.gridColumn = "2";
+                    simControlDiv.style.gridRow = "1";
+                    simControlDiv.style.justifySelf = "end";
+                    settingsButton.style.gridColumn = "3";
+                    settingsButton.style.gridRow = "1";
+                    settingsButton.style.justifySelf = "end";
+                }
+            };
+
+            window.updateSimStatus = () => {
+                window.ensureSimControls();
+                let statusEl = document.getElementById("ul-sim-status");
+                if (!statusEl) return;
+
+                let status = window.UL_SIM_STATUS || "idle";
+                let text = "Sim: Ready";
+                let color = "#9ca3af";
+                let border = "#6b7280";
+                let background = "rgba(107, 114, 128, 0.16)";
+
+                if (status === "running") {
+                    text = "Sim: Running...";
+                    color = "#fcd34d";
+                    border = "#f59e0b";
+                    background = "rgba(245, 158, 11, 0.18)";
+                } else if (status === "done") {
+                    text = "Sim: Done \\u21bb";
+                    color = "#86efac";
+                    border = "#22c55e";
+                    background = "rgba(34, 197, 94, 0.14)";
+                } else if (status === "rating") {
+                    text = "Sim: Rating mode";
+                    color = "#c084fc";
+                    border = "#a855f7";
+                    background = "rgba(168, 85, 247, 0.16)";
+                } else if (status === "waiting") {
+                    text = "Sim: Waiting";
+                    color = "#93c5fd";
+                    border = "#60a5fa";
+                    background = "rgba(96, 165, 250, 0.14)";
+                } else if (status === "error") {
+                    text = "Sim: Error";
+                    color = "#fca5a5";
+                    border = "#ef4444";
+                    background = "rgba(239, 68, 68, 0.14)";
+                }
+
+                statusEl.textContent = text;
+                statusEl.style.color = color;
+                statusEl.style.borderColor = border;
+                statusEl.style.background = background;
+                statusEl.disabled = false;
+                statusEl.style.cursor = status === "running" ? "default" : "pointer";
+                statusEl.style.opacity = status === "running" ? "0.75" : "1";
+            };
+
+            window.updateSimStatus();
+            """,
+            status,
+            message or ""
+        )
 
     def get_stat_score(self, val):
         if val <= 0: return 0
@@ -327,10 +452,26 @@ class CarrotJuicer:
         self.set_browser_topmost(topmost)
 
     def get_browser_reset_position(self):
-        if self.threader.windowmover.window is None:
+        game_handle = getattr(self.threader, "game_handle", None)
+        if not game_handle:
+            if 'IS_UL_GLOBAL' in os.environ:
+                game_handle = util.get_game_handle_global()
+            elif 'IS_JP_STEAM' in os.environ:
+                game_handle = util.get_game_handle_jp_steam()
+            else:
+                game_handle = util.get_game_handle()
+
+        if not game_handle:
             return None
-        game_rect, _ = self.threader.windowmover.window.get_rect()
-        workspace_rect = self.threader.windowmover.window.get_workspace_rect()
+
+        game_rect = util.get_window_rect(game_handle)
+        monitor = util.monitor_from_window(game_handle, 2)
+        monitor_info = util.get_monitor_info(monitor) if monitor else None
+        workspace_rect = monitor_info.get("Work") if monitor_info else None
+
+        if not game_rect or not workspace_rect:
+            return None
+
         left_side = abs(workspace_rect[0] - game_rect[0])
         right_side = abs(game_rect[2] - workspace_rect[2])
         if left_side > right_side:
@@ -339,6 +480,8 @@ class CarrotJuicer:
         else:
             left_x = game_rect[2] + 5
             width = right_side
+        if width <= 0:
+            return None
         return [left_x, workspace_rect[1], width, workspace_rect[3] - workspace_rect[1] + 6]
 
     def close_browser(self):
@@ -1027,6 +1170,7 @@ class CarrotJuicer:
 
         if not self.last_data:
             return
+        chara_info = self.last_data.get('chara_info') if isinstance(self.last_data, dict) else None
 
         if not self.skill_browser:
             self.skill_browser = horsium.BrowserWindow(
@@ -1040,6 +1184,12 @@ class CarrotJuicer:
 
         if self.browser and self.browser.alive():
             self.browser.execute_script("""window.skill_window_opened();""")
+
+        if not chara_info:
+            logger.debug("Skill window opened before character info was available; skipping skill data update.")
+            self.previous_skills_list = None
+            self.set_skill_window_sim_status("waiting", "for character data")
+            return
 
         mode_pref = self.skill_browser.execute_script("return window.localStorage.getItem('UL_MODE_PREF') || 'parent';")
         is_ace_mode = (mode_pref == 'ace')
@@ -1070,15 +1220,30 @@ class CarrotJuicer:
             23: {"name": "Pisces Cup", "location": 10005, "course": 10504, "season": 1, "weather": 1, "ground_condition": "GOOD"},
             24: {"name": "Aries Cup", "location": 10008, "course": 10811, "season": 1, "weather": 1, "ground_condition": "GOOD"},
         }
+        available_cm_definitions = (12, 13, 14)
+        cm_pref = self.skill_browser.execute_script("return window.localStorage.getItem('UL_CM_DEF') || '12';")
+        try:
+            selected_cm_definition = int(cm_pref)
+        except (TypeError, ValueError):
+            selected_cm_definition = self.selected_cm_definition
+
+        if selected_cm_definition not in available_cm_definitions:
+            selected_cm_definition = 12
+
+        self.selected_cm_definition = selected_cm_definition
+        cm_options = [
+            {"id": cm_id, "label": f"{cm_id} {CM_CONFIGS[cm_id]['name']}"}
+            for cm_id in available_cm_definitions
+        ]
 
         total_iterations = 2000
 
         if is_ace_mode:
-            u_speed = self.last_data['chara_info'].get('speed', 0)
-            u_stamina = self.last_data['chara_info'].get('stamina', 0)
-            u_power = self.last_data['chara_info'].get('power', 0)
-            u_guts = self.last_data['chara_info'].get('guts', 0)
-            u_wisdom = self.last_data['chara_info'].get('wiz', 0)
+            u_speed = chara_info.get('speed', 0)
+            u_stamina = chara_info.get('stamina', 0)
+            u_power = chara_info.get('power', 0)
+            u_guts = chara_info.get('guts', 0)
+            u_wisdom = chara_info.get('wiz', 0)
         else:
             u_speed = 1200
             u_stamina = 2000
@@ -1086,7 +1251,7 @@ class CarrotJuicer:
             u_guts = 1100
             u_wisdom = 1100
 
-        cm_data = CM_CONFIGS[12]
+        cm_data = CM_CONFIGS[selected_cm_definition]
         mock_payload = {
             "baseSetting": {
                 "umaStatus": {
@@ -1115,13 +1280,16 @@ class CarrotJuicer:
             "iterations": total_iterations
         }
 
+        sim_failed = False
         if is_rating_mode:
             results = {"candidates": {}}
         else:
+            self.set_skill_window_sim_status("running")
             results = self.run_simulation(util.get_asset("_assets/umasim-cli.exe"), mock_payload)
+            sim_failed = not results
 
         discount_map = {0: 0, 1: 10, 2: 20, 3: 30, 4: 35, 5: 40}
-        rating_calc = self.calculate_uma_rank_score(self.last_data.get('chara_info', {}), self.skill_data)
+        rating_calc = self.calculate_uma_rank_score(chara_info, self.skill_data)
         rating_scores = rating_calc.get("skill_scores", {})
         uma_score = rating_calc.get("score", 0)
         uma_rank = rating_calc.get("rank", "")
@@ -1166,7 +1334,7 @@ class CarrotJuicer:
                 "hint_level": hint_level
             }
 
-        available_sp = self.last_data['chara_info'].get('skill_point', 0)
+        available_sp = chara_info.get('skill_point', 0)
         
         skill_ids = [int(sid) for sid in rating_data.keys()]
         id_to_group = mdb.get_group_id_dict(skill_ids)
@@ -1326,6 +1494,8 @@ class CarrotJuicer:
 
         if global_box_min == float('inf'): global_box_min = 0.0
         if global_box_max == float('-inf'): global_box_max = 0.0
+        sim_status = "rating" if is_rating_mode else ("error" if sim_failed else "done")
+        sim_status_message = ""
 
         self.skill_browser.execute_script(
             """
@@ -1346,6 +1516,10 @@ class CarrotJuicer:
             let proj_rank = arguments[13] || "";
             let uma_next = arguments[14] || 0;
             let proj_next = arguments[15] || 0;
+            let cmOptions = arguments[16] || [];
+            let selectedCmDefinition = String(arguments[17] || 12);
+            window.UL_SIM_STATUS = arguments[18] || "done";
+            window.UL_SIM_MESSAGE = arguments[19] || "";
     
             function formatCondition(cond) {
                 if (!cond) return "";
@@ -1380,6 +1554,131 @@ class CarrotJuicer:
     
             window.UL_BADGE_PREF = localStorage.getItem('UL_BADGE_PREF') || 'hist';
             window.UL_MODE_PREF = localStorage.getItem('UL_MODE_PREF') || 'parent';
+            window.UL_CM_DEF = localStorage.getItem('UL_CM_DEF') || selectedCmDefinition;
+            if (!cmOptions.some(option => String(option.id) === String(window.UL_CM_DEF))) {
+                window.UL_CM_DEF = selectedCmDefinition;
+                localStorage.setItem('UL_CM_DEF', window.UL_CM_DEF);
+            }
+
+            function syncCmDefinitionSelect(cmSelect) {
+                cmSelect.replaceChildren();
+                for (const option of cmOptions) {
+                    let cmOption = document.createElement("option");
+                    cmOption.value = String(option.id);
+                    cmOption.textContent = option.label;
+                    cmSelect.appendChild(cmOption);
+                }
+                cmSelect.value = String(window.UL_CM_DEF);
+            }
+
+            window.rerunSkillSimulation = () => {
+                if (window.UL_SIM_STATUS === "running") return;
+                window.UL_SIM_STATUS = "running";
+                window.UL_SIM_MESSAGE = "";
+                window.updateSimStatus();
+                fetch('http://127.0.0.1:3150/rerun-skill-simulation', { method: 'POST' });
+            };
+
+            window.ensureSimControls = () => {
+                let simControlDiv = document.getElementById("ul-sim-controls");
+                if (!simControlDiv) {
+                    simControlDiv = document.createElement("div");
+                    simControlDiv.id = "ul-sim-controls";
+                    simControlDiv.style.display = "inline-flex";
+                    simControlDiv.style.alignItems = "center";
+                    simControlDiv.style.marginRight = "0";
+                    simControlDiv.style.fontSize = "12px";
+                    simControlDiv.style.zIndex = "10000";
+
+                    let statusEl = document.createElement("button");
+                    statusEl.id = "ul-sim-status";
+                    statusEl.type = "button";
+                    statusEl.title = "Rerun simulation";
+                    statusEl.style.padding = "4px 5px";
+                    statusEl.style.border = "1px solid #6b7280";
+                    statusEl.style.borderRadius = "4px";
+                    statusEl.style.whiteSpace = "nowrap";
+                    statusEl.style.lineHeight = "1";
+                    statusEl.style.cursor = "pointer";
+                    statusEl.onclick = (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        window.rerunSkillSimulation();
+                    };
+
+                    simControlDiv.appendChild(statusEl);
+                }
+
+                let staleRerunButton = document.getElementById("ul-sim-rerun");
+                if (staleRerunButton) staleRerunButton.remove();
+
+                let settingsButton = document.querySelector("div.styles_header_settings__hx4QQ[aria-expanded='false'], div.styles_header_settings__hx4QQ");
+                let header = settingsButton ? (settingsButton.closest("header") || settingsButton.parentElement) : null;
+                if (header) {
+                    simControlDiv.style.position = "";
+                    simControlDiv.style.top = "";
+                    simControlDiv.style.right = "";
+                    if (simControlDiv.parentElement !== header) {
+                        header.insertBefore(simControlDiv, settingsButton);
+                    }
+                    header.style.gridTemplateColumns = "1fr max-content 75px";
+                    header.style.alignItems = "center";
+                    simControlDiv.style.gridColumn = "2";
+                    simControlDiv.style.gridRow = "1";
+                    simControlDiv.style.justifySelf = "end";
+                    settingsButton.style.gridColumn = "3";
+                    settingsButton.style.gridRow = "1";
+                    settingsButton.style.justifySelf = "end";
+                }
+                return simControlDiv;
+            };
+
+            window.updateSimStatus = () => {
+                window.ensureSimControls();
+                let statusEl = document.getElementById("ul-sim-status");
+                if (!statusEl) return;
+
+                let status = window.UL_SIM_STATUS || "idle";
+                let text = "Sim: Ready";
+                let color = "#9ca3af";
+                let border = "#6b7280";
+                let background = "rgba(107, 114, 128, 0.16)";
+
+                if (status === "running") {
+                    text = "Sim: Running...";
+                    color = "#fcd34d";
+                    border = "#f59e0b";
+                    background = "rgba(245, 158, 11, 0.18)";
+                } else if (status === "done") {
+                    text = "Sim: Done \\u21bb";
+                    color = "#86efac";
+                    border = "#22c55e";
+                    background = "rgba(34, 197, 94, 0.14)";
+                } else if (status === "rating") {
+                    text = "Sim: Rating mode";
+                    color = "#c084fc";
+                    border = "#a855f7";
+                    background = "rgba(168, 85, 247, 0.16)";
+                } else if (status === "waiting") {
+                    text = "Sim: Waiting";
+                    color = "#93c5fd";
+                    border = "#60a5fa";
+                    background = "rgba(96, 165, 250, 0.14)";
+                } else if (status === "error") {
+                    text = "Sim: Error";
+                    color = "#fca5a5";
+                    border = "#ef4444";
+                    background = "rgba(239, 68, 68, 0.14)";
+                }
+
+                statusEl.textContent = text;
+                statusEl.style.color = color;
+                statusEl.style.borderColor = border;
+                statusEl.style.background = background;
+                statusEl.disabled = false;
+                statusEl.style.cursor = status === "running" ? "default" : "pointer";
+                statusEl.style.opacity = status === "running" ? "0.75" : "1";
+            };
     
             let pageTitle = document.querySelector("h1");
             if (pageTitle && !document.getElementById("ul-badge-toggle")) {
@@ -1471,6 +1770,19 @@ class CarrotJuicer:
                 btnRating.style.border = "1px solid #c084fc";
                 btnRating.style.borderLeft = "none";
                 btnRating.style.cursor = "pointer";
+
+                let cmSelect = document.createElement("select");
+                cmSelect.id = "ul-cm-definition-select";
+                cmSelect.style.marginLeft = "10px";
+                cmSelect.style.padding = "4px 8px";
+                cmSelect.style.borderRadius = "4px";
+                cmSelect.style.border = "1px solid #60a5fa";
+                cmSelect.style.background = "transparent";
+                cmSelect.style.color = "var(--c-text)";
+                cmSelect.style.cursor = "pointer";
+                cmSelect.style.fontSize = "0.5em";
+                cmSelect.style.verticalAlign = "middle";
+                syncCmDefinitionSelect(cmSelect);
     
                 window.updateToggleColors = () => {
                     if (window.UL_BADGE_PREF === 'hist') {
@@ -1557,6 +1869,22 @@ class CarrotJuicer:
                     localStorage.setItem('UL_MODE_PREF', 'rating');
                     window.updateToggleColors();
                 };
+
+                cmSelect.onchange = () => {
+                    window.UL_CM_DEF = cmSelect.value;
+                    localStorage.setItem('UL_CM_DEF', window.UL_CM_DEF);
+                    window.UL_SIM_STATUS = "running";
+                    window.UL_SIM_MESSAGE = "";
+                    window.updateSimStatus();
+                    cmSelect.disabled = true;
+                    fetch('http://127.0.0.1:3150/skill-window-cm-definition', {
+                        method: 'POST',
+                        body: window.UL_CM_DEF,
+                        headers: { 'Content-Type': 'text/plain' }
+                    }).finally(() => {
+                        setTimeout(() => { cmSelect.disabled = false; }, 300);
+                    });
+                };
     
                 window.updateToggleColors();
                 
@@ -1580,6 +1908,7 @@ class CarrotJuicer:
                 
                 pageTitle.appendChild(toggleDiv);
                 pageTitle.appendChild(modeToggleDiv);
+                pageTitle.appendChild(cmSelect);
                 pageTitle.appendChild(rankDisp);
                 pageTitle.style.display = "flex";
                 pageTitle.style.alignItems = "center";
@@ -1587,7 +1916,11 @@ class CarrotJuicer:
     
             } else if (window.updateToggleColors) {
                 window.updateToggleColors();
+                let cmSelect = document.getElementById("ul-cm-definition-select");
+                if (cmSelect) syncCmDefinitionSelect(cmSelect);
             }
+
+            window.updateSimStatus();
             
             let rankDispExists = document.getElementById("ul-rank-display");
             if (rankDispExists) {
@@ -1814,7 +2147,8 @@ class CarrotJuicer:
                 skills_table.appendChild(item);
             }
             """, self.skills_list, sim_summary, global_hist_min, global_hist_max, global_box_min, global_box_max,
-            acquired_skills_list, all_sk_data, base_median_abs, rating_data, uma_score, uma_rank, projected_score, projected_rank, uma_next, proj_next)
+            acquired_skills_list, all_sk_data, base_median_abs, rating_data, uma_score, uma_rank, projected_score,
+            projected_rank, uma_next, proj_next, cm_options, selected_cm_definition, sim_status, sim_status_message)
 
     def run_simulation(self, exe_path, payload):
         json_payload = json.dumps(payload)
@@ -2001,7 +2335,9 @@ class CarrotJuicer:
                     self.browser.enforce_z_order()
 
                     if self.reset_browser:
-                        self.browser.set_window_rect(self.get_browser_reset_position())
+                        reset_position = self.get_browser_reset_position()
+                        if reset_position:
+                            self.browser.set_window_rect(reset_position)
                 elif self.last_browser_rect:
                     self.save_last_browser_rect()
 
