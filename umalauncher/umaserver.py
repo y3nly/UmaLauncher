@@ -26,6 +26,33 @@ def open_skills_window():
 
     return '', 200
 
+@app.route('/skill-window-cm-definition', methods=['POST'])
+def skill_window_cm_definition():
+    global threader
+    cm_definition = request.data.decode('utf-8').strip()
+    if threader.carrotjuicer:
+        try:
+            selected_cm_definition = int(cm_definition)
+        except ValueError:
+            selected_cm_definition = 12
+
+        if selected_cm_definition not in (12, 13, 14):
+            selected_cm_definition = 12
+
+        threader.carrotjuicer.selected_cm_definition = selected_cm_definition
+        threader.carrotjuicer.open_skill_window = True
+
+    return '', 200
+
+@app.route('/rerun-skill-simulation', methods=['POST'])
+def rerun_skill_simulation():
+    global threader
+    if threader.carrotjuicer:
+        threader.carrotjuicer.previous_skills_list = None
+        threader.carrotjuicer.open_skill_window = True
+
+    return '', 200
+
 @app.route('/open-schedule-window', methods=['POST'])
 def open_schedule_window():
     global threader
