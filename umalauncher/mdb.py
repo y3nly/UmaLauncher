@@ -855,7 +855,7 @@ def get_prerequisite_skill_ids(skill_id):
         group_id, group_rate = row
         
         cursor.execute(
-            "SELECT id, skill_category FROM skill_data WHERE group_id = ? AND group_rate < ? ORDER BY group_rate ASC",
+            "SELECT id, skill_category FROM skill_data WHERE group_id = ? AND group_rate > 0 AND group_rate < ? ORDER BY group_rate ASC",
             (group_id, group_rate)
         )
         rows = cursor.fetchall()
@@ -872,6 +872,40 @@ def get_prerequisite_skill_ids(skill_id):
         prereqs.append(pid)
         
     return prereqs
+
+DOUBLE_CIRCLE_UPGRADE_DICT = {}
+def get_double_circle_upgrade_dict(force=False):
+    global DOUBLE_CIRCLE_UPGRADE_DICT
+    if force or not DOUBLE_CIRCLE_UPGRADE_DICT:
+        with Connection() as (_, cursor):
+            try:
+                cursor.execute(
+                    """
+                    SELECT base.id, upgrade.id
+                    FROM skill_data base
+                    JOIN skill_data upgrade
+                        ON base.group_id = upgrade.group_id
+                    JOIN single_mode_skill_need_point upgrade_cost
+                        ON upgrade_cost.id = upgrade.id
+                    WHERE base.group_rate = 1
+                        AND upgrade.group_rate = 2
+                        AND base.rarity = 1
+                        AND upgrade.rarity = 1
+                        AND base.skill_category != 5
+                        AND upgrade.skill_category != 5
+                        AND base.grade_value > 0
+                        AND upgrade.grade_value > 0
+                    """
+                )
+                rows = cursor.fetchall()
+            except sqlite3.OperationalError as e:
+                logger.error(f"get_double_circle_upgrade_dict failed: {e}\\n{traceback.format_exc()}")
+                rows = []
+
+        if rows:
+            DOUBLE_CIRCLE_UPGRADE_DICT.clear()
+            DOUBLE_CIRCLE_UPGRADE_DICT.update({row[0]: row[1] for row in rows})
+    return DOUBLE_CIRCLE_UPGRADE_DICT
 
 GROUP_ID_DICT = {}
 def get_group_id_dict(force=False):
@@ -1016,6 +1050,7 @@ UPDATE_FUNCS = [
     get_gl_lesson_dict,
     get_group_card_effect_ids,
     get_skill_id_dict,
+    get_double_circle_upgrade_dict,
     get_group_id_dict,
     get_skill_effects_dict,
     get_skill_score_dict,

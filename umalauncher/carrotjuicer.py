@@ -295,6 +295,166 @@ class CarrotJuicer:
                 return min(bound, base + ((score - base) // step + 1) * step) - score
         return 0
 
+    def get_skill_rating_score(self, chara_info, skill_id):
+        base_score = self.skill_score_dict.get(int(skill_id), 0)
+        cond = self.skill_conditions_dict.get(int(skill_id), "")
+
+        cond_map = {
+            "distance_type==1": 'proper_distance_short',
+            "distance_type==2": 'proper_distance_mile',
+            "distance_type==3": 'proper_distance_middle',
+            "distance_type==4": 'proper_distance_long',
+            "ground_type==1": 'proper_ground_turf',
+            "ground_type==2": 'proper_ground_dirt',
+            "running_style==1": 'proper_running_style_nige',
+            "running_style==2": 'proper_running_style_senko',
+            "running_style==3": 'proper_running_style_sashi',
+            "running_style==4": 'proper_running_style_oikomi',
+        }
+
+        multiplier = 1.0
+        for cond_str, apt_key in cond_map.items():
+            if cond_str in cond:
+                multiplier = self.get_aptitude_multiplier(chara_info.get(apt_key, 1))
+                break
+
+        return round(base_score * multiplier)
+
+    def get_discounted_skill_cost(self, skill_id, skill_data, discount_map, fallback_hint_level=0):
+        skill_id = int(skill_id)
+        skill_info = skill_data.get(skill_id, {})
+        base_cost = skill_info.get("base_cost", self.skill_costs_dict.get(str(skill_id), 0)) or 0
+        hint_level = skill_info.get("hint_level", fallback_hint_level) or 0
+        discount_percent = discount_map.get(min(hint_level, 5), 0)
+        return int(base_cost * (100 - discount_percent) / 100)
+
+    def calculate_max_rating_projection(self, chara_info, skill_data, rating_scores, rating_data, available_sp,
+                                        discount_map):
+        if available_sp <= 0:
+            return {"score_gain": 0, "choices": []}
+
+        id_to_group = mdb.get_group_id_dict()
+        def get_group_id(skill_id):
+            return id_to_group.get(str(skill_id), str(skill_id))
+
+        def get_skill_name(skill_id):
+            return self.skill_name_dict.get(int(skill_id), str(skill_id))
+
+        def build_candidate(final_skill_id, hidden_upgrade=False, fallback_hint_level=0):
+            final_skill_id = int(final_skill_id)
+            if skill_data.get(final_skill_id, {}).get("is_acquired", False):
+                return None
+
+            group_id = get_group_id(final_skill_id)
+            final_score = rating_scores.get(str(final_skill_id))
+            if final_score is None:
+                final_score = self.get_skill_rating_score(chara_info, final_skill_id)
+
+            chain_ids = [int(sid) for sid in mdb.get_prerequisite_skill_ids(final_skill_id)]
+            chain_ids.append(final_skill_id)
+
+            highest_acquired_score = 0
+            total_sp_cost = 0
+            purchase_chain = []
+            for chain_skill_id in chain_ids:
+                chain_info = skill_data.get(chain_skill_id, {})
+                chain_score = rating_scores.get(str(chain_skill_id))
+                if chain_score is None:
+                    chain_score = self.get_skill_rating_score(chara_info, chain_skill_id)
+
+                if chain_info.get("is_acquired", False):
+                    highest_acquired_score = max(highest_acquired_score, chain_score)
+                    continue
+
+                chain_cost = self.get_discounted_skill_cost(
+                    chain_skill_id,
+                    skill_data,
+                    discount_map,
+                    fallback_hint_level
+                )
+                total_sp_cost += chain_cost
+                purchase_chain.append({
+                    "id": chain_skill_id,
+                    "name": get_skill_name(chain_skill_id),
+                    "sp_cost": chain_cost
+                })
+
+            score_gain = final_score - highest_acquired_score
+            if total_sp_cost <= 0 or score_gain <= 0:
+                return None
+
+            return {
+                "skill_id": final_skill_id,
+                "name": get_skill_name(final_skill_id),
+                "group_id": group_id,
+                "sp_cost": total_sp_cost,
+                "score": score_gain,
+                "hidden_upgrade": hidden_upgrade,
+                "chain": purchase_chain
+            }
+
+        groups = {}
+        seen_final_skill_ids = set()
+
+        for skill_id_str, detail in rating_data.items():
+            skill_id = int(skill_id_str)
+            if skill_data.get(skill_id, {}).get("is_acquired", False):
+                continue
+            if detail.get("sp_cost", 0) <= 0 or detail.get("score", 0) <= 0:
+                continue
+
+            candidate = build_candidate(skill_id)
+            if not candidate:
+                continue
+
+            seen_final_skill_ids.add(skill_id)
+            groups.setdefault(candidate["group_id"], []).append(candidate)
+
+        for single_circle_id, double_circle_id in mdb.get_double_circle_upgrade_dict().items():
+            if single_circle_id not in skill_data:
+                continue
+            if double_circle_id in seen_final_skill_ids:
+                continue
+            if skill_data.get(double_circle_id, {}).get("is_acquired", False):
+                continue
+
+            source_hint_level = skill_data.get(single_circle_id, {}).get("hint_level", 0)
+            candidate = build_candidate(double_circle_id, hidden_upgrade=True, fallback_hint_level=source_hint_level)
+            if not candidate:
+                continue
+
+            seen_final_skill_ids.add(double_circle_id)
+            groups.setdefault(candidate["group_id"], []).append(candidate)
+
+        dp = [0] * (available_sp + 1)
+        history = []
+        for _, items_in_group in groups.items():
+            new_dp = list(dp)
+            choices = [None] * (available_sp + 1)
+            for candidate in items_in_group:
+                cost = candidate["sp_cost"]
+                gain = candidate["score"]
+                for budget in range(cost, available_sp + 1):
+                    candidate_score = dp[budget - cost] + gain
+                    if candidate_score > new_dp[budget]:
+                        new_dp[budget] = candidate_score
+                        choices[budget] = (budget - cost, candidate)
+            dp = new_dp
+            history.append(choices)
+
+        selected_choices = []
+        budget = available_sp
+        for choices in reversed(history):
+            choice = choices[budget]
+            if not choice:
+                continue
+            budget, candidate = choice
+            selected_choices.append(candidate)
+
+        selected_choices.reverse()
+        selected_choices.sort(key=lambda item: item["score"], reverse=True)
+        return {"score_gain": dp[available_sp], "choices": selected_choices}
+
     def calculate_uma_rank_score(self, chara_info, skill_data):
         skill_scores_map = {}
         
@@ -1336,29 +1496,16 @@ class CarrotJuicer:
             }
 
         available_sp = chara_info.get('skill_point', 0)
-        
-        skill_ids = [int(sid) for sid in rating_data.keys()]
-        id_to_group = mdb.get_group_id_dict(skill_ids)
-
-        groups = {}
-        for sid_str, detail in rating_data.items():
-            if self.skill_data.get(int(sid_str), {}).get("is_acquired", False):
-                continue
-            cost = detail.get('sp_cost', 0)
-            gain = detail.get('score', 0)
-            if cost > 0 and gain > 0:
-                gid = id_to_group.get(sid_str, sid_str)
-                groups.setdefault(gid, []).append((cost, gain))
-        
-        dp = [0] * (available_sp + 1)
-        for gid, items_in_group in groups.items():
-            new_dp = list(dp)
-            for cost, gain in items_in_group:
-                for j in range(available_sp, cost - 1, -1):
-                    new_dp[j] = max(new_dp[j], dp[j - cost] + gain)
-            dp = new_dp
-                
-        max_score_gain = dp[available_sp] if available_sp >= 0 else 0
+        projection = self.calculate_max_rating_projection(
+            chara_info,
+            self.skill_data,
+            rating_scores,
+            rating_data,
+            available_sp,
+            discount_map
+        )
+        max_score_gain = projection.get("score_gain", 0)
+        projected_choices = projection.get("choices", [])
         projected_score = uma_score + max_score_gain
         projected_rank = self.get_rank_str(projected_score)
         
@@ -1515,16 +1662,17 @@ class CarrotJuicer:
             let uma_rank = arguments[11] || "";
             let proj_score = arguments[12] || 0;
             let proj_rank = arguments[13] || "";
-            let uma_next = arguments[14] || 0;
-            let proj_next = arguments[15] || 0;
-            let cmOptions = arguments[16] || [];
-            let selectedCmDefinition = String(arguments[17] || 12);
-            window.UL_SIM_STATUS = arguments[18] || "done";
-            window.UL_SIM_MESSAGE = arguments[19] || "";
+            let proj_choices = arguments[14] || [];
+            let uma_next = arguments[15] || 0;
+            let proj_next = arguments[16] || 0;
+            let cmOptions = arguments[17] || [];
+            let selectedCmDefinition = String(arguments[18] || 12);
+            window.UL_SIM_STATUS = arguments[19] || "done";
+            window.UL_SIM_MESSAGE = arguments[20] || "";
     
             function formatCondition(cond) {
                 if (!cond) return "";
-                return cond.replace(/([a-zA-Z_]+)|(==|>=|<=|!=|>|<|=|&|!)|(\d+(?:\.\d+)?s?)/g, function(match, word, op, num) {
+                return cond.replace(/([a-zA-Z_]+)|(==|>=|<=|!=|>|<|=|&|!)|(\\d+(?:\\.\\d+)?s?)/g, function(match, word, op, num) {
                     if (word) {
                         if (word === 'OR') return `<span style="color: #d65d8a;">${word}</span>`;
                         return `<span style="color: #c084fc;">${word}</span>`;
@@ -1533,6 +1681,47 @@ class CarrotJuicer:
                     if (num) return `<span style="color: #73c991;">${num}</span>`;
                     return match;
                 });
+            }
+
+            function escapeHtml(value) {
+                return String(value ?? "").replace(/[&<>"']/g, function(ch) {
+                    return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch];
+                });
+            }
+
+            function buildMaxChoicesTooltip(choices) {
+                if (!choices || choices.length === 0) return "";
+
+                let totalSp = choices.reduce((sum, item) => sum + (item.sp_cost || 0), 0);
+                let totalGain = choices.reduce((sum, item) => sum + (item.score || 0), 0);
+                let rows = choices.map(item => {
+                    let chain = (item.chain || []).map(step => escapeHtml(step.name || step.id)).join(" -> ");
+                    let chainHtml = chain && chain !== escapeHtml(item.name)
+                        ? `<span style="display:block;color:#9ca3af;font-size:11px;line-height:1.25;margin-top:1px;">${chain}</span>`
+                        : "";
+                    let marker = item.hidden_upgrade ? " &#9678;" : "";
+                    return `
+                        <span style="display:block;padding:4px 0;border-bottom:1px solid rgba(75,85,99,0.45);">
+                            <span style="display:flex;gap:10px;justify-content:space-between;align-items:baseline;">
+                                <span style="color:#e5e7eb;">${escapeHtml(item.name)}${marker}</span>
+                                <span style="color:#fcd34d;white-space:nowrap;">+${item.score || 0}</span>
+                            </span>
+                            <span style="display:flex;gap:10px;justify-content:space-between;color:#d1d5db;font-size:11px;line-height:1.25;">
+                                <span>${item.sp_cost || 0} SP</span>
+                                <span>${item.skill_id || ""}</span>
+                            </span>
+                            ${chainHtml}
+                        </span>
+                    `;
+                }).join("");
+
+                return `
+                    <span class="ul-tooltip-content" style="width:420px;max-width:520px;max-height:420px;overflow-y:auto;white-space:normal !important;">
+                        <span style="display:block;font-weight:bold;color:#fcd34d;margin-bottom:6px;">Max path: +${totalGain} rating / ${totalSp} SP</span>
+                        ${rows}
+                        <span style="display:block;color:#9ca3af;font-size:11px;margin-top:6px;">&#9678; hidden single-circle to double-circle upgrade</span>
+                    </span>
+                `;
             }
     
             let hRange = globalHistMax - globalHistMin;
@@ -1943,7 +2132,10 @@ class CarrotJuicer:
             let rankDispExists = document.getElementById("ul-rank-display");
             if (rankDispExists) {
                 if (proj_score > uma_score) {
-                    rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank} ${uma_score}<span style="font-weight:normal;color:#d1d5db;margin-left:4px;font-size:0.85em;"> +${uma_next}</span></span> <span style="color:#a8a29e;font-size:0.5em;margin-left:8px;">Max: ${proj_rank}<span style="font-weight:normal;margin-left:4px;font-size:0.85em;"> +${proj_next}</span></span>`;
+                    let maxTooltip = buildMaxChoicesTooltip(proj_choices);
+                    let maxClass = maxTooltip ? `class="ul-tooltip ul-tooltip-right"` : "";
+                    let maxHtml = `<span ${maxClass} style="color:#a8a29e;font-size:0.5em;margin-left:8px;display:inline-block;">Max: ${proj_rank}<span style="font-weight:normal;margin-left:4px;font-size:0.85em;"> +${proj_next}</span>${maxTooltip}</span>`;
+                    rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank} ${uma_score}<span style="font-weight:normal;color:#d1d5db;margin-left:4px;font-size:0.85em;"> +${uma_next}</span></span> ${maxHtml}`;
                 } else {
                     rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank} ${uma_score}<span style="font-weight:normal;color:#d1d5db;margin-left:4px;font-size:0.85em;"> +${uma_next}</span></span>`;
                 }
@@ -2166,7 +2358,8 @@ class CarrotJuicer:
             }
             """, self.skills_list, sim_summary, global_hist_min, global_hist_max, global_box_min, global_box_max,
             acquired_skills_list, all_sk_data, base_median_abs, rating_data, uma_score, uma_rank, projected_score,
-            projected_rank, uma_next, proj_next, cm_options, selected_cm_definition, sim_status, sim_status_message)
+            projected_rank, projected_choices, uma_next, proj_next, cm_options, selected_cm_definition, sim_status,
+            sim_status_message)
 
     def run_simulation(self, exe_path, payload):
         json_payload = json.dumps(payload)
