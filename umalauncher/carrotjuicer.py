@@ -146,6 +146,9 @@ class CarrotJuicer:
 
             window.rerunSkillSimulation = () => {
                 if (window.UL_SIM_STATUS === "running") return;
+                if (typeof window.resetSkillPlanner === "function") {
+                    window.resetSkillPlanner();
+                }
                 window.UL_SIM_STATUS = "running";
                 window.UL_SIM_MESSAGE = "";
                 window.updateSimStatus();
@@ -153,6 +156,13 @@ class CarrotJuicer:
             };
 
             window.ensureSimControls = () => {
+                document.querySelectorAll('button[aria-label="Open Umamusume menu"]').forEach(button => {
+                    let wrapper = button.parentElement && button.parentElement.parentElement
+                        ? button.parentElement.parentElement
+                        : button;
+                    wrapper.remove();
+                });
+
                 let simControlDiv = document.getElementById("ul-sim-controls");
                 if (!simControlDiv) {
                     simControlDiv = document.createElement("div");
@@ -228,7 +238,7 @@ class CarrotJuicer:
                     border = "#22c55e";
                     background = "rgba(34, 197, 94, 0.14)";
                 } else if (status === "rating") {
-                    text = "Sim: Rating mode";
+                    text = "Sim: Rating mode \\u21bb";
                     color = "#c084fc";
                     border = "#a855f7";
                     background = "rgba(168, 85, 247, 0.16)";
@@ -294,6 +304,207 @@ class CarrotJuicer:
             if score < bound:
                 return min(bound, base + ((score - base) // step + 1) * step) - score
         return 0
+
+    def get_rank_score_range(self, score):
+        rank_min = 0
+        for threshold, _ in BASE_RANKS:
+            if score < threshold:
+                return rank_min, threshold - 1
+            rank_min = threshold
+
+        for base, step, bound, _ in HIGH_RANKS:
+            if score < bound:
+                sub_rank = (score - base) // step
+                rank_min = base + (sub_rank * step)
+                rank_max = rank_min + step - 1
+                if bound != float('inf'):
+                    rank_max = min(rank_max, bound - 1)
+                return rank_min, rank_max
+
+        return score, score
+
+    def get_skill_rating_score(self, chara_info, skill_id):
+        base_score = self.skill_score_dict.get(int(skill_id), 0)
+        cond = self.skill_conditions_dict.get(int(skill_id), "")
+
+        cond_map = {
+            "distance_type==1": 'proper_distance_short',
+            "distance_type==2": 'proper_distance_mile',
+            "distance_type==3": 'proper_distance_middle',
+            "distance_type==4": 'proper_distance_long',
+            "ground_type==1": 'proper_ground_turf',
+            "ground_type==2": 'proper_ground_dirt',
+            "running_style==1": 'proper_running_style_nige',
+            "running_style==2": 'proper_running_style_senko',
+            "running_style==3": 'proper_running_style_sashi',
+            "running_style==4": 'proper_running_style_oikomi',
+        }
+
+        multiplier = 1.0
+        for cond_str, apt_key in cond_map.items():
+            if cond_str in cond:
+                multiplier = self.get_aptitude_multiplier(chara_info.get(apt_key, 1))
+                break
+
+        return round(base_score * multiplier)
+
+    def get_discounted_skill_cost(self, skill_id, skill_data, discount_map, fallback_hint_level=0):
+        skill_id = int(skill_id)
+        skill_info = skill_data.get(skill_id, {})
+        base_cost = skill_info.get("base_cost", self.skill_costs_dict.get(str(skill_id), 0)) or 0
+        hint_level = skill_info.get("hint_level", fallback_hint_level) or 0
+        discount_percent = discount_map.get(min(hint_level, 5), 0)
+        return int(base_cost * (100 - discount_percent) / 100)
+
+    def calculate_max_rating_projection(self, chara_info, skill_data, rating_scores, rating_data, available_sp,
+                                        discount_map):
+        id_to_group = mdb.get_group_id_dict()
+        def get_group_id(skill_id):
+            return id_to_group.get(str(skill_id), str(skill_id))
+
+        def get_skill_name(skill_id):
+            return self.skill_name_dict.get(int(skill_id), str(skill_id))
+
+        def build_candidate(final_skill_id, hidden_upgrade=False, fallback_hint_level=0, source_skill_id=None):
+            final_skill_id = int(final_skill_id)
+            if skill_data.get(final_skill_id, {}).get("is_acquired", False):
+                return None
+
+            group_id = get_group_id(final_skill_id)
+            final_score = rating_scores.get(str(final_skill_id))
+            if final_score is None:
+                final_score = self.get_skill_rating_score(chara_info, final_skill_id)
+
+            chain_ids = [int(sid) for sid in mdb.get_prerequisite_skill_ids(final_skill_id)]
+            chain_ids.append(final_skill_id)
+
+            highest_acquired_score = 0
+            total_sp_cost = 0
+            full_chain = []
+            purchase_chain = []
+            for chain_skill_id in chain_ids:
+                chain_info = skill_data.get(chain_skill_id, {})
+                chain_score = rating_scores.get(str(chain_skill_id))
+                if chain_score is None:
+                    chain_score = self.get_skill_rating_score(chara_info, chain_skill_id)
+
+                chain_cost = self.get_discounted_skill_cost(
+                    chain_skill_id,
+                    skill_data,
+                    discount_map,
+                    fallback_hint_level
+                )
+                is_acquired = chain_info.get("is_acquired", False)
+
+                full_chain.append({
+                    "id": chain_skill_id,
+                    "name": get_skill_name(chain_skill_id),
+                    "sp_cost": 0 if is_acquired else chain_cost,
+                    "score": chain_score,
+                    "is_acquired": is_acquired
+                })
+
+                if is_acquired:
+                    highest_acquired_score = max(highest_acquired_score, chain_score)
+                    continue
+
+                total_sp_cost += chain_cost
+                purchase_chain.append({
+                    "id": chain_skill_id,
+                    "name": get_skill_name(chain_skill_id),
+                    "sp_cost": chain_cost,
+                    "score": chain_score
+                })
+
+            score_gain = final_score - highest_acquired_score
+            if total_sp_cost <= 0 or score_gain <= 0:
+                return None
+
+            return {
+                "skill_id": final_skill_id,
+                "name": get_skill_name(final_skill_id),
+                "group_id": group_id,
+                "sp_cost": total_sp_cost,
+                "score": score_gain,
+                "final_score": final_score,
+                "hidden_upgrade": hidden_upgrade,
+                "source_skill_id": source_skill_id,
+                "chain": purchase_chain,
+                "all_chain": full_chain
+            }
+
+        groups = {}
+        candidates = []
+        seen_final_skill_ids = set()
+
+        for skill_id_str, detail in rating_data.items():
+            skill_id = int(skill_id_str)
+            if skill_data.get(skill_id, {}).get("is_acquired", False):
+                continue
+            if detail.get("sp_cost", 0) <= 0 or detail.get("score", 0) <= 0:
+                continue
+
+            candidate = build_candidate(skill_id)
+            if not candidate:
+                continue
+
+            seen_final_skill_ids.add(skill_id)
+            candidates.append(candidate)
+            groups.setdefault(candidate["group_id"], []).append(candidate)
+
+        for single_circle_id, double_circle_id in mdb.get_double_circle_upgrade_dict().items():
+            if single_circle_id not in skill_data:
+                continue
+            if double_circle_id in seen_final_skill_ids:
+                continue
+            if skill_data.get(double_circle_id, {}).get("is_acquired", False):
+                continue
+
+            source_hint_level = skill_data.get(single_circle_id, {}).get("hint_level", 0)
+            candidate = build_candidate(
+                double_circle_id,
+                hidden_upgrade=True,
+                fallback_hint_level=source_hint_level,
+                source_skill_id=single_circle_id
+            )
+            if not candidate:
+                continue
+
+            seen_final_skill_ids.add(double_circle_id)
+            candidates.append(candidate)
+            groups.setdefault(candidate["group_id"], []).append(candidate)
+
+        if available_sp <= 0:
+            return {"score_gain": 0, "choices": [], "candidates": candidates}
+
+        dp = [0] * (available_sp + 1)
+        history = []
+        for _, items_in_group in groups.items():
+            new_dp = list(dp)
+            choices = [None] * (available_sp + 1)
+            for candidate in items_in_group:
+                cost = candidate["sp_cost"]
+                gain = candidate["score"]
+                for budget in range(cost, available_sp + 1):
+                    candidate_score = dp[budget - cost] + gain
+                    if candidate_score > new_dp[budget]:
+                        new_dp[budget] = candidate_score
+                        choices[budget] = (budget - cost, candidate)
+            dp = new_dp
+            history.append(choices)
+
+        selected_choices = []
+        budget = available_sp
+        for choices in reversed(history):
+            choice = choices[budget]
+            if not choice:
+                continue
+            budget, candidate = choice
+            selected_choices.append(candidate)
+
+        selected_choices.reverse()
+        selected_choices.sort(key=lambda item: item["score"], reverse=True)
+        return {"score_gain": dp[available_sp], "choices": selected_choices, "candidates": candidates}
 
     def calculate_uma_rank_score(self, chara_info, skill_data):
         skill_scores_map = {}
@@ -1336,31 +1547,20 @@ class CarrotJuicer:
             }
 
         available_sp = chara_info.get('skill_point', 0)
-        
-        skill_ids = [int(sid) for sid in rating_data.keys()]
-        id_to_group = mdb.get_group_id_dict(skill_ids)
-
-        groups = {}
-        for sid_str, detail in rating_data.items():
-            if self.skill_data.get(int(sid_str), {}).get("is_acquired", False):
-                continue
-            cost = detail.get('sp_cost', 0)
-            gain = detail.get('score', 0)
-            if cost > 0 and gain > 0:
-                gid = id_to_group.get(sid_str, sid_str)
-                groups.setdefault(gid, []).append((cost, gain))
-        
-        dp = [0] * (available_sp + 1)
-        for gid, items_in_group in groups.items():
-            new_dp = list(dp)
-            for cost, gain in items_in_group:
-                for j in range(available_sp, cost - 1, -1):
-                    new_dp[j] = max(new_dp[j], dp[j - cost] + gain)
-            dp = new_dp
-                
-        max_score_gain = dp[available_sp] if available_sp >= 0 else 0
+        projection = self.calculate_max_rating_projection(
+            chara_info,
+            self.skill_data,
+            rating_scores,
+            rating_data,
+            available_sp,
+            discount_map
+        )
+        max_score_gain = projection.get("score_gain", 0)
+        projected_choices = projection.get("choices", [])
+        planner_candidates = projection.get("candidates", [])
         projected_score = uma_score + max_score_gain
         projected_rank = self.get_rank_str(projected_score)
+        projected_rank_min, projected_rank_max = self.get_rank_score_range(projected_score)
         
         uma_next = self.get_next_rank_req(uma_score)
         proj_next = self.get_next_rank_req(projected_score)
@@ -1515,16 +1715,64 @@ class CarrotJuicer:
             let uma_rank = arguments[11] || "";
             let proj_score = arguments[12] || 0;
             let proj_rank = arguments[13] || "";
-            let uma_next = arguments[14] || 0;
-            let proj_next = arguments[15] || 0;
-            let cmOptions = arguments[16] || [];
-            let selectedCmDefinition = String(arguments[17] || 12);
-            window.UL_SIM_STATUS = arguments[18] || "done";
-            window.UL_SIM_MESSAGE = arguments[19] || "";
+            let proj_choices = arguments[14] || [];
+            let uma_next = arguments[15] || 0;
+            let proj_next = arguments[16] || 0;
+            let cmOptions = arguments[17] || [];
+            let selectedCmDefinition = String(arguments[18] || 12);
+            let projRankMin = arguments[19] || 0;
+            let projRankMax = arguments[20] || 0;
+            let availableSp = arguments[21] || 0;
+            let plannerCandidates = arguments[22] || [];
+            window.UL_SIM_STATUS = arguments[23] || "done";
+            window.UL_SIM_MESSAGE = arguments[24] || "";
+
+            const ownedSkillIds = new Set((acquired_list || []).map(id => String(id)));
+            const plannerRows = new Map();
+            const plannerSelectedByGroup = new Map();
+            const candidateBySkillId = new Map();
+
+            for (const candidate of plannerCandidates || []) {
+                candidate.skill_id = String(candidate.skill_id);
+                candidate.group_id = String(candidate.group_id);
+                candidate.source_skill_id = candidate.source_skill_id ? String(candidate.source_skill_id) : null;
+                candidate.chain = candidate.chain || [];
+                candidate.all_chain = candidate.all_chain || candidate.chain || [];
+                candidate.sp_cost = Number(candidate.sp_cost || 0);
+                candidate.score = Number(candidate.score || 0);
+                candidate.final_score = Number(candidate.final_score || 0);
+                for (const step of candidate.chain) {
+                    step.id = String(step.id);
+                    step.sp_cost = Number(step.sp_cost || 0);
+                    step.score = Number(step.score || 0);
+                }
+                for (const step of candidate.all_chain) {
+                    step.id = String(step.id);
+                    step.sp_cost = Number(step.sp_cost || 0);
+                    step.score = Number(step.score || 0);
+                }
+
+                candidateBySkillId.set(candidate.skill_id, candidate);
+            }
+
+            function collectChoiceSkillIds(choices) {
+                let picked = new Set();
+                for (const choice of choices || []) {
+                    if (choice.skill_id) picked.add(String(choice.skill_id));
+                    if (choice.source_skill_id) picked.add(String(choice.source_skill_id));
+                    for (const step of (choice.chain || [])) {
+                        if (step.id) picked.add(String(step.id));
+                    }
+                }
+                return picked;
+            }
+
+            const baseMaxPickedSkillIds = collectChoiceSkillIds(proj_choices);
+            let currentMaxPickedSkillIds = new Set(baseMaxPickedSkillIds);
     
             function formatCondition(cond) {
                 if (!cond) return "";
-                return cond.replace(/([a-zA-Z_]+)|(==|>=|<=|!=|>|<|=|&|!)|(\d+(?:\.\d+)?s?)/g, function(match, word, op, num) {
+                return cond.replace(/([a-zA-Z_]+)|(==|>=|<=|!=|>|<|=|&|!)|(\\d+(?:\\.\\d+)?s?)/g, function(match, word, op, num) {
                     if (word) {
                         if (word === 'OR') return `<span style="color: #d65d8a;">${word}</span>`;
                         return `<span style="color: #c084fc;">${word}</span>`;
@@ -1534,6 +1782,578 @@ class CarrotJuicer:
                     return match;
                 });
             }
+
+            let plannerStyle = document.getElementById("ul-planner-style");
+            if (!plannerStyle) {
+                plannerStyle = document.createElement("style");
+                plannerStyle.id = "ul-planner-style";
+                plannerStyle.innerHTML = `
+                    .sim-data-badge.ul-planner-clickable { cursor: pointer !important; }
+                    .sim-data-badge.ul-planner-selected {
+                        background: rgba(56, 189, 248, 0.16) !important;
+                        border-color: #38bdf8 !important;
+                        box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.45), 0 0 8px rgba(56, 189, 248, 0.22) !important;
+                    }
+                    .sim-data-badge.ul-planner-unaffordable {
+                        cursor: not-allowed !important;
+                        opacity: 0.42 !important;
+                        filter: grayscale(0.45) !important;
+                    }
+                    .ul-planner-icon-selected {
+                        opacity: 1 !important;
+                        filter: drop-shadow(0 0 5px rgba(56, 189, 248, 0.85)) !important;
+                    }
+                    .ul-planner-row-selected {
+                        background: linear-gradient(90deg, rgba(56, 189, 248, 0.20), rgba(56, 189, 248, 0.06)) !important;
+                        box-shadow: inset 3px 0 0 #38bdf8, inset 0 0 0 1px rgba(56, 189, 248, 0.24) !important;
+                        border-radius: 4px !important;
+                    }
+                    .ul-planner-row-dim {
+                        opacity: 0.46 !important;
+                        filter: grayscale(0.55) !important;
+                    }
+                    .ul-planner-icon-dim {
+                        opacity: 0.35 !important;
+                        filter: grayscale(0.7) !important;
+                    }
+                    #ul-planner-toolbox {
+                        position: fixed;
+                        top: 118px;
+                        right: 14px;
+                        width: 196px;
+                        box-sizing: border-box;
+                        padding: 8px 10px;
+                        border: 1px solid rgba(56, 189, 248, 0.45);
+                        border-radius: 6px;
+                        background: rgba(17, 24, 39, 0.94);
+                        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32), inset 3px 0 0 rgba(56, 189, 248, 0.9);
+                        color: #e5e7eb;
+                        font-size: 12px;
+                        line-height: 1.2;
+                        text-shadow: 1px 1px 2px black;
+                        z-index: 10020;
+                        pointer-events: none;
+                    }
+                    #ul-planner-toolbox[data-active="0"] {
+                        opacity: 0.82;
+                    }
+                    .ul-planner-toolbox-title {
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        gap: 8px;
+                        color: #93c5fd;
+                        font-size: 11px;
+                        font-weight: bold;
+                        letter-spacing: 0;
+                        margin-bottom: 6px;
+                    }
+                    .ul-planner-toolbox-reload {
+                        pointer-events: auto;
+                        width: 20px;
+                        height: 20px;
+                        border: 1px solid rgba(96, 165, 250, 0.75);
+                        border-radius: 4px;
+                        background: rgba(96, 165, 250, 0.14);
+                        color: #bfdbfe;
+                        font-size: 13px;
+                        line-height: 1;
+                        padding: 0;
+                        cursor: pointer;
+                    }
+                    .ul-planner-toolbox-reload:hover {
+                        background: rgba(96, 165, 250, 0.25);
+                        color: #e0f2fe;
+                    }
+                    .ul-planner-toolbox-row {
+                        display: flex;
+                        align-items: baseline;
+                        justify-content: space-between;
+                        gap: 8px;
+                        padding: 3px 0;
+                        border-top: 1px solid rgba(75, 85, 99, 0.45);
+                    }
+                    .ul-planner-toolbox-label {
+                        color: #9ca3af;
+                        font-size: 11px;
+                        white-space: nowrap;
+                    }
+                    .ul-planner-toolbox-value {
+                        color: #fcd34d;
+                        font-weight: bold;
+                        text-align: right;
+                        white-space: nowrap;
+                    }
+                    .ul-planner-toolbox-value.ul-planner-toolbox-rating {
+                        display: flex;
+                        align-items: flex-end;
+                        gap: 4px;
+                        line-height: 1.1;
+                    }
+                    .ul-planner-toolbox-rank {
+                        color: #fcd34d;
+                        font-weight: bold;
+                    }
+                    .ul-planner-toolbox-score {
+                        color: #d1d5db;
+                        font-weight: 600;
+                    }
+                    .ul-planner-toolbox-sp {
+                        color: #d1d5db;
+                    }
+                    .ul-planner-toolbox-next {
+                        color: #93c5fd;
+                    }
+                    .ul-planner-toolbox-picked {
+                        margin-top: 6px;
+                        padding-top: 5px;
+                        border-top: 1px solid rgba(75, 85, 99, 0.55);
+                    }
+                    .ul-planner-toolbox-pick {
+                        display: flex;
+                        justify-content: space-between;
+                        gap: 8px;
+                        padding: 2px 0;
+                        color: #d1d5db;
+                        font-size: 11px;
+                    }
+                    .ul-planner-toolbox-pick-name {
+                        min-width: 0;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                    }
+                    .ul-planner-toolbox-pick-cost {
+                        color: #93c5fd;
+                        white-space: nowrap;
+                    }
+                `;
+                document.head.appendChild(plannerStyle);
+            }
+
+            function escapeHtml(value) {
+                return String(value == null ? "" : value).replace(/[&<>"']/g, function(ch) {
+                    return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch];
+                });
+            }
+
+            function isPlannerMode() {
+                return window.UL_MODE_PREF === 'rating';
+            }
+
+            const BASE_RANKS_JS = [
+                [300, "G"], [600, "G+"], [900, "F"], [1300, "F+"], [1800, "E"],
+                [2300, "E+"], [2900, "D"], [3500, "D+"], [4900, "C"], [6500, "C+"],
+                [8200, "B"], [10000, "B+"], [12100, "A"], [14500, "A+"], [15900, "S"],
+                [17500, "S+"], [19200, "SS"], [19600, "SS+"]
+            ];
+            const HIGH_RANKS_JS = [
+                [19600, 400, 23900, "UG"],
+                [23900, 500, 28800, "UF"],
+                [28800, 560, 34400, "UE"],
+                [34400, 630, 40700, "UD"],
+                [40700, 700, 47600, "UC"],
+                [47600, 760, 55200, "UB"],
+                [55200, 800, Infinity, "UA"]
+            ];
+
+            function getRankStrJs(score) {
+                for (const [threshold, rank] of BASE_RANKS_JS) {
+                    if (score < threshold) return rank;
+                }
+                for (const [base, step, bound, prefix] of HIGH_RANKS_JS) {
+                    if (score < bound) {
+                        let sub = Math.floor((score - base) / step);
+                        return sub > 0 ? `${prefix}${sub}` : prefix;
+                    }
+                }
+                return "UA";
+            }
+
+            function getNextRankReqJs(score) {
+                for (const [threshold] of BASE_RANKS_JS) {
+                    if (score < threshold) return threshold - score;
+                }
+                for (const [base, step, bound] of HIGH_RANKS_JS) {
+                    if (score < bound) {
+                        return Math.min(bound, base + ((Math.floor((score - base) / step) + 1) * step)) - score;
+                    }
+                }
+                return 0;
+            }
+
+            function getRankScoreRangeJs(score) {
+                let rankMin = 0;
+                for (const [threshold] of BASE_RANKS_JS) {
+                    if (score < threshold) return [rankMin, threshold - 1];
+                    rankMin = threshold;
+                }
+                for (const [base, step, bound] of HIGH_RANKS_JS) {
+                    if (score < bound) {
+                        let sub = Math.floor((score - base) / step);
+                        rankMin = base + (sub * step);
+                        let rankMax = rankMin + step - 1;
+                        if (bound !== Infinity) rankMax = Math.min(rankMax, bound - 1);
+                        return [rankMin, rankMax];
+                    }
+                }
+                return [score, score];
+            }
+
+            function getSelectedCandidates(excludeGroupId = null) {
+                let selected = [];
+                let excluded = excludeGroupId == null ? null : String(excludeGroupId);
+                for (const [groupId, candidate] of plannerSelectedByGroup.entries()) {
+                    if (excluded !== null && String(groupId) === excluded) continue;
+                    selected.push(candidate);
+                }
+                return selected;
+            }
+
+            function getPlannedSkillIds(excludeGroupId = null) {
+                let planned = new Set();
+                for (const candidate of getSelectedCandidates(excludeGroupId)) {
+                    for (const step of candidate.chain || []) {
+                        planned.add(String(step.id));
+                    }
+                }
+                return planned;
+            }
+
+            function getPlanTotals(excludeGroupId = null) {
+                let cost = 0;
+                let score = 0;
+                for (const candidate of getSelectedCandidates(excludeGroupId)) {
+                    cost += Number(candidate.sp_cost || 0);
+                    score += Number(candidate.score || 0);
+                }
+                return { cost, score };
+            }
+
+            function getPlannedSkillRows() {
+                let rows = [];
+                let seen = new Set();
+                for (const candidate of getSelectedCandidates()) {
+                    for (const step of candidate.chain || []) {
+                        let stepId = String(step.id);
+                        if (seen.has(stepId)) continue;
+                        seen.add(stepId);
+                        rows.push({
+                            name: step.name || stepId,
+                            spCost: Number(step.sp_cost || 0)
+                        });
+                    }
+                }
+                return rows;
+            }
+
+            function candidateHasSkill(candidate, skillId) {
+                let target = String(skillId);
+                return (candidate.chain || []).some(step => String(step.id) === target);
+            }
+
+            function getCandidateEffective(candidate, excludeGroupId = null) {
+                let plannedIds = getPlannedSkillIds(excludeGroupId);
+                let baselineScore = 0;
+                let cost = 0;
+                for (const step of candidate.all_chain || candidate.chain || []) {
+                    let stepId = String(step.id);
+                    let stepScore = Number(step.score || 0);
+                    if (ownedSkillIds.has(stepId) || plannedIds.has(stepId)) {
+                        baselineScore = Math.max(baselineScore, stepScore);
+                    } else {
+                        cost += Number(step.sp_cost || 0);
+                    }
+                }
+
+                let finalScore = Number(candidate.final_score || 0);
+                let gain = finalScore - baselineScore;
+                return { cost, gain, candidate };
+            }
+
+            function canSelectCandidate(candidate) {
+                if (!candidate) return false;
+                let groupId = String(candidate.group_id);
+                let totalsWithoutGroup = getPlanTotals(groupId);
+                let effective = getCandidateEffective(candidate, groupId);
+                return effective.gain > 0 && effective.cost <= Math.max(0, availableSp - totalsWithoutGroup.cost);
+            }
+
+            function computeExpectedMax() {
+                let planTotals = getPlanTotals();
+                let remainingSp = Math.max(0, availableSp - planTotals.cost);
+                let grouped = new Map();
+
+                for (const candidate of plannerCandidates || []) {
+                    let effective = getCandidateEffective(candidate);
+                    if (effective.cost <= 0 || effective.gain <= 0 || effective.cost > remainingSp) continue;
+
+                    let groupId = String(candidate.group_id);
+                    if (!grouped.has(groupId)) grouped.set(groupId, []);
+                    grouped.get(groupId).push({
+                        candidate,
+                        cost: effective.cost,
+                        gain: effective.gain
+                    });
+                }
+
+                let dp = Array(remainingSp + 1).fill(0);
+                let history = [];
+                for (const items of grouped.values()) {
+                    let newDp = dp.slice();
+                    let choices = Array(remainingSp + 1).fill(null);
+                    for (const item of items) {
+                        for (let budget = item.cost; budget <= remainingSp; budget++) {
+                            let candidateScore = dp[budget - item.cost] + item.gain;
+                            if (candidateScore > newDp[budget]) {
+                                newDp[budget] = candidateScore;
+                                choices[budget] = { prevBudget: budget - item.cost, candidate: item.candidate };
+                            }
+                        }
+                    }
+                    dp = newDp;
+                    history.push(choices);
+                }
+
+                let choices = [];
+                let budget = remainingSp;
+                for (let i = history.length - 1; i >= 0; i--) {
+                    let choice = history[i][budget];
+                    if (!choice) continue;
+                    budget = choice.prevBudget;
+                    choices.push(choice.candidate);
+                }
+                choices.reverse();
+                choices.sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
+
+                return {
+                    planCost: planTotals.cost,
+                    planScoreGain: planTotals.score,
+                    remainingSp,
+                    maxScoreGain: dp[remainingSp] || 0,
+                    choices
+                };
+            }
+
+            function updateRankHeader(expected) {
+                let rankDispExists = document.getElementById("ul-rank-display");
+                if (!rankDispExists) return;
+
+                if (plannerSelectedByGroup.size === 0) {
+                    if (proj_score > uma_score) {
+                        let maxTitle = `Expected score: ${proj_score.toLocaleString()}\\n${proj_rank} range: ${projRankMin.toLocaleString()} - ${projRankMax.toLocaleString()}`;
+                        rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank} ${uma_score}<span style="font-weight:normal;color:#d1d5db;margin-left:4px;font-size:0.85em;"> +${uma_next}</span></span> <span title="${maxTitle}" style="color:#a8a29e;font-size:0.5em;margin-left:8px;">Max: ${proj_rank}<span style="font-weight:normal;margin-left:4px;font-size:0.85em;"> +${proj_next}</span></span>`;
+                    } else {
+                        rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank} ${uma_score}<span style="font-weight:normal;color:#d1d5db;margin-left:4px;font-size:0.85em;"> +${uma_next}</span></span>`;
+                    }
+                    return;
+                }
+
+                let plannedScore = uma_score + expected.planScoreGain;
+                let expectedScore = plannedScore + expected.maxScoreGain;
+                let expectedRank = getRankStrJs(expectedScore);
+                let expectedNext = getNextRankReqJs(expectedScore);
+                let [expectedMin, expectedMax] = getRankScoreRangeJs(expectedScore);
+                let maxTitle = `Expected score: ${expectedScore.toLocaleString()}\\n${expectedRank} range: ${expectedMin.toLocaleString()} - ${expectedMax.toLocaleString()}`;
+
+                rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank} ${uma_score}<span style="font-weight:normal;color:#d1d5db;margin-left:4px;font-size:0.85em;"> +${uma_next}</span></span> <span title="${maxTitle}" style="color:#a8a29e;font-size:0.5em;margin-left:8px;">Max: ${expectedRank}<span style="font-weight:normal;margin-left:4px;font-size:0.85em;"> +${expectedNext}</span></span>`;
+            }
+
+            function updatePlannerToolbox(expected) {
+                let toolbox = document.getElementById("ul-planner-toolbox");
+                if (!isPlannerMode()) {
+                    if (toolbox) toolbox.style.display = "none";
+                    return;
+                }
+
+                if (!toolbox) {
+                    toolbox = document.createElement("div");
+                    toolbox.id = "ul-planner-toolbox";
+                    document.body.appendChild(toolbox);
+                }
+                toolbox.style.display = "block";
+
+                let skillsTable = document.querySelector("[class^='skills_skill_table_']");
+                if (skillsTable) {
+                    let tableTop = Math.round(skillsTable.getBoundingClientRect().top);
+                    toolbox.style.top = `${Math.max(92, tableTop)}px`;
+                }
+
+                let plannedScore = uma_score + expected.planScoreGain;
+                let plannedRank = getRankStrJs(plannedScore);
+                let plannedNext = getNextRankReqJs(plannedScore);
+                let expectedScore = plannedScore + expected.maxScoreGain;
+                let expectedRank = getRankStrJs(expectedScore);
+                let plannedSkillRows = getPlannedSkillRows();
+                let plannedSkillsHtml = plannedSkillRows.length > 0
+                    ? plannedSkillRows.map(skill => `
+                        <div class="ul-planner-toolbox-pick">
+                            <span class="ul-planner-toolbox-pick-name">${escapeHtml(skill.name)}</span>
+                            <span class="ul-planner-toolbox-pick-cost">${skill.spCost.toLocaleString()} SP</span>
+                        </div>
+                    `).join("")
+                    : `<div class="ul-planner-toolbox-pick"><span class="ul-planner-toolbox-pick-name">No planned skills</span><span class="ul-planner-toolbox-pick-cost"></span></div>`;
+                toolbox.dataset.active = plannerSelectedByGroup.size > 0 ? "1" : "0";
+                toolbox.innerHTML = `
+                    <div class="ul-planner-toolbox-title">
+                        <span>Planner</span>
+                        <button type="button" class="ul-planner-toolbox-reload" title="Rerun simulation">\\u21bb</button>
+                    </div>
+                    <div class="ul-planner-toolbox-row">
+                        <span class="ul-planner-toolbox-label">Planned</span>
+                        <span class="ul-planner-toolbox-value ul-planner-toolbox-rating">
+                            <span class="ul-planner-toolbox-rank">${plannedRank}</span> <span class="ul-planner-toolbox-score">${plannedScore.toLocaleString()}</span>
+                        </span>
+                    </div>
+                    <div class="ul-planner-toolbox-row">
+                        <span class="ul-planner-toolbox-label">Next</span>
+                        <span class="ul-planner-toolbox-value ul-planner-toolbox-next">
+                            ${plannedNext.toLocaleString()}
+                        </span>
+                    </div>
+                    <div class="ul-planner-toolbox-row">
+                        <span class="ul-planner-toolbox-label">SP Left</span>
+                        <span class="ul-planner-toolbox-value ul-planner-toolbox-sp">${expected.remainingSp.toLocaleString()}</span>
+                    </div>
+                    <div class="ul-planner-toolbox-row">
+                        <span class="ul-planner-toolbox-label">Expected Max</span>
+                        <span class="ul-planner-toolbox-value ul-planner-toolbox-rating">
+                            <span class="ul-planner-toolbox-rank">${expectedRank}</span> <span class="ul-planner-toolbox-score">${expectedScore.toLocaleString()}</span>
+                        </span>
+                    </div>
+                    <div class="ul-planner-toolbox-picked">
+                        ${plannedSkillsHtml}
+                    </div>
+                `;
+
+                let reloadButton = toolbox.querySelector(".ul-planner-toolbox-reload");
+                if (reloadButton) {
+                    reloadButton.onclick = (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        window.rerunSkillSimulation();
+                    };
+                }
+            }
+
+            function togglePlannerSkill(skillId) {
+                if (!isPlannerMode()) return;
+
+                let candidate = candidateBySkillId.get(String(skillId));
+                if (!candidate) return;
+
+                let groupId = String(candidate.group_id);
+                let selected = plannerSelectedByGroup.get(groupId);
+                if (selected && candidateHasSkill(selected, skillId)) {
+                    plannerSelectedByGroup.delete(groupId);
+                    refreshPlannerUi();
+                    return;
+                }
+
+                if (!canSelectCandidate(candidate)) return;
+                plannerSelectedByGroup.set(groupId, candidate);
+                refreshPlannerUi();
+            }
+
+            function refreshPlannerUi() {
+                if (!isPlannerMode()) {
+                    plannerSelectedByGroup.clear();
+                    let expected = computeExpectedMax();
+                    updateRankHeader(expected);
+                    updatePlannerToolbox(expected);
+                    clearPlannerVisualState(false);
+                    return;
+                }
+
+                let expected = computeExpectedMax();
+                let plannedSkillIds = getPlannedSkillIds();
+                currentMaxPickedSkillIds = plannerSelectedByGroup.size > 0
+                    ? collectChoiceSkillIds(expected.choices)
+                    : new Set(baseMaxPickedSkillIds);
+
+                updateRankHeader(expected);
+                updatePlannerToolbox(expected);
+
+                for (const [skillId, refs] of plannerRows.entries()) {
+                    let candidate = refs.candidate;
+                    let selected = plannedSkillIds.has(skillId);
+                    let affordable = candidate ? canSelectCandidate(candidate) : false;
+                    let acquired = !!refs.acquired;
+                    let dim = acquired || (candidate && !selected && !affordable);
+                    let clickable = candidate && (selected || affordable);
+
+                    refs.row.classList.toggle("ul-planner-row-selected", selected);
+                    refs.row.classList.toggle("ul-planner-row-dim", dim && !selected);
+                    refs.badge.classList.toggle("ul-planner-selected", selected);
+                    refs.badge.classList.toggle("ul-planner-unaffordable", dim && !acquired);
+                    refs.badge.classList.toggle("ul-planner-clickable", clickable);
+                    refs.badge.title = selected ? "Remove from plan" : (acquired ? "Already acquired" : (dim ? "Not enough skill points" : (candidate ? "Add to plan" : "")));
+                    refs.badge.onclick = clickable ? (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        togglePlannerSkill(skillId);
+                    } : null;
+
+                    if (refs.icon) {
+                        refs.icon.classList.toggle("ul-planner-icon-selected", selected);
+                        refs.icon.classList.toggle("ul-planner-icon-dim", dim && !selected);
+                        refs.icon.style.cursor = clickable ? "pointer" : "";
+                        refs.icon.title = refs.badge.title;
+                        refs.icon.onclick = clickable ? (event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            togglePlannerSkill(skillId);
+                        } : null;
+                    }
+
+                    refs.badge.querySelectorAll(".ul-max-pick-icon").forEach(icon => {
+                        icon.style.display = currentMaxPickedSkillIds.has(skillId) ? "inline-block" : "none";
+                    });
+                }
+            }
+
+            function clearPlannerVisualState(enablePlanner = isPlannerMode()) {
+                currentMaxPickedSkillIds = new Set(baseMaxPickedSkillIds);
+                for (const [skillId, refs] of plannerRows.entries()) {
+                    let candidate = refs.candidate;
+                    let affordable = candidate ? canSelectCandidate(candidate) : false;
+                    let acquired = !!refs.acquired;
+                    let clickable = enablePlanner && candidate && affordable;
+
+                    refs.row.classList.remove("ul-planner-row-selected", "ul-planner-row-dim");
+                    refs.badge.classList.remove("ul-planner-selected", "ul-planner-unaffordable", "ul-planner-clickable");
+                    refs.badge.classList.toggle("ul-planner-clickable", clickable);
+                    refs.badge.title = enablePlanner ? (acquired ? "Already acquired" : (candidate ? (affordable ? "Add to plan" : "Not enough skill points") : "")) : "";
+                    refs.badge.onclick = clickable ? (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        togglePlannerSkill(skillId);
+                    } : null;
+
+                    if (refs.icon) {
+                        refs.icon.classList.remove("ul-planner-icon-selected", "ul-planner-icon-dim");
+                        refs.icon.style.cursor = clickable ? "pointer" : "";
+                        refs.icon.title = refs.badge.title;
+                        refs.icon.onclick = clickable ? (event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            togglePlannerSkill(skillId);
+                        } : null;
+                    }
+
+                    refs.badge.querySelectorAll(".ul-max-pick-icon").forEach(icon => {
+                        icon.style.display = enablePlanner && baseMaxPickedSkillIds.has(skillId) ? "inline-block" : "none";
+                    });
+                }
+            }
+
+            window.resetSkillPlanner = () => {
+                plannerSelectedByGroup.clear();
+                let expected = computeExpectedMax();
+                updateRankHeader(expected);
+                updatePlannerToolbox(expected);
+                clearPlannerVisualState(isPlannerMode());
+            };
     
             let hRange = globalHistMax - globalHistMin;
             if (hRange === 0) hRange = 1;
@@ -1574,6 +2394,9 @@ class CarrotJuicer:
 
             window.rerunSkillSimulation = () => {
                 if (window.UL_SIM_STATUS === "running") return;
+                if (typeof window.resetSkillPlanner === "function") {
+                    window.resetSkillPlanner();
+                }
                 window.UL_SIM_STATUS = "running";
                 window.UL_SIM_MESSAGE = "";
                 window.updateSimStatus();
@@ -1581,6 +2404,13 @@ class CarrotJuicer:
             };
 
             window.ensureSimControls = () => {
+                document.querySelectorAll('button[aria-label="Open Umamusume menu"]').forEach(button => {
+                    let wrapper = button.parentElement && button.parentElement.parentElement
+                        ? button.parentElement.parentElement
+                        : button;
+                    wrapper.remove();
+                });
+
                 let simControlDiv = document.getElementById("ul-sim-controls");
                 if (!simControlDiv) {
                     simControlDiv = document.createElement("div");
@@ -1657,7 +2487,7 @@ class CarrotJuicer:
                     border = "#22c55e";
                     background = "rgba(34, 197, 94, 0.14)";
                 } else if (status === "rating") {
-                    text = "Sim: Rating mode";
+                    text = "Sim: Rating mode \\u21bb";
                     color = "#c084fc";
                     border = "#a855f7";
                     background = "rgba(168, 85, 247, 0.16)";
@@ -1864,6 +2694,10 @@ class CarrotJuicer:
                             document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "flex");
                         }
                     }
+
+                    if (typeof refreshPlannerUi === "function") {
+                        refreshPlannerUi();
+                    }
                 };
     
                 btnHist.onclick = () => {
@@ -1940,14 +2774,7 @@ class CarrotJuicer:
 
             window.updateSimStatus();
             
-            let rankDispExists = document.getElementById("ul-rank-display");
-            if (rankDispExists) {
-                if (proj_score > uma_score) {
-                    rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank} ${uma_score}<span style="font-weight:normal;color:#d1d5db;margin-left:4px;font-size:0.85em;"> +${uma_next}</span></span> <span style="color:#a8a29e;font-size:0.5em;margin-left:8px;">Max: ${proj_rank}<span style="font-weight:normal;margin-left:4px;font-size:0.85em;"> +${proj_next}</span></span>`;
-                } else {
-                    rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank} ${uma_score}<span style="font-weight:normal;color:#d1d5db;margin-left:4px;font-size:0.85em;"> +${uma_next}</span></span>`;
-                }
-            }
+            updateRankHeader(computeExpectedMax());
     
             let skill_elements = [];
             let skills_table = document.querySelector("[class^='skills_skill_table_']");
@@ -1975,9 +2802,19 @@ class CarrotJuicer:
                         let row = item.parentNode;
                         skill_elements.push(row);
                         row.remove();
-    
+
                         let existingBadge = row.querySelector('.sim-data-badge');
                         if (existingBadge) existingBadge.remove();
+
+                        row.classList.remove("ul-planner-row-selected", "ul-planner-row-dim");
+                        let iconCell = row.children.length > 0 ? row.children[0] : null;
+                        if (iconCell) {
+                            iconCell.classList.remove("ul-planner-icon-selected", "ul-planner-icon-dim");
+                            iconCell.classList.add("ul-planner-skill-icon");
+                            iconCell.style.cursor = "";
+                            iconCell.title = "";
+                            iconCell.onclick = null;
+                        }
     
                         let badge = document.createElement("div");
                         badge.className = "sim-data-badge";
@@ -2006,8 +2843,11 @@ class CarrotJuicer:
                         if (row.children.length >= 4) {
                             row.children[3].style.display = "none";
                         }
+
+                        let maxPickIcon = `<span class="ul-max-pick-icon" data-skill-id="${skill_id}" style="display:none;color:#fcd34d;font-size:0.85em;line-height:1;margin-right:4px;text-shadow:1px 1px 2px black, -1px -1px 2px black;">&#9733;</span>`;
+                        let isAcquired = ownedSkillIds.has(String(skill_id));
     
-                        if (acquired_list.includes(skill_id)) {
+                        if (isAcquired) {
                             badge.style.padding = "2px 8px";
                             badge.style.backgroundColor = "rgba(156, 163, 175, 0.1)"; 
                             badge.style.border = "1px solid #9ca3af";
@@ -2017,7 +2857,7 @@ class CarrotJuicer:
                             badge.style.display = "flex";
                             badge.style.alignItems = "center";
                             badge.style.justifyContent = "center";
-                            badge.innerHTML = `Acquired`;
+                            badge.innerHTML = `${maxPickIcon}Acquired`;
                         } else {
                             let rdata = rating_data[skill_id.toString()];
                             let ratingHtml = '';
@@ -2037,7 +2877,7 @@ class CarrotJuicer:
                                             <div style="font-size: 0.65em; color: ${rColor}; white-space: nowrap;">${rdata.efficiency.toFixed(2)} Pt/SP</div>
                                         </div>
                                         <div style="font-size: 1.1em; font-weight: bold; color: ${rColor}; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black; text-align: right; margin-top: 2px;">
-                                            ${rdata.score} Pt
+                                            ${maxPickIcon}${rdata.score} Pt
                                         </div>
                                     </div>
                                 `;
@@ -2145,6 +2985,13 @@ class CarrotJuicer:
                             }
                         }
                         row.prepend(badge);
+                        plannerRows.set(String(skill_id), {
+                            row: row,
+                            badge: badge,
+                            icon: iconCell,
+                            candidate: candidateBySkillId.get(String(skill_id)) || null,
+                            acquired: isAcquired
+                        });
                         break;
                     }
                 }
@@ -2164,9 +3011,11 @@ class CarrotJuicer:
                 }
                 skills_table.appendChild(item);
             }
+            refreshPlannerUi();
             """, self.skills_list, sim_summary, global_hist_min, global_hist_max, global_box_min, global_box_max,
             acquired_skills_list, all_sk_data, base_median_abs, rating_data, uma_score, uma_rank, projected_score,
-            projected_rank, uma_next, proj_next, cm_options, selected_cm_definition, sim_status, sim_status_message)
+            projected_rank, projected_choices, uma_next, proj_next, cm_options, selected_cm_definition,
+            projected_rank_min, projected_rank_max, available_sp, planner_candidates, sim_status, sim_status_message)
 
     def run_simulation(self, exe_path, payload):
         json_payload = json.dumps(payload)
