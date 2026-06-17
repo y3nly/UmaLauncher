@@ -99,7 +99,7 @@ class CarrotJuicer:
     open_skill_window = False
     skill_browser = None
     last_skills_rect = None
-    selected_cm_definition = 12
+    selected_cm_definition = 15
     open_schedule_window = False
     schedule_browser = None
     last_schedule_rect = None
@@ -128,7 +128,7 @@ class CarrotJuicer:
         self.skill_data = {}
         self.skills_list = []
         self.style = ''
-        self.selected_cm_definition = 12
+        self.selected_cm_definition = 15
 
 
         self.restart_time()
@@ -1432,15 +1432,15 @@ class CarrotJuicer:
             23: {"name": "Pisces Cup", "location": 10005, "course": 10504, "season": 1, "weather": 1, "ground_condition": "GOOD"},
             24: {"name": "Aries Cup", "location": 10008, "course": 10811, "season": 1, "weather": 1, "ground_condition": "GOOD"},
         }
-        available_cm_definitions = (12, 13, 14)
-        cm_pref = self.skill_browser.execute_script("return window.localStorage.getItem('UL_CM_DEF') || '12';")
+        available_cm_definitions = (15, 16)
+        cm_pref = self.skill_browser.execute_script("return window.localStorage.getItem('UL_CM_DEF') || '15';")
         try:
             selected_cm_definition = int(cm_pref)
         except (TypeError, ValueError):
             selected_cm_definition = self.selected_cm_definition
 
         if selected_cm_definition not in available_cm_definitions:
-            selected_cm_definition = 12
+            selected_cm_definition = 15
 
         self.selected_cm_definition = selected_cm_definition
         cm_options = [
@@ -1719,7 +1719,7 @@ class CarrotJuicer:
             let uma_next = arguments[15] || 0;
             let proj_next = arguments[16] || 0;
             let cmOptions = arguments[17] || [];
-            let selectedCmDefinition = String(arguments[18] || 12);
+            let selectedCmDefinition = String(arguments[18] || 15);
             let projRankMin = arguments[19] || 0;
             let projRankMax = arguments[20] || 0;
             let availableSp = arguments[21] || 0;
