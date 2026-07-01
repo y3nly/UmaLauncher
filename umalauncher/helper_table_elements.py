@@ -397,7 +397,7 @@ class Preset():
         
         inner = ''.join(partners)
 
-        return f"<div id=\"support-bonds\" style=\"max-width: 100vw; display: flex; flex-direction: row; flex-wrap: nowrap; overflow-x: auto; gap:0.3rem;\">{inner}</div>"
+        return f"<div id=\"support-bonds\" style=\"max-width: 100vw; display: flex; flex-direction: row; flex-wrap: nowrap; overflow-x: auto; gap:0.3rem; scrollbar-width: none;\">{inner}</div>"
 
     def generate_gm_table(self, main_info):
         if main_info['scenario_id'] != 5:
@@ -612,13 +612,8 @@ class Preset():
         return f"<div id='gff' style='display:flex; flex-flow: column; justify-content:center; align-items:center; gap: 0.5rem;'>{internal}</div>"
 
     def generate_mant(self, main_info):
-        #logger.info(main_info)
         if main_info['scenario_id'] != 4:
             return ""
-
-        # TODO: is a coin display needed, or is it sufficient to just show which items can be bought?
-        #if main_info['coin_num'] > 0:
-        #    html_text += f"<div style=\"display:flex; align-items:center; gap:0.25rem;\"><img src=\"{mant_imgs['coin']}\" width=\"32\" height=\"32\"/>Coins: {main_info['coin_num']}</div>"
 
         shop_div = self.generate_mant_shop_div(main_info)
         races_div = self.generate_mant_races_div(main_info)
@@ -638,10 +633,64 @@ class Preset():
 
         mant_imgs = util.get_mant_image_dict()
         items_html = ""
+        inv_html = ""
 
         # Build inventory lookup: item_id -> count owned
         inventory = {inv['item_id']: inv['num'] for inv in main_info.get('user_item_info_array', [])}
+        num_hammers = inventory.get(11001, 0) + inventory.get(11002, 0)
+        for item in main_info['pick_up_item_info_array']:
+            if item['item_buy_num'] == item['limit_buy_count']:
+                continue
+            if item['item_id'] in (11001, 11002):
+                num_hammers += 1
 
+        races_left = 999
+        if main_info['turn'] >= 77:
+            races_left = 1
+        elif main_info['turn'] >= 75:
+            races_left = 2
+        elif main_info['turn'] >= 73:
+            races_left = 3
+
+        # Inventory
+        for item in main_info.get('user_item_info_array', []):
+            item_id = item['item_id']
+            icon_src = mant_imgs.get(f'scenario_free_item_icon_{item_id:05}', '')
+            description = constants.MANT_ITEM_ID_TO_DESCRIPTION.get(item_id, '')
+            modifier = constants.MANT_ITEM_ID_TO_MODIFIER.get(item_id, '')
+
+            # Modifier label for shared-icon items (megaphones, cleat hammers)
+            modifier_label = ""
+            if modifier:
+                modifier_label = (
+                    f'<div style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);'
+                    f'background:rgba(0,0,0,0.75);color:#ffd700;font-size:0.5rem;font-weight:700;'
+                    f'padding:0 2px;border-radius:3px;white-space:nowrap;z-index:2;line-height:1.2;">'
+                    f'{modifier}</div>'
+                )
+
+            # Owned count badge
+            owned_count = inventory.get(item_id, 0)
+            hammer_highlight_style = ""
+            if num_hammers >= races_left and item_id in (11001, 11002):
+                hammer_highlight_style = "box-shadow: 0px 0px 10px 7px rgba(255,0,0,0.65); border-radius:4px;"
+            owned_badge = (
+                f'<div style="position:absolute;bottom:-2px;left:50%;transform:translateX(-50%);'
+                f'background:rgba(0,0,0,0.7);color:#7bed9f;font-size:0.55rem;font-weight:700;'
+                f'padding:0 3px;border-radius:4px;white-space:nowrap;z-index:2;line-height:1.2;">'
+                f'x{owned_count}</div>'
+            )
+
+            inv_html += (
+                f'<div title="{description}" style="position:relative;flex:0 0 auto;'
+                f'width:36px;height:36px;cursor:default;">'
+                f'<img src="{icon_src}" width="32" height="32" '
+                f'style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);{hammer_highlight_style}"/>'
+                f'{modifier_label}{owned_badge}'
+                f'</div>'
+            )
+
+        # Shop
         for item in reversed(main_info['pick_up_item_info_array']):
             if item['item_buy_num'] == item['limit_buy_count']:
                 # Sold out
@@ -693,11 +742,15 @@ class Preset():
                     f'+{owned_count}</div>'
                 )
 
+            hammer_highlight_style = ""
+            if num_hammers >= races_left and item_id in (11001, 11002):
+                hammer_highlight_style = "box-shadow: 0px 0px 10px 7px rgba(255,0,0,0.65); border-radius:4px;"
+
             items_html += (
                 f'<div title="{description}" style="position:relative;flex:0 0 auto;'
                 f'width:36px;height:36px;cursor:default;">'
                 f'<img src="{icon_src}" width="32" height="32" '
-                f'style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);"/>'
+                f'style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);{hammer_highlight_style}"/>'
                 f'{turns_badge}{coin_badge}{modifier_label}{owned_badge}'
                 f'</div>'
             )
@@ -732,6 +785,9 @@ class Preset():
         return (
             f'<div style="display:flex;flex-wrap:wrap;justify-content:center;'
             f'gap:0.4rem;width:100%;padding:0.2rem 0;">'
+            f'{inv_html}</div>'
+            f'<div style="display:flex;flex-wrap:wrap;justify-content:center;'
+            f'gap:0.4rem;width:100%;padding:0.2rem 0;">'
             f'{items_html}{coin_badge_html}</div>'
         )
 
@@ -743,18 +799,15 @@ class Preset():
         races_div = ""
         mant_imgs = util.get_mant_image_dict()
 
-        races_div += "<div><table style=\"width:100%;white-space:nowrap;\"><thead><tr><th>Grade</th><th>Surface/Dist</th><th>Rival</th></tr></thead><tbody>"
+        races_div += "<div><table style=\"width:100%;white-space:nowrap;\"><thead><tr><th>Grade</th><th>Name</th><th>Surface/Dist</th><th>Rival</th></tr></thead><tbody>"
         rival_program_ids = [race['program_id'] for race in main_info['rival_race_info_array']]
         for race in main_info['races']:
-            #logger.info( "Race: " + str(race) )
             program_id = race['program_id']
             race_grade = mdb.get_program_id_grade(program_id)
 
             if not race_grade:
                 logger.error(f"Race grade not found for program id {program_id}")
-            #logger.info(f"Race grade: {race_grade}")
             if race_grade == 800 or race_grade == 700 or race_grade == 400: # Debut/OP/Pre-OP, ignore
-                #logger.debug(f"Race grade {race} is debut, ignoring")
                 continue
             race_img_url = "https://gametora.com/images/umamusume/race_ribbons/utx_txt_grade_ribbon_"
             if race_grade == 700:
@@ -772,11 +825,9 @@ class Preset():
             # race_img_url = self.get_thumb_url(program_id)
             races_div += "<tr>"
             races_div += f"<td><img src=\"{race_img_url}\" width=\"51\" height=\"18.5\" style=\"vertical-align:middle;\"/></td>"
-            #TODO: race names can be really long, are they needed? The thumbnail could be a compromise, but it's pretty big as well
-            #races_div += f"<td>{mdb.get_race_name_dict()[program_id]}</td>"
+            race_aptitudes = self._get_race_aptitudes(mdb.get_race_surface_dict()[program_id], mdb.get_race_distance_dict()[program_id], main_info['uma_aptitudes'])
+            races_div += f"<td { 'style=\"font-weight:bold;\"' if race_aptitudes[0] and race_aptitudes[1] else ''}>{mdb.get_race_name_dict()[program_id]}</td>"
             races_div += f"<td>{self.get_race_details_text(mdb.get_race_surface_dict()[program_id], mdb.get_race_distance_dict()[program_id], main_info['uma_aptitudes'])}</td>"
-            #TODO: is the Pts column needed?
-            #races_div += f"<td>{self.grade_to_pts(race_grade)}</td>"
             if program_id in rival_program_ids:
                 races_div += f"<td><img src=\"{mant_imgs['rival']}\" width=\"24\" height=\"24\" style=\"vertical-align:middle;\"/></td>"
             else:
@@ -801,26 +852,18 @@ class Preset():
         turns_left = self._get_mant_turns_left(item, turn)
         return f"<div style=\"{'color:red;' if turns_left == 1 else 'color:orange;' if turns_left == 2 else ''}\">{turns_left}</div>"
 
-    def get_race_details_text(self, surface, distance, uma_aptitudes):
+    def _get_race_aptitudes(self, surface, distance, uma_aptitudes):
         # C or higher is "good"
         #
         # 1=G, 2=F, etc.
-        surface_text = ""
         good_surface = False
-        distance_text = ""
         good_distance = False
         if surface == 1:
-            surface_text = "Turf"
             if uma_aptitudes["proper_ground_turf"] >= 5:
                 good_surface = True
         else:
-            surface_text = "Dirt"
             if uma_aptitudes["proper_ground_dirt"] >= 5:
                 good_surface = True
-        if good_surface:
-            surface_text = f"<div style=\"color:lightgreen;\">{surface_text}</div>"
-        else:
-            surface_text = f"<div style=\"color:orange;\">{surface_text}</div>"
 
         if distance <= 1400:
             if uma_aptitudes["proper_distance_short"] >= 5:
@@ -834,6 +877,21 @@ class Preset():
         else:
             if uma_aptitudes["proper_distance_long"] >= 5:
                 good_distance = True
+
+        return good_surface, good_distance
+
+    def get_race_details_text(self, surface, distance, uma_aptitudes):
+        surface_text = ""
+        good_surface, good_distance = self._get_race_aptitudes(surface, distance, uma_aptitudes)
+        distance_text = ""
+        if surface == 1:
+            surface_text = "Turf"
+        else:
+            surface_text = "Dirt"
+        if good_surface:
+            surface_text = f"<div style=\"color:lightgreen;\">{surface_text}</div>"
+        else:
+            surface_text = f"<div style=\"color:orange;\">{surface_text}</div>"
 
         if good_distance:
             distance_text = f"<div style=\"color:lightgreen;\">{distance}m</div>"
