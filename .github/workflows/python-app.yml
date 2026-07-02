@@ -9,7 +9,9 @@ on:
         type: boolean
         default: true
   push:
-    branches: [ "main", "dev", "yen", "mant"]
+    branches: [ "dev"]
+    paths:
+      - "umalauncher/version.py"
   pull_request:
     branches: [ "main"]
 
@@ -52,7 +54,7 @@ jobs:
         ./build.bat
     - name: Get release version
       id: release_version
-      if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release && github.ref_name == 'dev' }}
+      if: ${{ (github.event_name == 'workflow_dispatch' && inputs.create_release && github.ref_name == 'dev') || (github.event_name == 'push' && github.ref_name == 'dev') }}
       run: |
         $version_match = Select-String -Path "umalauncher/version.py" -Pattern '^VERSION = "([^"]+)"$'
         if (-not $version_match) {
@@ -87,7 +89,7 @@ jobs:
         # Optional. Default is 'false'
         overwrite: true
     - name: Create release tag
-      if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release && github.ref_name == 'dev' }}
+      if: ${{ (github.event_name == 'workflow_dispatch' && inputs.create_release && github.ref_name == 'dev') || (github.event_name == 'push' && github.ref_name == 'dev') }}
       run: |
         $tag = "${{ steps.release_version.outputs.tag }}"
         git fetch --tags --force
@@ -104,7 +106,7 @@ jobs:
           git push origin $tag
         }
     - name: Create GitHub release
-      if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release && github.ref_name == 'dev' }}
+      if: ${{ (github.event_name == 'workflow_dispatch' && inputs.create_release && github.ref_name == 'dev') || (github.event_name == 'push' && github.ref_name == 'dev') }}
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
