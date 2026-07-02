@@ -2,13 +2,19 @@ name: Python application
 
 on:
   workflow_dispatch:
+    inputs:
+      create_release:
+        description: "Create a tag and GitHub release from umalauncher/version.py"
+        required: true
+        type: boolean
+        default: true
   push:
-    branches: [ "main", "yen", "mant"]
+    branches: [ "main", "dev", "yen", "mant"]
   pull_request:
     branches: [ "main"]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -17,6 +23,13 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Validate manual release branch
+      if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release && github.ref_name != 'dev' }}
+      run: |
+        Write-Error "Release dispatch must be run from the dev branch. Selected ref: $env:GITHUB_REF_NAME"
+        exit 1
     - name: Set up Python 3.10
       uses: actions/setup-python@v3
       with:
@@ -37,6 +50,19 @@ jobs:
         ./activate
         cd ../../
         ./build.bat
+    - name: Get release version
+      id: release_version
+      if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release && github.ref_name == 'dev' }}
+      run: |
+        $version_match = Select-String -Path "umalauncher/version.py" -Pattern '^VERSION = "([^"]+)"$'
+        if (-not $version_match) {
+          Write-Error "Could not find VERSION in umalauncher/version.py"
+          exit 1
+        }
+        $version = $version_match.Matches[0].Groups[1].Value
+        $tag = "v$version"
+        "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -60,3 +86,33 @@ jobs:
         # Does not fail if the artifact does not exist.
         # Optional. Default is 'false'
         overwrite: true
+    - name: Create release tag
+      if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release && github.ref_name == 'dev' }}
+      run: |
+        $tag = "${{ steps.release_version.outputs.tag }}"
+        git fetch --tags --force
+        $existing_tag = git tag --list $tag
+        if ($existing_tag) {
+          $tag_sha = git rev-list -n 1 $tag
+          if ($tag_sha -ne $env:GITHUB_SHA) {
+            Write-Error "Tag $tag already exists at $tag_sha, not this workflow commit $env:GITHUB_SHA."
+            exit 1
+          }
+          Write-Host "Tag $tag already exists at this workflow commit; reusing it."
+        } else {
+          git tag $tag
+          git push origin $tag
+        }
+    - name: Create GitHub release
+      if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release && github.ref_name == 'dev' }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        $tag = "${{ steps.release_version.outputs.tag }}"
+        gh release create $tag `
+          "umalauncher/dist/UmaLauncher.exe" `
+          "umalauncher/dist/UmaLauncher-Global.exe" `
+          "umalauncher/dist/UmaLauncher-Steam.exe" `
+          --verify-tag `
+          --title $tag `
+          --generate-notes
