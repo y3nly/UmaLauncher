@@ -34,10 +34,10 @@ def skill_window_cm_definition():
         try:
             selected_cm_definition = int(cm_definition)
         except ValueError:
-            selected_cm_definition = 15
+            selected_cm_definition = 16
 
-        if selected_cm_definition not in (15, 16):
-            selected_cm_definition = 15
+        if selected_cm_definition not in (16, 17):
+            selected_cm_definition = 16
 
         threader.carrotjuicer.selected_cm_definition = selected_cm_definition
         threader.carrotjuicer.open_skill_window = True
