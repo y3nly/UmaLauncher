@@ -71,9 +71,7 @@ jobs:
         # A file, directory or wildcard pattern that describes what to upload
         # Required.
         path: |
-          umalauncher/dist/UmaLauncher.exe
           umalauncher/dist/UmaLauncher-Global.exe
-          umalauncher/dist/UmaLauncher-Steam.exe
 
         # The desired behavior if no files are found using the provided path.
         # Available Options:
@@ -112,9 +110,7 @@ jobs:
       run: |
         $tag = "${{ steps.release_version.outputs.tag }}"
         gh release create $tag `
-          "umalauncher/dist/UmaLauncher.exe" `
           "umalauncher/dist/UmaLauncher-Global.exe" `
-          "umalauncher/dist/UmaLauncher-Steam.exe" `
           --verify-tag `
           --title $tag `
           --generate-notes
