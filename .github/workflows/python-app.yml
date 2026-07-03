@@ -2,18 +2,6 @@ name: Python application
 
 on:
   workflow_dispatch:
-    inputs:
-      create_release:
-        description: "Create a tag and GitHub release from umalauncher/version.py"
-        required: true
-        type: boolean
-        default: true
-  push:
-    branches: [ "dev"]
-    paths:
-      - "umalauncher/version.py"
-  pull_request:
-    branches: [ "main"]
 
 permissions:
   contents: write
@@ -25,17 +13,15 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    - name: Validate manual release branch
-      if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release && github.ref_name != 'dev' }}
+    - name: Validate release branch
+      if: ${{ github.ref_name != 'dev' }}
       run: |
-        Write-Error "Release dispatch must be run from the dev branch. Selected ref: $env:GITHUB_REF_NAME"
+        Write-Error "Manual release workflow must be run from the dev branch. Selected ref: $env:GITHUB_REF_NAME"
         exit 1
-    - name: Set up Python 3.10
+    - name: Set up Python 3.12
       uses: actions/setup-python@v3
       with:
-        python-version: "3.10"
+        python-version: "3.12"
     - name: Setup virtual environment
       run: |
         python -m venv ./venv/
@@ -51,20 +37,7 @@ jobs:
         cd ./venv/Scripts/
         ./activate
         cd ../../
-        ./build.bat
-    - name: Get release version
-      id: release_version
-      if: ${{ (github.event_name == 'workflow_dispatch' && inputs.create_release && github.ref_name == 'dev') || (github.event_name == 'push' && github.ref_name == 'dev') }}
-      run: |
-        $version_match = Select-String -Path "umalauncher/version.py" -Pattern '^VERSION = "([^"]+)"$'
-        if (-not $version_match) {
-          Write-Error "Could not find VERSION in umalauncher/version.py"
-          exit 1
-        }
-        $version = $version_match.Matches[0].Groups[1].Value
-        $tag = "v$version"
-        "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-        "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        ./build_global.bat
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -86,25 +59,36 @@ jobs:
         # Does not fail if the artifact does not exist.
         # Optional. Default is 'false'
         overwrite: true
-    - name: Create release tag
-      if: ${{ (github.event_name == 'workflow_dispatch' && inputs.create_release && github.ref_name == 'dev') || (github.event_name == 'push' && github.ref_name == 'dev') }}
+    - name: Get release version
+      id: release_version
       run: |
-        $tag = "${{ steps.release_version.outputs.tag }}"
+        $version_match = Select-String -Path "umalauncher/version.py" -Pattern '^VERSION = "([^"]+)"$'
+        if (-not $version_match) {
+          Write-Error "Could not find VERSION in umalauncher/version.py"
+          exit 1
+        }
+        $version = $version_match.Matches[0].Groups[1].Value
+        $tag = "v$version"
+
         git fetch --tags --force
         $existing_tag = git tag --list $tag
         if ($existing_tag) {
-          $tag_sha = git rev-list -n 1 $tag
-          if ($tag_sha -ne $env:GITHUB_SHA) {
-            Write-Error "Tag $tag already exists at $tag_sha, not this workflow commit $env:GITHUB_SHA."
-            exit 1
-          }
-          Write-Host "Tag $tag already exists at this workflow commit; reusing it."
+          Write-Host "Tag $tag already exists; skipping release creation."
+          "release_exists=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         } else {
-          git tag $tag
-          git push origin $tag
+          "release_exists=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
         }
+
+        "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+    - name: Create release tag
+      if: ${{ steps.release_version.outputs.release_exists == 'false' }}
+      run: |
+        $tag = "${{ steps.release_version.outputs.tag }}"
+        git tag $tag
+        git push origin $tag
     - name: Create GitHub release
-      if: ${{ (github.event_name == 'workflow_dispatch' && inputs.create_release && github.ref_name == 'dev') || (github.event_name == 'push' && github.ref_name == 'dev') }}
+      if: ${{ steps.release_version.outputs.release_exists == 'false' }}
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
