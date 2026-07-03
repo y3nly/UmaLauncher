@@ -1289,8 +1289,6 @@ class CarrotJuicer:
 
     def start_concert(self, music_id):
         logger.debug("Starting concert")
-        self.screen_state_handler.carrotjuicer_state = screenstate_utils.make_concert_state(music_id,
-                                                                                            self.threader.screenstate)
         return
 
     def handle_request(self, message, is_json=False):
