@@ -955,7 +955,8 @@ class CarrotJuicer:
                     mdb.update_mdb_cache()
                     self.training_tracker = training_tracker.TrainingTracker(training_id, data['chara_info']['card_id'])
 
-                if getattr(self, 'current_training_id', None) != training_id:
+                is_new_training = getattr(self, 'current_training_id', None) != training_id
+                if is_new_training:
                     self.current_training_id = training_id
                     self.completed_races = {}
                     self.extra_race_info = {}
@@ -965,9 +966,6 @@ class CarrotJuicer:
                     deck = data['chara_info'].get('support_card_array', [])
                     if deck:
                         self.current_race_bonus = mdb.get_deck_race_bonus(deck)
-
-                    if self.schedule_browser and self.schedule_browser.alive():
-                        self.schedule_browser.execute_script("window.clearCompletedRaces();")
 
                 self.skill_data = {}
                 self.style = data['chara_info']['race_running_style']
@@ -1090,8 +1088,12 @@ class CarrotJuicer:
                     self.open_helper()
 
                 self.update_helper_table(data)
-                
-                history = data['chara_info'].get('race_history') or data.get('race_history')
+
+                schedule_optimizer_enabled = self.helper_table.show_schedule_optimizer_button
+                if schedule_optimizer_enabled and is_new_training and self.schedule_browser and self.schedule_browser.alive():
+                    self.schedule_browser.execute_script("window.clearCompletedRaces();")
+
+                history = (data['chara_info'].get('race_history') or data.get('race_history')) if schedule_optimizer_enabled else None
                 if history:
                     for race in history:
                         if race.get('result_rank', 0) == 1:
@@ -1131,7 +1133,7 @@ class CarrotJuicer:
                                     logger.debug(f"Trackblazer Sync: Locked race '{race_name}' at turn index {turn}")
                 
                 current_turn = data['chara_info'].get('turn', 1) - 1
-                if getattr(self, 'last_synced_turn', -1) != current_turn:
+                if schedule_optimizer_enabled and getattr(self, 'last_synced_turn', -1) != current_turn:
                     self.sync_schedule_window(current_turn)
                     self.last_synced_turn = current_turn
 
@@ -1404,9 +1406,12 @@ class CarrotJuicer:
         if helper_table:
             self.browser.execute_script("""
                 window.UL_DATA.overlay_html = arguments[0];
+                if (window.set_schedule_button_enabled) {
+                    window.set_schedule_button_enabled(arguments[1]);
+                }
                 window.update_overlay();
                 """,
-                                        helper_table)
+                                        helper_table, self.helper_table.show_schedule_optimizer_button)
 
     def update_skill_window(self):
         if self.should_stop:
@@ -3119,6 +3124,9 @@ class CarrotJuicer:
         self.save_rect(self.last_schedule_rect, "schedule_position")
 
     def sync_schedule_window(self, current_turn=None):
+        if not self.helper_table.show_schedule_optimizer_button:
+            return
+
         if self.schedule_browser and self.schedule_browser.alive():
             try:
                 if current_turn is None and self.last_data and 'chara_info' in self.last_data:
@@ -3154,7 +3162,7 @@ class CarrotJuicer:
                 logger.error(f"Failed to sync trackblazer schedule: {e}")
 
     def update_schedule_window(self):
-        if self.should_stop:
+        if self.should_stop or not self.helper_table.show_schedule_optimizer_button:
             return
 
         if not self.schedule_browser:
@@ -3456,6 +3464,19 @@ def setup_helper_page(browser: horsium.BrowserWindow):
     ul_topmost_div.appendChild(ul_topmost);
     ul_topmost_div.appendChild(ul_topmost_label);
     window.UL_OVERLAY.appendChild(ul_topmost_div);
+
+    window.set_schedule_button_enabled = function(enabled) {
+        ul_schedule.style.display = enabled ? "" : "none";
+        ul_topmost_div.style.right = enabled ? "182px" : "108px";
+        if (!enabled) {
+            ul_schedule.style.filter = "";
+            if (window.await_schedule_window_timeout) {
+                clearTimeout(window.await_schedule_window_timeout);
+                window.await_schedule_window_timeout = null;
+            }
+        }
+    }
+    window.set_schedule_button_enabled(arguments[0]);
     
 
     window.hide_overlay = function() {
@@ -3573,7 +3594,7 @@ def setup_helper_page(browser: horsium.BrowserWindow):
     }
     setTimeout(window.send_screen_rect, 2000);
 
-    """)
+    """, False)
 
     gametora_dark_mode(browser)
 

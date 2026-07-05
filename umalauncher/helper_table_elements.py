@@ -251,6 +251,9 @@ class Preset():
 
         return ''.join(html_elements)
 
+    def show_schedule_optimizer_button(self, main_info):
+        return self.settings.scenario_specific_enabled.value and main_info['scenario_id'] == 4
+
     def generate_progress_bar(self, main_info):
 
         sections = constants.DEFAULT_TRAINING_SECTIONS

@@ -138,6 +138,7 @@ class HelperTable():
         self.carrotjuicer = carrotjuicer
         self.preset_dict = {}
         self.selected_preset = None
+        self.show_schedule_optimizer_button = False
         self.preset_dict, self.selected_preset = self.carrotjuicer.threader.settings.get_helper_table_data()
 
     def update_presets(self, preset_dict, selected_preset):
@@ -150,6 +151,8 @@ class HelperTable():
     def create_helper_elements(self, data, last_data) -> str:
         """Creates the helper elements for the given response packet.
         """
+        self.show_schedule_optimizer_button = False
+
         # Transfer data from last data if it does not exist in the current data
         if last_data:
             if 'reserved_race_array' not in data and 'reserved_race_array' in last_data:
@@ -863,6 +866,7 @@ class HelperTable():
             if self.selected_preset.name != general_preset:
                 self.selected_preset = self.carrotjuicer.threader.settings.get_preset_with_name(general_preset)
 
+        self.show_schedule_optimizer_button = self.selected_preset.show_schedule_optimizer_button(main_info)
         overlay_html = self.selected_preset.generate_overlay(main_info, command_info)
 
         return overlay_html
