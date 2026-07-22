@@ -11,7 +11,9 @@ import util
 import gui
 import glob
 
-VERSION = "1.18.20"
+VERSION = "1.19.2"
+PRIVATE_BUILD = True
+UPDATE_ASSET_NAME = "UmaLauncher-Private.exe"
 
 def parse_version(version_string: str):
     """Convert version string to tuple."""
@@ -115,12 +117,20 @@ def upgrade(umasettings, raw_settings):
     umasettings["version"] = vstr(script_version)
 
 def force_update(umasettings):
+    if PRIVATE_BUILD:
+        util.show_info_box("Updates disabled", "Updates are disabled for private builds.")
+        return
+
     result = auto_update(umasettings, force=True)
     if result:
         util.show_info_box("No updates found", "You are already using the latest version.")
 
 def auto_update(umasettings, force=False):
     logger.info("Checking for updates...")
+
+    if PRIVATE_BUILD:
+        logger.info("Skipping auto-update because this is a private build.")
+        return True
 
     script_version = parse_version(VERSION)
     skip_version = parse_version(umasettings["skip_update"])
@@ -216,7 +226,9 @@ class Updater():
     def run(self):
         logger.debug("Updater thread started.")
         for asset in self.assets:
-            if asset['name'] == "UmaLauncher-Global.exe":
+            if asset['name'] == UPDATE_ASSET_NAME or (
+                PRIVATE_BUILD and asset['name'] == "UmaLauncher-Global.exe"
+            ):
                 # Found the correct file, download and overwrite
                 download_url = asset['browser_download_url']
                 parsed = urlparse(download_url)
@@ -266,5 +278,5 @@ class Updater():
                     logger.error(e)
                     self.close_me = True
                     return
-        logger.error("No compatible Global launcher asset was found in the release.")
+        logger.error(f"No compatible launcher asset was found: {UPDATE_ASSET_NAME}")
         self.close_me = True

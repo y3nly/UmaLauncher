@@ -5,6 +5,15 @@ import util
 import settings_elements as se
 import constants
 from loguru import logger
+from umalauncher_private.training_rows import (
+    TrainingSimExpectedRawRow,
+    TrainingSimExpectedScoreRow,
+    TrainingSimRiskAdjustedScoreRow,
+    TrainingSimScoreDeltaRow,
+    TrainingSimScorePercentileRow,
+    TrainingSimScoreRow,
+    TrainingSimWhistleDowngradeRow,
+)
 
 def compensate_overcap(game_state, command):
     # Compensate for overcapped stats by doubling any gained stats that bring the current stats over 1200.
@@ -1549,6 +1558,13 @@ class DreamsPartnersRow(hte.Row):
 class RowTypes(Enum):
     CURRENT_STATS = CurrentStatsRow
     GAINED_STATS = GainedStatsRow
+    TRAINING_SIM_SCORE = TrainingSimScoreRow
+    TRAINING_SIM_RISK_ADJUSTED_SCORE = TrainingSimRiskAdjustedScoreRow
+    TRAINING_SIM_EXPECTED_RAW = TrainingSimExpectedRawRow
+    TRAINING_SIM_EXPECTED_SCORE = TrainingSimExpectedScoreRow
+    TRAINING_SIM_SCORE_DELTA = TrainingSimScoreDeltaRow
+    TRAINING_SIM_SCORE_PERCENTILE = TrainingSimScorePercentileRow
+    TRAINING_SIM_WHISTLE_DOWNGRADE = TrainingSimWhistleDowngradeRow
     GAINED_STATS_DISTR = GainedStatsDistributionRow
     GAINED_ENERGY = GainedEnergyRow
     USEFUL_BOND = UsefulBondRow
@@ -1597,6 +1613,13 @@ class DefaultPreset(hte.Preset):
         RowTypes.DP_GAIN,
         RowTypes.CURRENT_STATS,
         RowTypes.GAINED_STATS,
+        RowTypes.TRAINING_SIM_SCORE,
+        RowTypes.TRAINING_SIM_RISK_ADJUSTED_SCORE,
+        RowTypes.TRAINING_SIM_EXPECTED_RAW,
+        RowTypes.TRAINING_SIM_EXPECTED_SCORE,
+        RowTypes.TRAINING_SIM_SCORE_DELTA,
+        RowTypes.TRAINING_SIM_SCORE_PERCENTILE,
+        RowTypes.TRAINING_SIM_WHISTLE_DOWNGRADE,
         RowTypes.USEFUL_BOND,
         RowTypes.GAINED_SKILLPT,
         RowTypes.FAIL_PERCENTAGE,

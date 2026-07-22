@@ -30,4 +30,6 @@ class RuntimeExtensions:
 
 
 def create(owner):
-    return RuntimeExtensions(owner)
+    from umalauncher_private.runtime import PrivateRuntimeExtensions
+
+    return PrivateRuntimeExtensions(owner)
