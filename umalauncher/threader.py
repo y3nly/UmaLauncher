@@ -7,7 +7,6 @@ import os
 import win32api
 import win32gui
 from loguru import logger
-import requests
 import settings
 import carrotjuicer
 import umatray
@@ -34,10 +33,7 @@ class Threader():
         gui.THREADER = self
 
         self.settings = settings.SettingsHandler(self)
-        if 'IS_UL_GLOBAL' in os.environ:
-            logger.info( ":pokkeAAAAA:")
-        elif 'IS_JP_STEAM' in os.environ:
-            logger.info( "Running JP Steam version")
+        logger.info("Running Global helper-only version")
         
         # Ensure only a single instance is running.
         self.check_single_instance()
@@ -45,26 +41,20 @@ class Threader():
         if self.should_stop:
             return
 
-        # Ping the server to track usage
-        self.settings.notify_server()
-
         self.umaserver = umaserver.UmaServer(self)
         THREAD_OBJECTS.append(self.umaserver)
         THREADS.append(threading.Thread(target=self.umaserver.run_with_catch, name="UmaServer"))
         THREADS[-1].start()
 
-        timeout = time.time() + 10
-        while time.time() < timeout:
-            try:
-                r = requests.get(f"http://{umaserver.domain}:{umaserver.port}", timeout=1)
-                if r.status_code == 200:
-                    break
-            except:
-                pass
+        if not self.umaserver.ready.wait(timeout=10):
+            raise RuntimeError("Local helper server did not become ready within 10 seconds")
+        startup_error = getattr(self.umaserver, "startup_error", None)
+        if startup_error is not None:
+            raise RuntimeError("Local helper server failed to start") from startup_error
 
         self.carrotjuicer = carrotjuicer.CarrotJuicer(self)
         THREAD_OBJECTS.append(self.carrotjuicer)
-        THREADS.append(threading.Thread(target=self.carrotjuicer.run_with_catch, name="CarrotJuicer"))
+        THREADS.append(threading.Thread(target=self.carrotjuicer.run_with_catch, name="CarrotBlender"))
 
         self.tray = umatray.UmaTray(self)
         THREAD_OBJECTS.append(self.tray)
@@ -94,12 +84,7 @@ class Threader():
 
             # Game tracking
             if not self.game_seen:
-                if 'IS_UL_GLOBAL' in os.environ:
-                    self.game_handle = util.get_game_handle_global()
-                elif 'IS_JP_STEAM' in os.environ:
-                    self.game_handle = util.get_game_handle_jp_steam()
-                else:
-                    self.game_handle = util.get_game_handle()
+                self.game_handle = util.get_game_handle()
 
                 if self.game_handle:
                     self.game_seen = True
@@ -108,8 +93,7 @@ class Threader():
                 if onetime:
                     onetime = False
                     if not self.game_seen:
-                        if 'IS_UL_GLOBAL' in os.environ or 'IS_JP_STEAM' in os.environ:
-                            steam.start()
+                        steam.start()
 
             # Game closed handling
             if not self.game_handle:

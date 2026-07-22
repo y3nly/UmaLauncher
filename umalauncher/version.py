@@ -38,38 +38,37 @@ def upgrade(umasettings, raw_settings):
     if "_version" in raw_settings:
         logger.info("Attempting to upgrade settings from pre-1.5.0...")
 
-        # Create a backup of the old settings file, just in case
-        if not os.path.exists("umasettings.json.bak"):
-            shutil.copy("umasettings.json", "umasettings.json.bak")
+        # Create the backup next to whichever settings file was actually
+        # loaded. Current installations store it in AppData, while very old
+        # source installs may still have it beside the launcher.
+        settings_path = util.get_appdata("umasettings.json")
+        if not os.path.exists(settings_path):
+            settings_path = util.get_relative("umasettings.json")
+        backup_path = f"{settings_path}.bak"
+        if not os.path.exists(backup_path):
+            shutil.copy(settings_path, backup_path)
 
         pre_1_5_0_update_dict = {
             "_unique_id": "unique_id",
             "save_packet": "save_packets",
             "beta_optin": "beta_optin",
             "debug_mode": "debug_mode",
-            "autoclose_dmm": "autoclose_dmm",
             "browser_position": "browser_position",
             "selected_browser": "selected_browser",
-            "game_install_path": "game_install_path",
             "training_helper_table_preset": "training_helper_table_preset",
             "training_helper_table_preset_list": "training_helper_table_preset_list",
         }
 
         pre_1_5_0_update_dict_2 = {
-            ("tray_items", "Lock game window"): "lock_game_window",
-            ("tray_items", "Discord rich presence"): "discord_rich_presence",
-            ("tray_items", "Enable CarrotJuicer"): "enable_carrotjuicer",
             ("tray_items", "Track trainings"): "track_trainings",
-            ("game_position", "portrait"): "game_position_portrait",
-            ("game_position", "landscape"): "game_position_landscape",
         }
 
         for key, value in pre_1_5_0_update_dict.items():
-            if key in raw_settings:
+            if key in raw_settings and value in umasettings:
                 umasettings[value] = raw_settings[key]
         
         for key, value in pre_1_5_0_update_dict_2.items():
-            if key[0] in raw_settings and key[1] in raw_settings[key[0]]:
+            if value in umasettings and key[0] in raw_settings and key[1] in raw_settings[key[0]]:
                 umasettings[value] = raw_settings[key[0]][key[1]]
     
     if settings_version <= (1, 12, 1):
@@ -81,7 +80,6 @@ def upgrade(umasettings, raw_settings):
             "update.tmp",
             "log.log",
             "training_logs",
-            "ovpn.log",
             "chr_profile",
             "edg_profile"
         ]
@@ -133,9 +131,10 @@ def auto_update(umasettings, force=False):
         return True
 
     # Check if we're coming from an update
-    if os.path.exists("update.tmp"):
-        os.remove("update.tmp")
-        util.show_info_box("Update complete!", f"Uma Launcher updated successfully to v{vstr(script_version)}.<br>To see what's new, <a href=\"https://github.com/qwcan/UmaLauncher/releases/tag/v{vstr(script_version)}\">click here</a>.")
+    update_marker = util.get_appdata("update.tmp")
+    if os.path.exists(update_marker):
+        os.remove(update_marker)
+        util.show_info_box("Update complete!", f"Uma Launcher updated successfully to v{vstr(script_version)}.<br>To see what's new, <a href=\"https://github.com/y3nly/UmaLauncher/releases/tag/v{vstr(script_version)}\">click here</a>.")
 
     response = util.do_get_request("https://api.github.com/repos/y3nly/UmaLauncher/releases", error_message="Could not check for updates. Please check your internet connection.", ignore_timeout=True)
     if not response:
@@ -217,13 +216,7 @@ class Updater():
     def run(self):
         logger.debug("Updater thread started.")
         for asset in self.assets:
-            if 'IS_UL_GLOBAL' in os.environ:
-                exe_name = "UmaLauncher-Global.exe"
-            elif 'IS_JP_STEAM' in os.environ:
-                exe_name = "UmaLauncher-Steam.exe"
-            else:
-                exe_name = "UmaLauncher.exe"
-            if asset['name'] == exe_name:
+            if asset['name'] == "UmaLauncher-Global.exe":
                 # Found the correct file, download and overwrite
                 download_url = asset['browser_download_url']
                 parsed = urlparse(download_url)
@@ -233,7 +226,9 @@ class Updater():
                     self.close_me = True
                     return
                 try:
-                    path_to_exe = sys.argv[0]
+                    # In a frozen build sys.executable is the authoritative
+                    # launcher path even when invoked through PATH or a shortcut.
+                    path_to_exe = os.path.abspath(sys.executable)
                     exe_file = os.path.basename(path_to_exe)
                     without_ext = os.path.splitext(exe_file)[0]
                     old_file = without_ext + ".old"
@@ -245,8 +240,21 @@ class Updater():
                     urllib.request.urlretrieve(download_url, tmp_path)
                     # Start a process that starts the new exe.
                     logger.info("Download complete, now trying to open the new launcher.")
-                    open(util.get_appdata("update.tmp"), "wb").close()
-                    sub = subprocess.Popen(f"taskkill /F /IM \"{exe_file}\" && move /y \".\\{exe_file}\" \"{old_path}\" && move /y \"{tmp_path}\" \".\\{exe_file}\" && \".\\{exe_file}\"", shell=True)
+                    with open(util.get_appdata("update.tmp"), "wb"):
+                        pass
+                    relaunch_environment = os.environ.copy()
+                    relaunch_environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+                    replacement_command = (
+                        f'taskkill /F /IM "{exe_file}" '
+                        f'&& move /y "{path_to_exe}" "{old_path}" '
+                        f'&& move /y "{tmp_path}" "{path_to_exe}" '
+                        f'&& "{path_to_exe}"'
+                    )
+                    sub = subprocess.Popen(
+                        replacement_command,
+                        shell=True,
+                        env=relaunch_environment,
+                    )
                     while True:
                         # Check if subprocess is still running
                         if sub.poll() is not None:
@@ -258,3 +266,5 @@ class Updater():
                     logger.error(e)
                     self.close_me = True
                     return
+        logger.error("No compatible Global launcher asset was found in the release.")
+        self.close_me = True

@@ -1,6 +1,6 @@
 SCENARIO_DICT = {
     1: "URA Finals",
-    2: "Aoharu Cup",
+    2: "Unity Cup",
     3: "Grand Live",
     4: "Make a New Track",
     5: "Grand Masters",
@@ -137,13 +137,6 @@ GL_TOKEN_LIST = [
     'mental'
 ]
 
-ORIENTATION_DICT = {
-    True: 'game_position_portrait',
-    False: 'game_position_landscape',
-    'game_position_portrait': True,
-    'game_position_landscape': False,
-}
-
 # Request packets contain keys that should not be kept for privacy reasons.
 REQUEST_KEYS_TO_BE_REMOVED = [
     "device",
@@ -156,60 +149,9 @@ REQUEST_KEYS_TO_BE_REMOVED = [
     "keychain",
     "locale",
     "button_info",
+    # Retained only as defensive export redaction; these do not enable DMM support.
     "dmm_viewer_id",
     "dmm_onetime_token",
-]
-
-HEROES_SCORE_TO_LEAGUE_DICT = {
-    0: "Bronze 1",
-    1000: "Bronze 2",
-    2000: "Bronze 3",
-    3000: "Bronze 4",
-    4000: "Silver 1",
-    5500: "Silver 2",
-    7000: "Silver 3",
-    8500: "Silver 4",
-    10000: "Gold 1",
-    12500: "Gold 2",
-    15000: "Gold 3",
-    17500: "Gold 4",
-    20000: "Platinum 1",
-    23000: "Platinum 2",
-    26000: "Platinum 3",
-    30000: "Platinum 4"
-}
-
-SCOUTING_RANK_LIST = [
-    "No rank",
-    "E",
-    "E1",
-    "E2",
-    "E3",
-    "D",
-    "D1",
-    "D2",
-    "D3",
-    "C",
-    "C1",
-    "C2",
-    "C3",
-    "B",
-    "B1",
-    "B2",
-    "B3",
-    "A",
-    "A1",
-    "A2",
-    "A3",
-    "A4",
-    "A5",
-    "S",
-    "S1",
-    "S2",
-    "S3",
-    "S4",
-    "S5",
-    "SS"
 ]
 
 BOND_COLOR_DICT = {
@@ -261,11 +203,6 @@ DEFAULT_ARC_SECTIONS = (
     (61, "yellow", "Overseas Expedition"),
     (68, "black", "END")
 )
-
-GT_LANGUAGE_URL_DICT = {
-    "English": "",
-    "Japanese": "ja/",
-}
 
 GFF_VEG_ID_TO_IMG_ID = {
     100: "00",

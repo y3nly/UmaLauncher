@@ -1,11 +1,114 @@
 import copy
-import os
+import traceback
 
 from loguru import logger
 import mdb
 import util
 import constants
 from helper_table_defaults import RowTypes
+
+MISSING_CHARACTER_IMAGE = (
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' "
+    "viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%23343a40'/%3E"
+    "%3Ctext x='32' y='44' text-anchor='middle' font-size='40' fill='%23ffffff'%3E?%3C/text%3E%3C/svg%3E"
+)
+
+
+def get_modern_g1_races(races):
+    """Return sanitized display data for the G1 races available this turn."""
+    if not races:
+        return []
+    try:
+        race_names = mdb.get_race_program_name_dict()
+    except Exception:
+        logger.error(f"Could not load race names for Modern helper:\n{traceback.format_exc()}")
+        race_names = {}
+
+    g1_races = []
+    seen_programs = set()
+    for race in races or ():
+        if not isinstance(race, dict):
+            continue
+        program_id = race.get('program_id')
+        if isinstance(program_id, bool) or not isinstance(program_id, int):
+            continue
+        try:
+            program_data = mdb.get_program_id_data(program_id)
+            if not program_data:
+                continue
+            base_program_id = program_data.get('base_program_id') or 0
+            display_program_id = base_program_id or program_id
+            display_data = (
+                mdb.get_program_id_data(base_program_id)
+                if base_program_id else program_data
+            )
+            if (
+                program_data.get('race_permission') == 5
+                or (
+                    display_data
+                    and display_data.get('race_permission') == 5
+                )
+            ):
+                # Finale packets contain one program for every supported
+                # distance/track variant. None of them are useful as the
+                # day's optional G1 recommendation, so hide the whole rail.
+                return []
+            if not display_data or display_data.get('race_grade') != 100:
+                continue
+            if display_program_id in seen_programs:
+                continue
+            thumbnail_id = display_data.get('race_thumbnail_id')
+            if isinstance(thumbnail_id, bool):
+                continue
+            thumbnail_id = int(thumbnail_id)
+        except Exception:
+            logger.error(
+                f"Could not resolve Modern G1 race {program_id}:\n"
+                f"{traceback.format_exc()}"
+            )
+            continue
+
+        seen_programs.add(display_program_id)
+        g1_races.append({
+            "name": str(
+                race_names.get(display_program_id)
+                or race_names.get(program_id)
+                or "G1 race"
+            ),
+            "thumb_url": (
+                "https://media.gametora.com/umamusume/races/banners/en/"
+                f"{thumbnail_id}.png"
+            ),
+        })
+    return g1_races
+
+def get_modern_unity_partner_state(partner_id, command, team_eval_dict):
+    """Return only the Unity Cup states that matter for Modern's portraits."""
+    unity_partners = set(command.get('guide_event_partner_array') or ())
+    spirit_partners = set(command.get('soul_event_partner_array') or ())
+    extreme_partners = set(command.get('sp_soul_event_partner_array') or ())
+    entry = team_eval_dict.get(partner_id) or {}
+    soul_threshold_id = entry.get('soul_threshold_id')
+    useful_unity = (
+        partner_id in unity_partners
+        and entry.get('soul_event_state') == 0
+    )
+
+    unity_charge = None
+    if useful_unity and isinstance(soul_threshold_id, int):
+        # Unity Cup reports gauge stages 1..5: empty through full.
+        unity_charge = max(0, min(4, soul_threshold_id - 1))
+
+    spirit_burst = partner_id in spirit_partners
+    extreme_burst = partner_id in extreme_partners
+    return {
+        'unity': useful_unity,
+        'near_ready': useful_unity and soul_threshold_id == 4,
+        'unity_charge': unity_charge,
+        'spirit_burst': spirit_burst,
+        'extreme_burst': extreme_burst,
+        'show_npc': useful_unity or spirit_burst or extreme_burst,
+    }
 
 
 class TrainingPartner():
@@ -14,9 +117,12 @@ class TrainingPartner():
         self.starting_bond = starting_bond
         self.chara_info = chara_info
         self.chara_id = None
+        self.support_card_id = None
 
         if partner_id < 100:
-            support_id = chara_info['support_card_array'][partner_id - 1]['support_card_id']
+            support_card = chara_info['support_card_array'][partner_id - 1]
+            support_id = support_card['support_card_id']
+            self.support_card_id = support_id
             support_card_dict = mdb.get_support_card_dict()
             found_support = False
             if support_id not in support_card_dict:
@@ -24,7 +130,7 @@ class TrainingPartner():
                 support_card_dict = mdb.get_support_card_dict(force=True)
                 if support_id not in support_card_dict:
                     logger.error(f"Could not find support_id {support_id} after forced update")
-                    self.img = "https://umapyoi.net/missing_chara.png"
+                    self.img = MISSING_CHARACTER_IMAGE
                 else:
                     logger.info(f"Successfully found support_id {support_id}")
                     found_support = True
@@ -44,7 +150,7 @@ class TrainingPartner():
                 self.chara_id = chara_id
                 self.img = f"https://gametora.com/images/umamusume/characters/icons/chr_icon_{chara_id}.png"
             except KeyError:
-                self.img = "https://umapyoi.net/missing_chara.png"
+                self.img = MISSING_CHARACTER_IMAGE
                 logger.error(f"Could not find unique chara_id for partner_id {partner_id} in scenario {chara_info['scenario_id']}")
         
         # Precalc-bonds
@@ -53,7 +159,7 @@ class TrainingPartner():
         self.useful_bond = useful_bond
         self.hint_bond = hint_bond
         self.hint_useful_bond = hint_useful_bond
-    
+
     def add_effect_bonus_bond(self, bond):
         # Add 2 extra bond when charming is active and the partner is not Akikawa
         if self.partner_id <= 6 and 8 in self.chara_info.get('chara_effect_id_array', []):
@@ -72,7 +178,9 @@ class TrainingPartner():
         if self.partner_id < 1000:
             add = 7
             if self.partner_id <= 6:
-                support_card_id = self.chara_info['support_card_array'][self.partner_id - 1]['support_card_id']
+                support_card_id = self.chara_info['support_card_array'][
+                    self.partner_id - 1
+                ]['support_card_id']
                 support_card_data = mdb.get_support_card_dict()[support_card_id]
                 support_card_type = constants.SUPPORT_CARD_TYPE_DICT[(support_card_data[1], support_card_data[2])]
                 if support_card_type in ("group", "friend"):
@@ -103,7 +211,9 @@ class TrainingPartner():
         
         # Ignore group and friend type cards except Satake Mei in Project L'Arc
         if self.partner_id <= 6:
-            support_card_id = self.chara_info['support_card_array'][self.partner_id - 1]['support_card_id']
+            support_card_id = self.chara_info['support_card_array'][
+                self.partner_id - 1
+            ]['support_card_id']
 
             if support_card_id in (10094, 30160) and self.chara_info['scenario_id'] in (6,):  # Only count Mei in Project L'Arc
                 usefulness_cutoff = 60
@@ -147,18 +257,24 @@ class HelperTable():
         if self.carrotjuicer.last_helper_data and self.carrotjuicer.browser and self.carrotjuicer.browser.alive():
             self.carrotjuicer.update_helper_table(self.carrotjuicer.last_helper_data)
 
-
     def create_helper_elements(self, data, last_data) -> str:
         """Creates the helper elements for the given response packet.
         """
         self.show_schedule_optimizer_button = False
+        modern = (
+            self.carrotjuicer.get_helper_ui_mode()
+            == self.carrotjuicer.HELPER_UI_MODERN
+        )
 
         # Transfer data from last data if it does not exist in the current data
         if last_data:
             if 'reserved_race_array' not in data and 'reserved_race_array' in last_data:
                 data['reserved_race_array'] = last_data['reserved_race_array']
             if 'race_condition_array' not in data and 'race_condition_array' in last_data:
-                data['race_condition_array'] = last_data['race_condition_array']
+                current_turn = (data.get('chara_info') or {}).get('turn')
+                previous_turn = (last_data.get('chara_info') or {}).get('turn')
+                if current_turn == previous_turn:
+                    data['race_condition_array'] = last_data['race_condition_array']
             # Surely this won't cause any issues, right?
             if 'home_info' not in data and 'home_info' in last_data:
                 data['home_info'] = last_data['home_info']
@@ -280,6 +396,7 @@ class HelperTable():
             for command in get_commands('team_data_set'):
                 all_commands[command['command_id']]['guide_event_partner_array'] = command['guide_event_partner_array']
                 all_commands[command['command_id']]['soul_event_partner_array'] = command['soul_event_partner_array']
+                all_commands[command['command_id']]['sp_soul_event_partner_array'] = command.get('sp_soul_event_partner_array') or []
 
 
         # Support Dict
@@ -290,6 +407,42 @@ class HelperTable():
             except Exception as e:
                 logger.error(f"Error while creating TrainingPartner: {e}")
                 continue
+
+        chara_name_dict = {}
+        if modern:
+            try:
+                chara_name_dict = mdb.get_chara_name_dict()
+            except Exception as e:
+                logger.error(f"Could not load character names for modern helper: {e}")
+
+        team_eval_dict = {}
+        if 'team_data_set' in data:
+            team_eval_dict = {
+                entry['target_id']: entry
+                for entry in (data['team_data_set'].get('evaluation_info_array') or [])
+                if 'target_id' in entry
+            }
+
+        acquired_skill_ids = set()
+        hinted_skill_levels = {}
+        support_hint_pools = {}
+        if modern:
+            for skill in data['chara_info'].get('skill_array') or []:
+                skill_id = skill.get('skill_id')
+                if skill_id is None:
+                    continue
+                acquired_skill_ids.add(skill_id)
+                acquired_skill_ids.update(mdb.get_prerequisite_skill_ids(skill_id))
+
+            hinted_skill_levels = {
+                (tip.get('group_id'), tip.get('rarity')): tip.get('level', 0)
+                for tip in (data['chara_info'].get('skill_tips_array') or [])
+                if tip.get('group_id') is not None and tip.get('rarity') is not None
+            }
+            try:
+                support_hint_pools = mdb.get_support_hint_pool_dict()
+            except Exception as e:
+                logger.error(f"Could not load support hint pools for modern helper: {e}")
 
         onsen_points_gain = {}
         # Onsen
@@ -379,6 +532,7 @@ class HelperTable():
             partner_count = 0
             useful_partner_count = 0
             riko_count = 0
+            partner_views = []
             num_hints = len(command.get('tips_event_partner_array', []))
             if num_hints:
                 hint_partners += command.get('tips_event_partner_array')
@@ -387,9 +541,12 @@ class HelperTable():
 
                 # Detect if training_partner is rainbowing
                 training_partner = eval_dict[training_partner_id]
+                partner_is_rainbow = False
                 if training_partner_id <= 6:
                     # Partner is a support card
-                    support_id = data['chara_info']['support_card_array'][training_partner_id - 1]['support_card_id']
+                    support_id = data['chara_info']['support_card_array'][
+                        training_partner_id - 1
+                    ]['support_card_id']
                     support_data = mdb.get_support_card_dict()[support_id]
                     support_card_type = mdb.get_support_card_type(support_data)
 
@@ -399,12 +556,15 @@ class HelperTable():
                         useful_partner_count += 1
 
                     if support_card_type not in ("group", "friend") and training_partner.starting_bond >= 80 and command['command_id'] in constants.SUPPORT_TYPE_TO_COMMAND_IDS[support_card_type]:
-                        rainbow_count += 1
+                        partner_is_rainbow = True
                     elif support_card_type == "group" and util.get_group_support_id_to_passion_zone_effect_id_dict()[support_id] in data['chara_info']['chara_effect_id_array']:
-                        rainbow_count += 1
+                        partner_is_rainbow = True
                     elif support_card_type != 'friend' and 'venus_data_set' in data and \
                             len(data['venus_data_set']['venus_spirit_active_effect_info_array']) > 0 and \
                                 data['venus_data_set']['venus_spirit_active_effect_info_array'][0]['chara_id'] == 9042:
+                        partner_is_rainbow = True
+
+                    if partner_is_rainbow:
                         rainbow_count += 1
 
                     # Checking if Support card is Riko Kashimoto
@@ -421,26 +581,105 @@ class HelperTable():
                 bond_gains_total.append(training_partner.bond)
                 bond_gains_useful.append(training_partner.useful_bond)
 
+                if not modern:
+                    continue
+
+                unity_display = get_modern_unity_partner_state(
+                    training_partner_id, command, team_eval_dict
+                )
+                partner_is_support = (
+                    isinstance(training_partner_id, int)
+                    and 1 <= training_partner_id <= 6
+                    and training_partner.support_card_id is not None
+                )
+                # Modern always shows deck supports. NPCs are admitted only
+                # when this training gives useful Unity progress or the NPC is
+                # the source of a blue/purple burst.
+                if (
+                    not partner_is_support
+                    and not unity_display['show_npc']
+                ):
+                    continue
+
+                partner_name = chara_name_dict.get(training_partner.chara_id)
+                if not partner_name:
+                    partner_name = f"Partner {training_partner_id}"
+
+                is_hint_source = training_partner_id in command.get(
+                    'tips_event_partner_array', []
+                )
+                hint_details = None
+                if is_hint_source:
+                    hint_skills = []
+                    if training_partner.support_card_id is not None:
+                        for pool_entry in support_hint_pools.get(
+                            training_partner.support_card_id, ()
+                        ):
+                            hinted_level = hinted_skill_levels.get(
+                                (pool_entry.get('group_id'), pool_entry.get('rarity')),
+                                0,
+                            )
+                            hint_skills.append({
+                                "name": pool_entry.get('name') or "Unknown skill",
+                                "granted_level": pool_entry.get('granted_level', 0),
+                                "hinted": hinted_level > 0,
+                                "hint_level": hinted_level,
+                                "acquired": pool_entry.get('skill_id') in acquired_skill_ids,
+                            })
+                        unavailable_message = (
+                            "No skill hint pool is available for this support."
+                            if not hint_skills else ""
+                        )
+                    else:
+                        unavailable_message = "Skill hint pools are unavailable for NPCs."
+
+                    hint_details = {
+                        "title": partner_name,
+                        "message": unavailable_message,
+                        "skills": hint_skills,
+                    }
+
+                partner_views.append({
+                    "name": partner_name,
+                    "img": training_partner.img,
+                    "bond": training_partner.starting_bond,
+                    "show_bond": training_partner_id < 100 or (
+                        training_partner_id == 102 and scenario_id not in (6,)
+                    ),
+                    "hint": is_hint_source,
+                    "hint_details": hint_details,
+                    "rainbow": partner_is_rainbow,
+                    "unity": unity_display['unity'],
+                    "near_ready": unity_display['near_ready'],
+                    "unity_charge": unity_display['unity_charge'],
+                    "spirit_burst": unity_display['spirit_burst'],
+                    "extreme_burst": unity_display['extreme_burst'],
+                })
+
             unity_partner_count = 0
             useful_unity_partner_count = 0
             spirit_burst_partner_count = 0
+            extreme_spirit_burst_partner_count = 0
             unity_near_explode_partner_count = 0
             if 'team_data_set' in data:
                 for partner_id  in command.get('guide_event_partner_array', []):
                     # find partner in the evaluation_info_array
-                    entry = next((d for d in data['team_data_set'].get('evaluation_info_array') if d["target_id"] == partner_id ), None)
+                    entry = team_eval_dict.get(partner_id)
 
                     # "Useful" is count of partners not yet exploded
-                    if entry.get("soul_event_state") == 0:
+                    if entry and entry.get("soul_event_state") == 0:
                         useful_unity_partner_count += 1
                     # One step away from being full
-                    if entry.get('soul_threshold_id') == 4:
+                    if entry and entry.get('soul_threshold_id') == 4:
                         unity_near_explode_partner_count += 1
                     unity_partner_count += 1
                 for _ in command.get('soul_event_partner_array', []):
                     # TODO: Should a spirit burst parner be considered a useful partner?
                     unity_partner_count += 1
                     spirit_burst_partner_count += 1
+                for _ in command.get('sp_soul_event_partner_array') or []:
+                    unity_partner_count += 1
+                    extreme_spirit_burst_partner_count += 1
 
             total_bond = sum(bond_gains_total)
             useful_bond = sum(bond_gains_useful)
@@ -617,12 +856,15 @@ class HelperTable():
                 'unity_partner_count': unity_partner_count,
                 'useful_unity_partner_count': useful_unity_partner_count,
                 'spirit_burst_partner_count': spirit_burst_partner_count,
+                'extreme_spirit_burst_partner_count': extreme_spirit_burst_partner_count,
                 'team_member_info_array': team_member_info_array,
                 'has_ssr_casino_drive': has_ssr_casino_drive,
                 'turn': turn,
                 'unity_near_explode_partner_count': unity_near_explode_partner_count,
                 'riko_count': riko_count,
             }
+            if modern:
+                command_info[command['command_id']]['partners'] = partner_views
 
         # Simplify everything down to a dict with only the keys we care about.
         # No distinction between normal and summer training.
@@ -631,6 +873,11 @@ class HelperTable():
             for command_id in command_info
             if command_id in constants.COMMAND_ID_TO_KEY
         }
+
+        self.carrotjuicer.runtime_extensions.enrich_training_commands(
+            data,
+            command_info,
+        )
 
 
         # Process scheduled races
@@ -656,7 +903,7 @@ class HelperTable():
                 s_turn += month * 2
                 s_turn += half
                 s_turn += 1
-                thumb_url = f"https://gametora.com/images/umamusume/{'en/' if 'IS_UL_GLOBAL' in os.environ else '' }race_banners/thum_race_rt_000_{str(program_data['race_instance_id'])[:4]}_00.png"
+                thumb_url = f"https://gametora.com/images/umamusume/en/race_banners/thum_race_rt_000_{str(program_data['race_instance_id'])[:4]}_00.png"
 
                 scheduled_races.append({
                     "turn": s_turn,
@@ -855,6 +1102,23 @@ class HelperTable():
             'coin_num': coin_num,
             'sale_value': sale_value
         }
+        if modern:
+            main_info.update({
+                "scenario_name": constants.SCENARIO_DICT.get(
+                    scenario_id, f"Scenario {scenario_id}"
+                ),
+                "trainee_name": chara_name_dict.get(
+                    chara_id, f"Character {chara_id}"
+                ),
+                "motivation": constants.MOTIVATION_DICT.get(
+                    data['chara_info'].get('motivation'), "Unknown"
+                ),
+                "stats": {
+                    stat: data['chara_info'].get(stat, 0)
+                    for stat in ("speed", "stamina", "power", "guts", "wiz")
+                },
+                "g1_races": get_modern_g1_races(races),
+            })
 
         # Update preset if needed.
         if self.carrotjuicer.threader.settings['training_helper_table_scenario_presets_enabled']:
@@ -867,6 +1131,8 @@ class HelperTable():
                 self.selected_preset = self.carrotjuicer.threader.settings.get_preset_with_name(general_preset)
 
         self.show_schedule_optimizer_button = self.selected_preset.show_schedule_optimizer_button(main_info)
-        overlay_html = self.selected_preset.generate_overlay(main_info, command_info)
-
-        return overlay_html
+        if modern:
+            return self.selected_preset.generate_modern_overlay(
+                main_info, command_info
+            )
+        return self.selected_preset.generate_overlay(main_info, command_info)

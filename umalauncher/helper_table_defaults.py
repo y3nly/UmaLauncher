@@ -94,6 +94,9 @@ class GainedStatsRow(hte.Row):
         super().__init__()
         self.settings = GainedStatsSettings()
 
+    def get_modern_column_width(self):
+        return 68 if self.settings.displayed_value.value == 2 else 44
+
     def _generate_cells(self, game_state) -> list[hte.Cell]:
         cells = [hte.Cell(self.short_name, title=self.description)]
 
@@ -139,6 +142,7 @@ class GainedStatsRow(hte.Row):
 
         return cells
 
+
 class GainedStatsDistributionSettings(se.NewSettings):
     _settings = {
         "include_skillpts": se.Setting(
@@ -158,6 +162,7 @@ class GainedStatsDistributionSettings(se.NewSettings):
 
 
 class GainedStatsDistributionRow(hte.Row):
+    modern_column_width = 72
     long_name = "Stats gained distribution"
     short_name = "Stat Gain <br>Distribution"
     description = "Shows the stats gained per facility per type. This includes stats gained outside the facility itself."
@@ -464,6 +469,7 @@ class GrandMastersFragmentsSettings(se.NewSettings):
     }
 
 class GrandMastersFragmentsRow(hte.Row):
+    modern_column_width = 52
     long_name = "Grand Masters fragments"
     short_name = "Fragments"
     description = "[Scenario-specific] Shows the total Grand Masters fragments on each facility. Hidden in other scenarios."
@@ -545,6 +551,7 @@ class GrandLiveTotalTokensRow(hte.Row):
 
 
 class GrandLiveTokensDistributionRow(hte.Row):
+    modern_column_width = 64
     long_name = "Grand Live tokens gained distribution"
     short_name = "Token Gain <br>Distribution"
     description = "[Scenario-specific] Shows the distribution of Grand Live tokens on each facility. Hidden in other scenarios."
@@ -739,6 +746,12 @@ class UnityTrainingCountSettings(se.NewSettings):
             "#0070FF",
             se.SettingType.COLOR
         ),
+        "highlight_extreme_burst_color": se.Setting(
+            "Highlight extreme burst color",
+            "The color to use to highlight facilities with an Extreme Spirit Burst Unity Training partner(s).",
+            "#A020F0",
+            se.SettingType.COLOR
+        ),
     }
 
 class UsefulUnityTrainingCountSettings(se.NewSettings):
@@ -765,6 +778,12 @@ class UsefulUnityTrainingCountSettings(se.NewSettings):
             "Highlight max burst color",
             "The color to use to highlight the facility with the most Spirit Burst Unity Training partner(s).",
             "#0070FF",
+            se.SettingType.COLOR
+        ),
+        "highlight_extreme_burst_color": se.Setting(
+            "Highlight extreme burst color",
+            "The color to use to highlight facilities with an Extreme Spirit Burst Unity Training partner(s).",
+            "#A020F0",
             se.SettingType.COLOR
         ),
     }
@@ -819,6 +838,10 @@ class UnityTrainingCountRow(hte.Row):
             if self.settings.highlight_max.value and highest_spirit_burst_partner_count > 0 and command['spirit_burst_partner_count'] == highest_spirit_burst_partner_count:
                 bold = True
                 color = self.settings.highlight_max_burst_color.value
+            # extreme spirit burst overrides all other highlights
+            if command.get('extreme_spirit_burst_partner_count', 0) > 0:
+                bold = True
+                color = self.settings.highlight_extreme_burst_color.value
             cells.append(hte.Cell(command['unity_partner_count'], bold=bold, color=color))
 
         return cells
@@ -857,6 +880,10 @@ class UsefulUnityTrainingCountRow(hte.Row):
             if self.settings.highlight_max.value and highest_spirit_burst_partner_count > 0 and command['spirit_burst_partner_count'] == highest_spirit_burst_partner_count:
                 bold = True
                 color = self.settings.highlight_max_burst_color.value
+            # extreme spirit burst overrides all other highlights
+            if command.get('extreme_spirit_burst_partner_count', 0) > 0:
+                bold = True
+                color = self.settings.highlight_extreme_burst_color.value
             cells.append(hte.Cell(command['useful_unity_partner_count'], bold=bold, color=color))
 
         return cells
@@ -1233,6 +1260,7 @@ class GFFVegetablesRow(hte.Row):
 
 
 class GFFVegetablesDistributionRow(hte.Row):
+    modern_column_width = 52
     long_name = "GFF Vegetables Distribution"
     short_name = "Veggies <br>Distribution"
     description = "[Scenario-specific] Displays the distribution of vegetables planted for each training facility."
@@ -1306,6 +1334,7 @@ class RMUTotalResearchLevelRow(hte.Row):
 
 
 class RMUResearchDistributionRow(hte.Row):
+    modern_column_width = 64
     long_name = "Run! Mecha Umamusume research level distribution"
     short_name = "Research Lvl <br>Distribution"
     description = "[Scenario-specific] Shows the distribution of research level gained on each facility. Hidden in other scenarios."
@@ -1479,6 +1508,7 @@ def generate_div(member):
 
 
 class DreamsPartnersRow(hte.Row):
+    modern_column_width = 72
     long_name = "Beyond Dreams team member Dream Gauge gain"
     short_name = "Dream Gauge"
     description = "[Scenario-specific] Shows the Dream Gauge gain for each team member. Hidden in other scenarios."

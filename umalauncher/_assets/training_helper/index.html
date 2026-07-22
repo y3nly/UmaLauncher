@@ -1,0 +1,1494 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Training Helper | UmaLauncher</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --helper-background: #171923;
+      --helper-panel: #242735;
+      --helper-text: #f4f5f7;
+      --helper-table-border: #3b404d;
+      --bg: var(--helper-background);
+      --panel: var(--helper-panel);
+      --panel-raised: var(--helper-panel);
+      --panel-raised: color-mix(in srgb, var(--helper-panel) 92%, white);
+      --border: rgba(255, 255, 255, 0.11);
+      --text: var(--helper-text);
+      --muted: #aeb5c2;
+      --accent: #69d391;
+      --event-content-height: 160px;
+      --event-overlay-clearance: 0px;
+      --event-overlay-max-height: 100dvh;
+      font-family: "Segoe UI";
+      font-size: 13px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      min-height: 28px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 9px;
+      color: var(--text);
+      background: var(--panel-raised);
+      cursor: pointer;
+    }
+
+    button:hover {
+      border-color: rgba(255, 255, 255, 0.25);
+      filter: brightness(1.08);
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    [role="separator"]:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    button:disabled {
+      cursor: default;
+      opacity: 0.45;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    #app-shell {
+      position: relative;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      width: 100%;
+      height: 100dvh;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    #helper-toolbar {
+      position: relative;
+      z-index: 2;
+      grid-column: 1;
+      grid-row: 2;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      min-height: 34px;
+      padding: 3px 7px;
+      border-top: 1px solid var(--border);
+      background: #1b1f29;
+    }
+
+    #helper-toolbar.is-event-obscured {
+      position: absolute;
+      z-index: 30;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      transform: translateY(calc(100% - 5px));
+      opacity: 0.45;
+    }
+
+    #helper-toolbar.is-event-obscured::before {
+      content: "";
+      position: absolute;
+      top: 1px;
+      left: 50%;
+      width: 34px;
+      height: 2px;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.55);
+      transform: translateX(-50%);
+    }
+
+    #helper-toolbar.is-event-obscured:hover,
+    #helper-toolbar.is-event-obscured:focus-within {
+      transform: none;
+      opacity: 1;
+    }
+
+    #helper-toolbar.is-event-obscured:hover::before,
+    #helper-toolbar.is-event-obscured:focus-within::before {
+      opacity: 0;
+    }
+
+    .toolbar-spacer {
+      flex: 1 1 auto;
+      min-width: 2px;
+    }
+
+    .toggle-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      min-height: 28px;
+      padding: 3px 6px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      background: var(--panel);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .toggle-control input {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    #dashboard-scroll {
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      overscroll-behavior: none;
+      overflow-anchor: none;
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+      scroll-behavior: auto;
+      background: var(--bg);
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    #dashboard-scroll::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+
+    #helper-flow {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      min-width: 0;
+      min-height: 100%;
+      padding-bottom: 0;
+    }
+
+    #dashboard-scroll.has-event-overlay #helper-flow {
+      min-height: calc(100% + var(--event-overlay-clearance));
+      padding-bottom: var(--event-overlay-clearance);
+    }
+
+    #dashboard-mount {
+      width: 100%;
+      min-width: 0;
+      min-height: 0;
+      flex: 0 0 auto;
+    }
+
+    #dashboard-empty {
+      display: grid;
+      min-height: 160px;
+      place-items: center;
+      padding: 20px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    #event-region {
+      position: relative;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      align-self: end;
+      grid-column: 1;
+      grid-row: 1;
+      width: 100%;
+      max-height: min(calc(100% - 6px), var(--event-overlay-max-height));
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    #event-drawer {
+      position: relative;
+      display: flex;
+      flex: 0 1 auto;
+      flex-direction: column;
+      width: 100%;
+      max-height: 100%;
+      min-width: 0;
+      min-height: 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(17, 20, 27, 0.92);
+      background: color-mix(in srgb, var(--helper-background) 92%, transparent);
+      box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(3px);
+      pointer-events: auto;
+    }
+
+    #event-drawer.is-preparing-source[hidden] {
+      display: flex !important;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #event-drawer-header {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 7px;
+      min-height: 34px;
+      padding: 5px 7px 4px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(32, 36, 48, 0.96);
+      background: color-mix(in srgb, var(--helper-panel) 96%, transparent);
+    }
+
+    #event-drawer-title {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      font-size: 13px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .event-chain-nav {
+      flex: 0 0 auto;
+      width: 28px;
+      min-height: 26px;
+      padding: 2px 5px;
+      font-size: 17px;
+      line-height: 1;
+    }
+
+    #event-content {
+      position: relative;
+      flex: 0 1 var(--event-content-height);
+      min-width: 0;
+      height: var(--event-content-height);
+      min-height: 0;
+      overflow: auto;
+      overscroll-behavior: none;
+      scroll-behavior: auto;
+    }
+
+    #gametora-event-frame,
+    #event-fallback {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: rgba(17, 20, 27, 0.9);
+      background: color-mix(in srgb, var(--helper-background) 90%, transparent);
+    }
+
+    #gametora-event-frame.is-preloading {
+      position: absolute;
+      left: -10000px;
+      width: 420px;
+      height: max(600px, 100%);
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    #gametora-event-frame.is-preloading.is-selecting-support {
+      left: 0;
+      visibility: visible;
+      opacity: 0;
+    }
+
+    #event-fallback {
+      height: auto;
+      min-height: 100%;
+      overflow: visible;
+      padding: 8px 5px;
+    }
+
+    #event-fallback h2 {
+      margin: 0 0 7px;
+      font-size: 14px;
+    }
+
+    #event-fallback p {
+      margin: 0 0 9px;
+      color: var(--muted);
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
+
+    #event-fallback ul {
+      display: grid;
+      gap: 5px;
+      margin: 8px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    #event-fallback li,
+    .fallback-rewards {
+      padding: 7px 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: rgba(32, 36, 48, 0.94);
+      background: color-mix(in srgb, var(--helper-panel) 94%, transparent);
+      line-height: 1.35;
+      white-space: pre-wrap;
+    }
+
+    .gametora-outcomes {
+      display: grid;
+      gap: 5px;
+    }
+
+    .gametora-outcome {
+      padding: 6px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: rgba(32, 36, 48, 0.94);
+      background: color-mix(in srgb, var(--helper-panel) 94%, transparent);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .gametora-choice-label {
+      margin-bottom: 4px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .semantic-skill,
+    .semantic-gain,
+    .semantic-value.is-positive {
+      color: #ff9d54;
+    }
+
+    .semantic-value.is-negative {
+      color: #69b7ff;
+    }
+
+    .gametora-reward-line + .gametora-reward-line {
+      margin-top: 2px;
+    }
+
+    .gametora-reward-line.is-owned {
+      color: #7d8594;
+    }
+
+    .gametora-reward-line.is-chain-end {
+      color: #69b7ff;
+    }
+
+    .fallback-section-title {
+      margin: 12px 0 5px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    #event-reopen {
+      align-self: flex-end;
+      margin: auto 8px 8px;
+      border-color: rgba(105, 211, 145, 0.55);
+      box-shadow: 0 3px 14px rgba(0, 0, 0, 0.4);
+      pointer-events: auto;
+    }
+
+    #hint-dialog-backdrop {
+      position: fixed;
+      z-index: 40;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 12px;
+      background: rgba(5, 7, 11, 0.72);
+    }
+
+    #hint-dialog {
+      width: min(360px, 100%);
+      max-height: min(520px, calc(100vh - 24px));
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--panel);
+      box-shadow: 0 14px 42px rgba(0, 0, 0, 0.55);
+    }
+
+    #hint-dialog header {
+      position: sticky;
+      top: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 9px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+    }
+
+    #hint-dialog-title {
+      flex: 1 1 auto;
+      margin: 0;
+      font-size: 14px;
+    }
+
+    #hint-dialog-message {
+      margin: 0;
+      padding: 10px;
+      color: var(--muted);
+    }
+
+    #hint-skill-list {
+      display: grid;
+      gap: 5px;
+      margin: 0;
+      padding: 8px 10px 11px;
+      list-style: none;
+    }
+
+    #hint-skill-list li {
+      display: flex;
+      align-items: baseline;
+      gap: 7px;
+      padding: 7px 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--panel-raised);
+    }
+
+    .hint-skill-name {
+      flex: 1 1 auto;
+    }
+
+    .hint-skill-state {
+      color: var(--muted);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    .hint-skill-state.acquired { color: #8ce8aa; }
+    .hint-skill-state.hinted { color: #ffd66e; }
+
+    @media (max-width: 360px) {
+      :root {
+        font-size: 12px;
+      }
+
+      #helper-toolbar {
+        gap: 4px;
+        padding-inline: 4px;
+      }
+
+      button,
+      .toggle-control {
+        padding-inline: 6px;
+      }
+
+      .toggle-control {
+        font-size: 11px;
+      }
+    }
+
+    #modern-training-helper{--mth-bg:var(--helper-background);--mth-card:var(--helper-panel);--mth-text:var(--helper-text);--mth-muted:#b9c0cc;--mth-grid-line:#3b404d;--mth-grid-line:color-mix(in srgb,var(--mth-card) 70%,var(--mth-text));--mth-table-line:var(--helper-table-border);--mth-label-column:78px;--mth-facility-column:44px;--mth-column-count:5;--mth-grid-width:298px;color:var(--mth-text);background:var(--mth-bg);font-family:"Segoe UI";font-size:13px;line-height:1.25;width:100%;box-sizing:border-box;padding:6px 2px;overflow:hidden}
+    #modern-training-helper *{box-sizing:border-box}
+    .modern-header{display:grid;width:calc(var(--mth-grid-width) + 2px);max-width:100%;margin:0 auto 5px;padding:3px 6px 4px;gap:3px;border:1px solid var(--mth-grid-line);border-radius:6px;background:linear-gradient(180deg,rgba(255,255,255,.035),transparent),var(--mth-card);box-shadow:0 2px 8px rgba(0,0,0,.18)}.modern-header-main{display:grid;grid-template-columns:minmax(0,1fr) max-content;gap:4px;align-items:center;min-width:0}.modern-run-meta{display:flex;min-width:0;align-items:baseline;gap:3px;white-space:nowrap}.modern-run-scenario{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:650;white-space:nowrap}.modern-run-turn{flex:0 0 auto;color:var(--mth-muted);font-size:10px}
+    .modern-vitals{display:flex;align-self:center;align-items:center;min-width:0;text-align:right;font-size:12px}.modern-vital{display:flex;min-width:0;align-items:baseline;gap:2px;padding:0 4px;white-space:nowrap;line-height:1.05}.modern-vital+.modern-vital{border-left:1px solid rgba(255,255,255,.1)}.modern-energy-row{display:grid;grid-template-columns:minmax(0,1fr) 50px;gap:5px;align-items:center;min-width:0}.modern-vital-mood{position:relative;display:block;align-self:end;width:100%;height:19px;overflow:hidden;padding:0;line-height:0}.modern-mood-fallback{display:flex;height:100%;align-items:center;justify-content:center;color:var(--mth-muted);font-size:9px;line-height:1}.modern-mood-icon{position:absolute;left:0;top:0;display:block;width:114.286%;max-width:none;height:119.07%;object-fit:fill;object-position:center;transform:translate(-6.25%,-7.422%)}.modern-vital>strong{display:block;min-width:0;overflow:visible;color:var(--mth-text);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}.modern-vitals small{display:block;color:var(--mth-muted);font-size:8px;font-weight:500;letter-spacing:.02em;text-transform:uppercase}.modern-vital-energy{display:block;align-self:end;min-width:0}.modern-energy-bar{position:relative;display:block;width:100%;min-width:0;height:16px;margin-top:0;overflow:hidden;border:1px solid #d9dde4;border-radius:8px;background:#656a73;box-shadow:inset 0 0 0 1px rgba(0,0,0,.62)}.modern-energy-fill{position:absolute;inset:1px auto 1px 1px;max-width:calc(100% - 2px);border-radius:6px;background:linear-gradient(90deg,#27c6f3 0 35%,#16a46a 70%,#3f8d4d 100%)}.modern-energy-text{position:absolute;z-index:1;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;line-height:1;text-shadow:0 1px 2px #000,0 0 2px #000}.modern-energy-value{position:relative;display:flex;height:100%;align-items:center}.modern-table-shell{display:grid;grid-template-columns:var(--mth-label-column) repeat(var(--mth-column-count),var(--mth-facility-column));width:calc(var(--mth-grid-width) + 2px);max-width:100%;margin:0 auto;border:1px solid var(--mth-table-line);border-radius:5px;overflow:hidden;background:rgba(255,255,255,.015);background:color-mix(in srgb,var(--mth-card) 18%,var(--mth-bg))}
+    .modern-energy-row-mood-only{grid-template-columns:50px;justify-content:end}
+    .modern-facilities{display:block;width:calc(var(--mth-grid-width) + 2px);max-width:100%;margin:0 auto}.modern-grid-header{display:grid;grid-template-columns:var(--mth-label-column) repeat(var(--mth-column-count),var(--mth-facility-column));width:var(--mth-grid-width);margin:0 auto;align-items:stretch}.modern-training-row{display:contents}.modern-grid-corner{min-width:0}.modern-facility{position:relative;min-width:0;display:flex;align-items:center;justify-content:center;background:transparent;border:0;padding:2px 1px 7px;overflow:visible}.modern-facility-stat{position:absolute;z-index:3;bottom:6px;left:0;width:100%;color:var(--mth-text);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1;text-align:center;text-shadow:0 1px 2px #000,0 0 2px #000}.modern-facility-name{display:flex;width:36px;height:36px;align-items:center;justify-content:center;padding:2px;color:var(--mth-text);font-size:8px;font-weight:700;line-height:1.05;text-align:center}.modern-partner-strip{display:grid;grid-template-columns:var(--mth-label-column) repeat(var(--mth-column-count),var(--mth-facility-column));width:var(--mth-grid-width);max-width:100%;margin:5px auto 0;align-items:start}.modern-partner-spacer{min-width:0}.modern-partners{min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;min-height:44px;padding:4px 1px 2px;background:transparent;border:0}.modern-partner{appearance:none;border:0;padding:0;background:transparent;color:inherit;font:inherit;position:relative;display:flex;flex:0 0 44px;width:42px;height:44px;min-width:0;flex-direction:column;align-items:stretch}.modern-hint-partner{cursor:pointer;border-radius:2px}.modern-hint-partner:focus-visible{outline:2px solid #fff;outline-offset:2px}.portrait-frame{position:relative;isolation:isolate;display:block;flex:0 0 42px;width:42px;height:42px;border-radius:3px;background:transparent}.portrait-frame>img{position:relative;z-index:1;display:block;width:42px;height:42px;border-radius:3px;object-fit:cover}.hint-marker>img,.scenario-marker>img{display:block;width:100%;height:100%;object-fit:contain}.scenario-marker{position:absolute;right:-3px;top:-4px;width:20px;height:21px;z-index:9;pointer-events:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))}.scenario-marker-spirit-burst,.scenario-marker-extreme-burst{filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))}.unity-charge{position:absolute;z-index:8;left:-4px;bottom:-3px;width:20px;height:22px;pointer-events:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.72))}.unity-charge>img{position:absolute;display:block;max-width:none;border-radius:0;object-fit:fill}.unity-charge-base{z-index:0;inset:0;width:100%;height:100%}.unity-charge-fill{z-index:1}.unity-charge-frame{z-index:2;left:6.76%;bottom:8.75%;width:86.49%;height:85%}.unity-charge-fill-1{left:13.04%;bottom:12.44%;width:71.62%;height:18.75%}.unity-charge-fill-2{left:7.64%;bottom:12.44%;width:82.43%;height:37.5%}.unity-charge-fill-3{left:6.96%;bottom:12.44%;width:83.78%;height:56.25%}.unity-charge-fill-4{left:1.42%;bottom:3.88%;width:98.65%;height:95%}.modern-partner-bond{position:absolute;z-index:7;left:3px;right:3px;bottom:-2px;display:flex;flex-direction:column;align-items:center;width:auto;min-height:0;margin:0;pointer-events:none}.bond-indicator{display:block;width:100%}.bond-indicator-number{width:max-content;min-width:18px;margin:0 auto;padding:1px 3px;border-radius:5px;background:rgba(20,22,29,.78)}.bond-indicator-bar,.bond-indicator-both{height:10px}.bond-bar{position:relative;display:block;width:100%;height:100%;overflow:hidden;border:1px solid #414149;border-radius:6px;background:#6e6b79}.bond-bar-fill{position:absolute;inset:0 auto 0 0;width:var(--bond-value);background:var(--bond-color)}.bond-bar-segment{position:absolute;z-index:2;top:0;bottom:0;width:1px;background:rgba(35,36,42,.58)}.bond-number{display:block;margin:0;padding:0;font-size:10px;font-weight:600;line-height:1;text-align:center;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px #000,0 0 2px #000}.bond-number-overlay{position:absolute;z-index:3;inset:0;display:grid;place-items:center;margin:0;padding:0;color:#fff;font-size:10px;font-weight:700;line-height:1;text-align:center;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px #000,0 0 2px #000;pointer-events:none}
+    .facility-icon-shell{position:relative;isolation:isolate;width:36px;height:36px;margin:1px auto;border-radius:4px;display:flex;align-items:center;justify-content:center;background:transparent}.facility-icon{position:relative;z-index:1;display:block;width:30px;height:30px;object-fit:contain}.state-rainbow .facility-icon-shell{background:transparent;box-shadow:none}.rainbow-facility-glow{position:absolute;z-index:2;inset:-1px;display:block;opacity:.9;pointer-events:none}.rainbow-facility-glow>img{display:block;width:100%;height:100%;object-fit:fill}.state-spirit .facility-icon-shell,.state-extreme .facility-icon-shell{background:transparent;box-shadow:none}.state-spirit .facility-icon-shell::before,.state-extreme .facility-icon-shell::before{content:"";position:absolute;z-index:0;inset:1px;border:1px solid;border-radius:4px;pointer-events:none}.state-spirit .facility-icon-shell::before{border-color:#55a9ff;background:rgba(51,126,225,.18);box-shadow:0 0 6px rgba(63,131,223,.62)}.state-extreme .facility-icon-shell::before{border-color:#dd6ef1;background:rgba(185,73,229,.18);box-shadow:0 0 6px rgba(221,110,241,.64)}
+    .modern-row-label,.modern-row-value{min-width:0;min-height:27px;padding:5px 1px;background:transparent;border:0;border-right:1px solid var(--mth-table-line)}.modern-training-row~.modern-training-row>.modern-row-label,.modern-training-row~.modern-training-row>.modern-row-value{border-top:1px solid var(--mth-table-line)}.modern-training-row>.modern-row-value:last-child{border-right:0}.modern-row-label{display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:3px;font-size:12px;font-weight:500;color:var(--mth-text);line-height:1.15}.modern-row-value{display:flex;align-items:center;justify-content:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;font-size:18px;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:0;line-height:1.15}.modern-row-value img{max-width:100%;height:auto}.modern-rich-row .modern-row-value{flex-wrap:wrap;gap:1px;width:100%;white-space:normal}.modern-rich-row .modern-row-value div{min-width:0;max-width:100%;flex-wrap:wrap}
+    .modern-multiline-row .modern-row-value{display:block;box-sizing:border-box;width:auto;padding-top:4px;padding-bottom:4px;overflow:hidden;overflow-wrap:anywhere;white-space:normal;font-size:16px;line-height:1.25}
+    .rainbow-portrait-glow{position:absolute;z-index:0;left:1px;bottom:-1px;width:40px;height:40px;display:block;pointer-events:none}.rainbow-portrait-glow>img{position:absolute;display:block;object-fit:contain}.rainbow-portrait-glow-outer{left:-2px;top:-2px;width:44px;height:44px;opacity:.68}.rainbow-portrait-glow-inner{top:4px;left:4px;width:32px;height:32px;opacity:.44}
+    .modern-facility{padding-top:0;padding-bottom:4px}.modern-facility .facility-icon-shell{margin-top:-2px}.modern-facility-stat>.modern-stat-value{padding:0 3px;border-radius:3px;background:rgba(20,22,29,.82);background:color-mix(in srgb,var(--mth-card) 88%,transparent);box-shadow:0 1px 2px rgba(0,0,0,.5);transform:translateY(1px)}.modern-row-label,.modern-row-value{min-height:22px;padding-top:2px;padding-bottom:2px}.bond-indicator-both{position:relative}.bond-number-overlay{display:flex;align-items:center;justify-content:center;text-shadow:0 0 2px #000,0 0 1px #000;transform:none}
+    .modern-stat-value{position:relative;display:inline-block;overflow:visible}.modern-facility-stat>.modern-stat-value{position:static}.modern-vital>.modern-stat-value{display:inline-block;overflow:visible}.modern-stat-delta{position:absolute;z-index:20;left:50%;top:-9px;color:#7cff91;font-size:11px;font-weight:800;line-height:1;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 3px #000;pointer-events:none;animation-name:modern-stat-delta-pop;animation-duration:3s;animation-timing-function:ease-out;animation-fill-mode:both}.modern-stat-delta.is-negative{color:#ff626d}.modern-energy-value .modern-stat-delta{left:calc(100% + 3px);top:50%;height:auto;margin-top:calc(-.5em - 1px);animation-name:modern-energy-delta-pop}
+    @keyframes modern-stat-delta-pop{0%{opacity:0;transform:translate(-50%,4px) scale(.72)}12%{opacity:1;transform:translate(-50%,0) scale(1.08)}22%{transform:translate(-50%,0) scale(1)}70%{opacity:1;transform:translate(-50%,-2px) scale(1)}100%{opacity:0;transform:translate(-50%,-10px) scale(.96)}}@keyframes modern-energy-delta-pop{0%{opacity:0;transform:translateY(0) scale(.72)}12%{opacity:1;transform:translateY(0) scale(1.08)}22%{transform:translateY(0) scale(1)}70%{opacity:1;transform:translateY(-2px) scale(1)}100%{opacity:0;transform:translateY(-10px) scale(.96)}}
+    .modern-lower-stage{position:relative;isolation:isolate;display:grid;grid-template-areas:"modern-lower-stack";width:var(--mth-grid-width);max-width:100%;margin:5px auto 0;align-items:stretch}.modern-lower-stage>.modern-g1-panel,.modern-lower-stage>.modern-partner-strip{grid-area:modern-lower-stack}.modern-lower-stage>.modern-partner-strip{position:relative;z-index:2;margin:0}.modern-g1-panel{position:relative;z-index:1;align-self:start;justify-self:start;display:flex;width:var(--mth-label-column);min-width:0;flex-direction:column;gap:2px;overflow:hidden;padding:3px 4px 4px;border:1px solid var(--mth-grid-line);border-radius:5px;background:var(--mth-card);box-shadow:none;pointer-events:none}.modern-g1-label{overflow:hidden;color:var(--mth-muted);font-size:9px;font-weight:700;letter-spacing:.025em;line-height:1.1;text-align:center;text-transform:uppercase;white-space:nowrap}.modern-g1-races{display:flex;width:100%;min-width:0;flex-direction:column;align-items:center;gap:2px;opacity:.9}.modern-g1-race{display:flex;width:100%;min-width:0;align-items:center;justify-content:center;overflow:hidden}.modern-g1-race img{display:block;width:100%;max-width:68px;height:auto;max-height:34px;object-fit:contain}
+    .modern-g1-label{color:var(--mth-text);text-transform:none}
+    .modern-context-panels{width:calc(var(--mth-grid-width) + 2px);max-width:100%;margin:0 auto 5px;padding:5px;overflow-x:auto;border:1px solid var(--mth-grid-line);border-radius:5px;background:var(--mth-card);font-size:11px;scrollbar-width:thin}.modern-context-after{margin-top:5px;margin-bottom:0}.modern-context-panels table{width:100%;border-collapse:collapse;font-size:11px}.modern-context-panels th,.modern-context-panels td{padding:3px;border:1px solid var(--mth-grid-line);text-align:center}.modern-context-panels p{margin:2px 0}.modern-context-panels img{max-width:none}
+    @media(max-width:360px){#modern-training-helper{padding:4px 2px;font-size:12px}.modern-header{padding:3px 5px 4px}.modern-header-main{gap:3px}.modern-run-scenario{font-size:11px}.modern-run-turn{font-size:9px}.modern-vital{gap:2px;padding:0 3px}.modern-energy-row{grid-template-columns:minmax(0,1fr) 44px;gap:4px}.modern-vital-mood{height:17px}.modern-vital>strong{font-size:11px}.modern-vitals small{font-size:8px}.modern-facility-stat{font-size:12px}}
+  </style>
+</head>
+<body>
+  <div id="app-shell">
+    <header id="helper-toolbar" aria-label="Helper controls">
+      <button id="open-skills" type="button">Skills</button>
+      <button id="open-events" type="button">Events</button>
+      <button id="open-schedule" type="button" hidden>Schedule</button>
+      <span class="toolbar-spacer" aria-hidden="true"></span>
+      <label class="toggle-control" for="topmost-toggle">
+        <input id="topmost-toggle" type="checkbox">
+        <span>Top</span>
+      </label>
+      <label class="toggle-control" for="pair-toggle">
+        <input id="pair-toggle" type="checkbox">
+        <span>Pair</span>
+      </label>
+    </header>
+
+    <main id="dashboard-scroll" tabindex="0" aria-label="Training helper content">
+      <div id="helper-flow">
+        <div id="dashboard-mount" aria-live="polite">
+          <div id="dashboard-empty">Waiting for training data.</div>
+        </div>
+      </div>
+    </main>
+
+    <section id="event-region" aria-label="Context details">
+      <section id="event-drawer" aria-labelledby="event-drawer-title" hidden>
+        <header id="event-drawer-header">
+          <button id="event-chain-previous" class="event-chain-nav" type="button"
+            aria-label="Previous event in chain" title="Previous event in chain" hidden>‹</button>
+          <span id="event-drawer-title">Event</span>
+          <button id="event-chain-next" class="event-chain-nav" type="button"
+            aria-label="Next event in chain" title="Next event in chain" hidden>›</button>
+          <button id="event-collapse" type="button" aria-label="Collapse event drawer">Collapse</button>
+        </header>
+        <div id="event-content">
+          <iframe
+            id="gametora-event-frame"
+            title="GameTora event choices"
+            sandbox="allow-scripts allow-forms allow-same-origin"
+            referrerpolicy="strict-origin-when-cross-origin"
+            class="is-preloading"
+          ></iframe>
+          <div id="event-fallback" role="status"></div>
+        </div>
+      </section>
+
+      <button id="event-reopen" type="button" aria-label="Reopen event drawer" hidden>Event</button>
+    </section>
+
+    <div id="hint-dialog-backdrop" hidden>
+      <section id="hint-dialog" role="dialog" aria-modal="true" aria-labelledby="hint-dialog-title">
+        <header>
+          <h2 id="hint-dialog-title">Possible skill hints</h2>
+          <button id="hint-dialog-close" type="button" aria-label="Close hint details">Close</button>
+        </header>
+        <p id="hint-dialog-message" hidden></p>
+        <ul id="hint-skill-list"></ul>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const LOCAL_SERVER = "http://127.0.0.1:3150";
+      const helperToolbar = document.getElementById("helper-toolbar");
+      const dashboardScroll = document.getElementById("dashboard-scroll");
+      const dashboardMount = document.getElementById("dashboard-mount");
+      const scheduleButton = document.getElementById("open-schedule");
+      const skillsButton = document.getElementById("open-skills");
+      const eventsButton = document.getElementById("open-events");
+      const topmostToggle = document.getElementById("topmost-toggle");
+      const pairToggle = document.getElementById("pair-toggle");
+      const eventRegion = document.getElementById("event-region");
+      const drawer = document.getElementById("event-drawer");
+      const drawerTitle = document.getElementById("event-drawer-title");
+      const chainPreviousButton = document.getElementById("event-chain-previous");
+      const chainNextButton = document.getElementById("event-chain-next");
+      const collapseButton = document.getElementById("event-collapse");
+      const reopenButton = document.getElementById("event-reopen");
+      const eventContent = document.getElementById("event-content");
+      const eventFrame = document.getElementById("gametora-event-frame");
+      const fallback = document.getElementById("event-fallback");
+      const hintBackdrop = document.getElementById("hint-dialog-backdrop");
+      const hintDialogTitle = document.getElementById("hint-dialog-title");
+      const hintDialogMessage = document.getElementById("hint-dialog-message");
+      const hintSkillList = document.getElementById("hint-skill-list");
+      const hintDialogClose = document.getElementById("hint-dialog-close");
+      const STAT_DELTA_LIFETIME_MS = 3000;
+      let hintReturnFocus = null;
+
+      const state = {
+        configured: false,
+        drawerExpanded: false,
+        eventActive: false,
+        eventSourceAvailable: false,
+        generation: -1,
+        payload: null,
+        eventChain: null,
+        chainNavigationPending: false,
+        eventContentHeight: 160,
+        eventOverlayClearance: 0,
+        eventOverlayMaxHeight: null,
+        eventOverlayFrame: null,
+        lastPostedRect: "",
+        rectPostTimer: null,
+        statSnapshot: null,
+        activeStatDeltas: new Map(),
+        statDeltaTimer: null,
+        eventWindowOpening: false,
+        eventWindowOpenTimer: null,
+        theme: null
+      };
+
+      const DEFAULT_HELPER_THEME = Object.freeze({
+        mode: "dark",
+        text: "#F4F5F7",
+        border: "#3B404D",
+        background: "#171923",
+        panel: "#242735"
+      });
+
+      function normalizeHelperTheme(theme) {
+        const source = theme && theme.mode === "custom"
+          ? theme
+          : DEFAULT_HELPER_THEME;
+        const normalized = {mode: source === theme ? "custom" : "dark"};
+        for (const key of ["text", "border", "background", "panel"]) {
+          const value = String(source[key] || "").trim();
+          normalized[key] = /^#[0-9a-f]{6}$/i.test(value)
+            ? value.toUpperCase()
+            : DEFAULT_HELPER_THEME[key];
+        }
+        return normalized;
+      }
+
+      function applyHelperTheme(theme) {
+        const normalized = normalizeHelperTheme(theme);
+        const root = document.documentElement;
+        root.dataset.helperTheme = normalized.mode;
+        root.style.setProperty("--helper-text", normalized.text);
+        root.style.setProperty("--helper-table-border", normalized.border);
+        root.style.setProperty("--helper-background", normalized.background);
+        root.style.setProperty("--helper-panel", normalized.panel);
+        state.theme = normalized;
+        return normalized;
+      }
+
+      function postLocal(path, body = "") {
+        return fetch(LOCAL_SERVER + path, {
+          method: "POST",
+          body,
+          headers: { "Content-Type": "text/plain" },
+          keepalive: true
+        }).catch(() => undefined);
+      }
+
+      function currentScreenRect() {
+        return {
+          x: window.screenX,
+          y: window.screenY,
+          width: window.outerWidth,
+          height: window.outerHeight
+        };
+      }
+
+      function postScreenRect(force = false) {
+        if (!state.configured) {
+          return;
+        }
+        if (force && state.rectPostTimer !== null) {
+          window.clearTimeout(state.rectPostTimer);
+          state.rectPostTimer = null;
+        }
+        const rect = currentScreenRect();
+        if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height)
+            || rect.width <= 0 || rect.height <= 0) {
+          return;
+        }
+        const serialized = JSON.stringify(rect);
+        if (!force && serialized === state.lastPostedRect) {
+          return;
+        }
+        state.lastPostedRect = serialized;
+        postLocal("/helper-window-rect", serialized);
+      }
+
+      function scheduleScreenRectPost() {
+        if (state.rectPostTimer !== null) {
+          window.clearTimeout(state.rectPostTimer);
+        }
+        state.rectPostTimer = window.setTimeout(() => {
+          state.rectPostTimer = null;
+          postScreenRect(false);
+        }, 180);
+      }
+
+      function clampEventContentHeight(value) {
+        const numeric = Number(value);
+        return Number.isFinite(numeric)
+          ? Math.max(120, Math.min(5000, Math.ceil(numeric)))
+          : 160;
+      }
+
+      function applyEventContentHeight(value) {
+        state.eventContentHeight = clampEventContentHeight(value);
+        document.documentElement.style.setProperty(
+          "--event-content-height",
+          state.eventContentHeight + "px"
+        );
+        scheduleEventOverlayClearance();
+      }
+
+      function syncEventOverlayClearance() {
+        if (!state.drawerExpanded || drawer.hidden) {
+          state.eventOverlayMaxHeight = null;
+          if (state.eventOverlayClearance !== 0) {
+            state.eventOverlayClearance = 0;
+            document.documentElement.style.setProperty(
+              "--event-overlay-clearance",
+              "0px"
+            );
+          }
+          return;
+        }
+        const dashboardRect = dashboardScroll.getBoundingClientRect();
+        const table = dashboardMount.querySelector(".modern-table-shell");
+        const tableRect = table?.getBoundingClientRect();
+        const overlayTop = tableRect
+          ? Math.max(dashboardRect.top + 6, tableRect.bottom)
+          : dashboardRect.top + 6;
+        const availableHeight = Math.max(
+          0,
+          Math.floor(dashboardRect.height - 6)
+        );
+        const minimumHeight = Math.min(availableHeight, 154);
+        const maximumHeight = Math.max(
+          minimumHeight,
+          Math.floor(dashboardRect.bottom - overlayTop)
+        );
+        if (maximumHeight !== state.eventOverlayMaxHeight) {
+          state.eventOverlayMaxHeight = maximumHeight;
+          document.documentElement.style.setProperty(
+            "--event-overlay-max-height",
+            maximumHeight + "px"
+          );
+        }
+        const clearance = state.drawerExpanded && !drawer.hidden
+          ? Math.max(0, Math.ceil(drawer.offsetHeight))
+          : 0;
+        if (clearance === state.eventOverlayClearance) {
+          return;
+        }
+        state.eventOverlayClearance = clearance;
+        document.documentElement.style.setProperty(
+          "--event-overlay-clearance",
+          clearance + "px"
+        );
+      }
+
+      function scheduleEventOverlayClearance() {
+        if (!state.drawerExpanded || drawer.hidden) {
+          if (state.eventOverlayFrame !== null) {
+            window.cancelAnimationFrame(state.eventOverlayFrame);
+            state.eventOverlayFrame = null;
+          }
+          syncEventOverlayClearance();
+          return;
+        }
+        if (state.eventOverlayFrame !== null) {
+          return;
+        }
+        state.eventOverlayFrame = window.requestAnimationFrame(() => {
+          state.eventOverlayFrame = null;
+          syncEventOverlayClearance();
+        });
+      }
+
+      function readDashboardStatSnapshot() {
+        const helper = dashboardMount.querySelector("#modern-training-helper");
+        if (!helper) {
+          return null;
+        }
+        const values = new Map();
+        helper.querySelectorAll("[data-stat-key][data-stat-value]").forEach(anchor => {
+          const key = String(anchor.dataset.statKey || "");
+          const value = Number(anchor.dataset.statValue);
+          if (key && Number.isFinite(value)) {
+            values.set(key, value);
+          }
+        });
+        return {
+          context: String(helper.dataset.statContext || ""),
+          turn: Number(helper.dataset.turn),
+          values
+        };
+      }
+
+      function scheduleStatDeltaCleanup() {
+        if (state.statDeltaTimer !== null) {
+          window.clearTimeout(state.statDeltaTimer);
+          state.statDeltaTimer = null;
+        }
+        let nextExpiry = Infinity;
+        const now = Date.now();
+        state.activeStatDeltas.forEach(entry => {
+          nextExpiry = Math.min(nextExpiry, entry.expiresAt);
+        });
+        if (Number.isFinite(nextExpiry)) {
+          state.statDeltaTimer = window.setTimeout(() => {
+            state.statDeltaTimer = null;
+            renderStatDeltas();
+          }, Math.max(0, nextExpiry - now) + 20);
+        }
+      }
+
+      function renderStatDeltas() {
+        dashboardMount.querySelectorAll(".modern-stat-delta").forEach(element => {
+          element.remove();
+        });
+
+        const now = Date.now();
+        const anchors = new Map();
+        dashboardMount.querySelectorAll("[data-stat-key][data-stat-value]").forEach(anchor => {
+          anchors.set(String(anchor.dataset.statKey || ""), anchor);
+        });
+        state.activeStatDeltas.forEach((entry, key) => {
+          if (entry.expiresAt <= now) {
+            state.activeStatDeltas.delete(key);
+            return;
+          }
+          const anchor = anchors.get(key);
+          if (!anchor) {
+            return;
+          }
+          const delta = document.createElement("span");
+          delta.className = "modern-stat-delta";
+          if (entry.delta < 0) {
+            delta.classList.add("is-negative");
+          }
+          delta.textContent = entry.delta > 0 ? `+${entry.delta}` : String(entry.delta);
+          delta.setAttribute("aria-hidden", "true");
+          delta.style.animationDelay = `-${Math.max(0, now - entry.startedAt)}ms`;
+          anchor.append(delta);
+        });
+        scheduleStatDeltaCleanup();
+      }
+
+      function updateDashboardStatDeltas() {
+        const nextSnapshot = readDashboardStatSnapshot();
+        const previousSnapshot = state.statSnapshot;
+        const contextChanged = Boolean(
+          previousSnapshot
+          && nextSnapshot
+          && previousSnapshot.context !== nextSnapshot.context
+        );
+        const careerRestarted = Boolean(
+          previousSnapshot
+          && nextSnapshot
+          && Number.isFinite(previousSnapshot.turn)
+          && Number.isFinite(nextSnapshot.turn)
+          && nextSnapshot.turn < previousSnapshot.turn
+        );
+
+        if (!nextSnapshot || contextChanged || careerRestarted) {
+          state.activeStatDeltas.clear();
+        } else if (previousSnapshot) {
+          const now = Date.now();
+          nextSnapshot.values.forEach((value, key) => {
+            if (!previousSnapshot.values.has(key)) {
+              return;
+            }
+            const delta = value - previousSnapshot.values.get(key);
+            if (delta !== 0) {
+              state.activeStatDeltas.set(key, {
+                delta,
+                startedAt: now,
+                expiresAt: now + STAT_DELTA_LIFETIME_MS
+              });
+            }
+          });
+        }
+        state.statSnapshot = nextSnapshot;
+        renderStatDeltas();
+      }
+
+      function resetEventContentScroll() {
+        if (state.drawerExpanded) {
+          eventContent.scrollTop = 0;
+          eventContent.scrollLeft = 0;
+        }
+      }
+
+      function wheelDeltaPixels(event, axis, scroller) {
+        let delta = axis === "x" ? event.deltaX : event.deltaY;
+        if (event.deltaMode === 1) {
+          delta *= 16;
+        } else if (event.deltaMode === 2) {
+          delta *= axis === "x" ? scroller.clientWidth : scroller.clientHeight;
+        }
+        return delta;
+      }
+
+      function scrollOnlyHoveredPanel(event, scroller) {
+        if (event.ctrlKey) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        scroller.scrollTop += wheelDeltaPixels(event, "y", scroller);
+        scroller.scrollLeft += wheelDeltaPixels(event, "x", scroller);
+      }
+
+      function syncFallbackHeight() {
+        if (state.eventActive && !fallback.hidden) {
+          applyEventContentHeight(Math.max(120, fallback.scrollHeight));
+        }
+      }
+
+      function safeText(value) {
+        if (value === null || value === undefined) {
+          return "";
+        }
+        if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+          return String(value);
+        }
+        try {
+          return JSON.stringify(value);
+        } catch (_error) {
+          return String(value);
+        }
+      }
+
+      function appendTextElement(parent, tagName, className, value) {
+        const element = document.createElement(tagName);
+        if (className) {
+          element.className = className;
+        }
+        element.textContent = safeText(value);
+        parent.appendChild(element);
+        return element;
+      }
+
+      function choiceText(choice, index) {
+        if (choice === null || typeof choice !== "object") {
+          return safeText(choice);
+        }
+        const label = choice.label ?? choice.choice ?? choice.name ?? choice.text ?? `Choice ${index + 1}`;
+        const outcome = choice.outcome ?? choice.reward ?? choice.details
+          ?? choice.description ?? choice.summary ?? "";
+        return outcome ? `${safeText(label)}\n${safeText(outcome)}` : safeText(label);
+      }
+
+      function appendSemanticTokens(parent, text) {
+        const semanticTokenPattern = /([+-]\d+(?:\.\d+)?%?|\bgains?\b)/gi;
+        let cursor = 0;
+        let match;
+        let hasSignedValue = false;
+        while ((match = semanticTokenPattern.exec(text)) !== null) {
+          if (match.index > cursor) {
+            parent.appendChild(document.createTextNode(text.slice(cursor, match.index)));
+          }
+          if (match[0].startsWith("+") || match[0].startsWith("-")) {
+            hasSignedValue = true;
+            const valueTone = match[0].startsWith("-") ? "negative" : "positive";
+            appendTextElement(
+              parent,
+              "span",
+              `semantic-value is-${valueTone}`,
+              match[0]
+            );
+          } else {
+            appendTextElement(parent, "span", "semantic-gain", match[0]);
+          }
+          cursor = match.index + match[0].length;
+        }
+        if (cursor < text.length) {
+          parent.appendChild(document.createTextNode(text.slice(cursor)));
+        }
+        return hasSignedValue;
+      }
+
+      function appendSemanticText(parent, value, tone = "neutral", highlights = []) {
+        const text = safeText(value);
+        const highlightSignedValues = tone !== "hint";
+        const highlightValues = [...new Set(
+          (Array.isArray(highlights) ? highlights : [])
+            .map(safeText)
+            .filter(Boolean)
+        )].sort((left, right) => right.length - left.length);
+        const highlightRanges = [];
+        highlightValues.forEach(highlight => {
+          let fromIndex = 0;
+          while (fromIndex < text.length) {
+            const index = text.indexOf(highlight, fromIndex);
+            if (index < 0) {
+              break;
+            }
+            const end = index + highlight.length;
+            const overlaps = highlightRanges.some(range => (
+              index < range.end && end > range.index
+            ));
+            if (!overlaps) {
+              highlightRanges.push({index, end, text: highlight});
+            }
+            fromIndex = end;
+          }
+        });
+        highlightRanges.sort((left, right) => left.index - right.index);
+
+        let cursor = 0;
+        let hasSignedValue = false;
+        highlightRanges.forEach(range => {
+          if (range.index > cursor) {
+            const leadingText = text.slice(cursor, range.index);
+            if (highlightSignedValues) {
+              hasSignedValue = appendSemanticTokens(parent, leadingText)
+                || hasSignedValue;
+            } else {
+              parent.appendChild(document.createTextNode(leadingText));
+            }
+          }
+          appendTextElement(parent, "span", "semantic-skill", range.text);
+          cursor = range.end;
+        });
+        if (cursor < text.length) {
+          const trailingText = text.slice(cursor);
+          if (highlightSignedValues) {
+            hasSignedValue = appendSemanticTokens(parent, trailingText)
+              || hasSignedValue;
+          } else {
+            parent.appendChild(document.createTextNode(trailingText));
+          }
+        }
+        if (hasSignedValue) {
+          parent.classList.add("has-signed-value");
+        }
+        if (["positive", "negative", "hint"].includes(tone)) {
+          parent.classList.add(`is-${tone}`);
+        }
+      }
+
+      function isSupportChainEndText(value) {
+        return /^end this support card['’]s chain event[.!]?$/i.test(
+          safeText(value).trim()
+        );
+      }
+
+      function appendGametoraEvent(parent, event) {
+        const outcomes = Array.isArray(event?.outcomes) ? event.outcomes : [];
+        const list = document.createElement("div");
+        list.className = "gametora-outcomes";
+        outcomes.forEach((outcome, index) => {
+          if (!outcome || !Array.isArray(outcome.lines) || !outcome.lines.length) {
+            return;
+          }
+          const card = document.createElement("section");
+          card.className = "gametora-outcome";
+          const label = `Choice ${index + 1}/${outcomes.length}`
+            + (outcome.label ? ` · ${safeText(outcome.label)}` : "");
+          appendTextElement(card, "div", "gametora-choice-label", label);
+          const rewardLines = document.createElement("div");
+          rewardLines.className = "gametora-reward-lines";
+          outcome.lines.forEach(line => {
+            const lineData = line && typeof line === "object" ? line : {text: line};
+            const rewardLine = document.createElement("div");
+            rewardLine.className = `gametora-reward-line${lineData.owned ? " is-owned" : ""}`;
+            if (isSupportChainEndText(lineData.text)) {
+              rewardLine.classList.add("is-chain-end");
+            }
+            appendSemanticText(rewardLine, lineData.text);
+            rewardLines.appendChild(rewardLine);
+          });
+          card.appendChild(rewardLines);
+          list.appendChild(card);
+        });
+        parent.appendChild(list);
+      }
+
+      function renderFallback() {
+        fallback.replaceChildren();
+        const payload = state.payload && typeof state.payload === "object" ? state.payload : {};
+        if (payload.gametoraEvent && Array.isArray(payload.gametoraEvent.outcomes)) {
+          appendGametoraEvent(fallback, payload.gametoraEvent);
+          syncFallbackHeight();
+          return;
+        }
+        const title = payload.fallbackTitle ?? payload.title ?? "Event information unavailable";
+        const message = payload.fallbackMessage ?? payload.message
+          ?? "The GameTora event source is not available. The helper will keep this safe fallback open.";
+        appendTextElement(fallback, "h2", "", title);
+        appendTextElement(fallback, "p", "", message);
+
+        if (Array.isArray(payload.choices) && payload.choices.length) {
+          appendTextElement(fallback, "div", "fallback-section-title", "Choices");
+          const list = document.createElement("ul");
+          payload.choices.forEach((choice, index) => {
+            appendTextElement(list, "li", "", choiceText(choice, index));
+          });
+          fallback.appendChild(list);
+        }
+        syncFallbackHeight();
+      }
+
+      function closeHintDialog() {
+        hintBackdrop.hidden = true;
+        if (hintReturnFocus && document.contains(hintReturnFocus)) {
+          hintReturnFocus.focus();
+        }
+        hintReturnFocus = null;
+      }
+
+      function openHintDialog(button) {
+        let details;
+        try {
+          details = JSON.parse(button.dataset.hintDetails || "{}");
+        } catch (_error) {
+          details = {};
+        }
+        hintReturnFocus = button;
+        hintDialogTitle.textContent = safeText(details.title || "Possible skill hints");
+        hintDialogMessage.textContent = safeText(details.message || "");
+        hintDialogMessage.hidden = !hintDialogMessage.textContent;
+        hintSkillList.replaceChildren();
+        const skills = Array.isArray(details.skills) ? details.skills : [];
+        skills.forEach(skill => {
+          const item = document.createElement("li");
+          appendTextElement(item, "span", "hint-skill-name", skill.name || "Unknown skill");
+          let stateText = "Available";
+          let stateClass = "";
+          if (skill.acquired) {
+            stateText = "Acquired";
+            stateClass = "acquired";
+          } else if (skill.hinted) {
+            const level = Number(skill.hint_level || 0);
+            stateText = level > 0 ? `Hint Lv ${level}` : "Hinted";
+            stateClass = "hinted";
+          }
+          appendTextElement(item, "span", `hint-skill-state ${stateClass}`.trim(), stateText);
+          hintSkillList.appendChild(item);
+        });
+        hintBackdrop.hidden = false;
+        hintDialogClose.focus();
+      }
+
+      function setDrawerExpanded(expanded) {
+        state.drawerExpanded = Boolean(expanded && state.eventActive);
+        drawer.hidden = !state.drawerExpanded;
+        reopenButton.hidden = state.drawerExpanded || !state.eventActive;
+        eventRegion.classList.toggle("is-active", state.eventActive);
+        dashboardScroll.classList.toggle("has-event-overlay", state.drawerExpanded);
+        helperToolbar.classList.toggle("is-event-obscured", state.drawerExpanded);
+        if (state.drawerExpanded) {
+          syncFallbackHeight();
+        }
+        scheduleEventOverlayClearance();
+      }
+
+      function readOpenGeneration(payload) {
+        const candidate = Number(payload && payload.generation);
+        if (Number.isSafeInteger(candidate) && candidate >= 0) {
+          return candidate;
+        }
+        return state.generation + 1;
+      }
+
+      function generationMatches(generation) {
+        const candidate = Number(generation);
+        return Number.isSafeInteger(candidate) && candidate === state.generation;
+      }
+
+      function normalizeEventChain(chain, fallbackTitle = "Event") {
+        const source = chain && typeof chain === "object" ? chain : {};
+        const total = Math.max(1, Number.isSafeInteger(Number(source.total))
+          ? Number(source.total) : 1);
+        const index = Math.max(0, Math.min(
+          total - 1,
+          Number.isSafeInteger(Number(source.index)) ? Number(source.index) : 0
+        ));
+        return {
+          title: safeText(source.title || fallbackTitle || "Event"),
+          index,
+          total
+        };
+      }
+
+      function syncEventChain(chain, fallbackTitle = "Event") {
+        state.eventChain = normalizeEventChain(chain, fallbackTitle);
+        drawerTitle.textContent = state.eventChain.title;
+        const hasChain = state.eventChain.total > 1;
+        chainPreviousButton.hidden = !hasChain;
+        chainNextButton.hidden = !hasChain;
+        chainPreviousButton.disabled = state.chainNavigationPending
+          || state.eventChain.index <= 0;
+        chainNextButton.disabled = state.chainNavigationPending
+          || state.eventChain.index >= state.eventChain.total - 1;
+      }
+
+      function requestChainNavigation(direction) {
+        if (
+          state.chainNavigationPending
+          || !state.eventActive
+          || !state.eventSourceAvailable
+          || ![-1, 1].includes(direction)
+        ) {
+          return;
+        }
+        state.chainNavigationPending = true;
+        syncEventChain(state.eventChain, drawerTitle.textContent);
+        postLocal("/event-chain-nav", JSON.stringify({
+          direction,
+          generation: state.generation
+        })).finally(() => {
+          state.chainNavigationPending = false;
+          syncEventChain(state.eventChain, drawerTitle.textContent);
+        });
+      }
+
+      window.UL_CONFIGURE = function UL_CONFIGURE(config = {}) {
+        applyHelperTheme(config.theme);
+        topmostToggle.checked = Boolean(config.topmost);
+        pairToggle.checked = Boolean(config.paired);
+
+        let configuredUrl = null;
+        try {
+          const candidate = new URL(String(config.gametoraUrl || ""));
+          if (candidate.protocol === "https:" || candidate.protocol === "http:") {
+            configuredUrl = candidate.href;
+          }
+        } catch (_error) {
+          configuredUrl = null;
+        }
+
+        state.configured = Boolean(configuredUrl);
+        state.eventSourceAvailable = false;
+        if (configuredUrl) {
+          eventFrame.src = configuredUrl;
+        } else {
+          eventFrame.removeAttribute("src");
+        }
+        renderFallback();
+        postScreenRect(true);
+        return state.configured;
+      };
+
+      window.UL_SET_THEME = function UL_SET_THEME(theme = {}) {
+        return applyHelperTheme(theme);
+      };
+
+      window.UL_SET_GAMETORA_LAYOUT_ACTIVE = function UL_SET_GAMETORA_LAYOUT_ACTIVE(
+        active
+      ) {
+        const enabled = Boolean(active);
+        drawer.classList.toggle("is-preparing-source", enabled);
+        eventFrame.classList.toggle("is-selecting-support", enabled);
+        return enabled;
+      };
+
+      window.UL_UPDATE_DASHBOARD = function UL_UPDATE_DASHBOARD(html, scheduleEnabled) {
+        const previousScrollTop = dashboardScroll.scrollTop;
+        dashboardMount.innerHTML = typeof html === "string" ? html : "";
+        scheduleButton.hidden = !Boolean(scheduleEnabled);
+        updateDashboardStatDeltas();
+        const maximumScrollTop = Math.max(
+          0,
+          dashboardScroll.scrollHeight - dashboardScroll.clientHeight
+        );
+        dashboardScroll.scrollTop = Math.min(previousScrollTop, maximumScrollTop);
+        scheduleEventOverlayClearance();
+        const helper = document.getElementById("modern-training-helper");
+        const style = helper ? getComputedStyle(helper) : null;
+        const gridWidth = Number.parseFloat(
+          style?.getPropertyValue("--mth-grid-width")
+        );
+        const contentWidth = Number.isFinite(gridWidth)
+          ? gridWidth + 2
+            + (Number.parseFloat(style.paddingLeft) || 0)
+            + (Number.parseFloat(style.paddingRight) || 0)
+          : 304;
+        return {
+          gridWidth: Number.isFinite(gridWidth) ? gridWidth : null,
+          contentWidth,
+          scrollbarWidth: Math.max(
+            0,
+            dashboardScroll.offsetWidth - dashboardScroll.clientWidth
+          ),
+          innerWidth: window.innerWidth
+        };
+      };
+
+      window.UL_OPEN_EVENT_DRAWER = function UL_OPEN_EVENT_DRAWER(payload = {}) {
+        const generation = readOpenGeneration(payload);
+        if (
+          generation < state.generation
+          || (generation === state.generation && !state.eventActive)
+        ) {
+          return false;
+        }
+        const isNewGeneration = generation !== state.generation;
+        state.generation = generation;
+        state.eventActive = true;
+        state.payload = payload && typeof payload === "object" ? payload : {};
+        if (isNewGeneration) {
+          state.eventSourceAvailable = false;
+          applyEventContentHeight(160);
+        }
+        if (Object.prototype.hasOwnProperty.call(state.payload, "eventSourceAvailable")) {
+          state.eventSourceAvailable = Boolean(state.payload.eventSourceAvailable);
+        }
+        syncEventChain(state.payload.chain, state.payload.title || "Event");
+        renderFallback();
+        setDrawerExpanded(true);
+        resetEventContentScroll();
+        return true;
+      };
+
+      window.UL_CLOSE_EVENT_DRAWER = function UL_CLOSE_EVENT_DRAWER(generation) {
+        if (!generationMatches(generation)) {
+          return false;
+        }
+        if (!state.eventActive) {
+          return true;
+        }
+        state.eventActive = false;
+        state.payload = null;
+        state.eventChain = null;
+        state.chainNavigationPending = false;
+        state.eventSourceAvailable = false;
+        setDrawerExpanded(false);
+        return true;
+      };
+
+      window.UL_SET_GAMETORA_EVENT = function UL_SET_GAMETORA_EVENT(
+        event,
+        chain,
+        generation
+      ) {
+        if (!state.eventActive || !generationMatches(generation)) {
+          return false;
+        }
+        state.payload = {
+          ...(state.payload && typeof state.payload === "object" ? state.payload : {}),
+          gametoraEvent: event,
+          eventSourceAvailable: true
+        };
+        state.eventSourceAvailable = true;
+        state.chainNavigationPending = false;
+        syncEventChain(chain, event?.title || drawerTitle.textContent);
+        renderFallback();
+        resetEventContentScroll();
+        return true;
+      };
+
+      function finishEventWindowRequest() {
+        if (state.eventWindowOpenTimer !== null) {
+          window.clearTimeout(state.eventWindowOpenTimer);
+          state.eventWindowOpenTimer = null;
+        }
+        state.eventWindowOpening = false;
+        eventsButton.disabled = false;
+        eventsButton.removeAttribute("aria-busy");
+        eventsButton.textContent = "Events";
+      }
+
+      window.UL_EVENT_WINDOW_OPEN_RESULT = function UL_EVENT_WINDOW_OPEN_RESULT() {
+        finishEventWindowRequest();
+        return true;
+      };
+
+      async function openEventWindow() {
+        if (state.eventWindowOpening) {
+          return;
+        }
+        state.eventWindowOpening = true;
+        eventsButton.disabled = true;
+        eventsButton.setAttribute("aria-busy", "true");
+        eventsButton.textContent = "Opening…";
+        state.eventWindowOpenTimer = window.setTimeout(
+          finishEventWindowRequest,
+          30000
+        );
+        const response = await postLocal("/open-event-window");
+        if (!response || !response.ok) {
+          finishEventWindowRequest();
+        }
+      }
+
+      skillsButton.addEventListener("click", () => postLocal("/open-skill-window"));
+      eventsButton.addEventListener("click", openEventWindow);
+      scheduleButton.addEventListener("click", () => postLocal("/open-schedule-window"));
+      topmostToggle.addEventListener("change", () => {
+        postLocal("/topmost", String(topmostToggle.checked));
+      });
+      pairToggle.addEventListener("change", () => {
+        postLocal("/pair", String(pairToggle.checked));
+      });
+      collapseButton.addEventListener("click", () => setDrawerExpanded(false));
+      reopenButton.addEventListener("click", () => {
+        setDrawerExpanded(true);
+        resetEventContentScroll();
+      });
+      chainPreviousButton.addEventListener("click", () => requestChainNavigation(-1));
+      chainNextButton.addEventListener("click", () => requestChainNavigation(1));
+      drawer.addEventListener(
+        "wheel",
+        event => scrollOnlyHoveredPanel(event, eventContent),
+        { passive: false }
+      );
+      dashboardScroll.addEventListener(
+        "wheel",
+        event => scrollOnlyHoveredPanel(event, dashboardScroll),
+        { passive: false }
+      );
+      dashboardMount.addEventListener("click", event => {
+        const button = event.target.closest(".modern-hint-partner[data-hint-details]");
+        if (button && dashboardMount.contains(button)) {
+          openHintDialog(button);
+        }
+      });
+      hintDialogClose.addEventListener("click", closeHintDialog);
+      hintBackdrop.addEventListener("click", event => {
+        if (event.target === hintBackdrop) closeHintDialog();
+      });
+      document.addEventListener("keydown", event => {
+        if (event.key === "Escape" && !hintBackdrop.hidden) {
+          event.preventDefault();
+          closeHintDialog();
+        }
+      });
+
+      window.addEventListener("resize", () => {
+        scheduleScreenRectPost();
+        scheduleEventOverlayClearance();
+      });
+      dashboardScroll.addEventListener(
+        "scroll",
+        scheduleEventOverlayClearance,
+        { passive: true }
+      );
+
+      if (typeof ResizeObserver === "function") {
+        const overlayResizeObserver = new ResizeObserver(
+          () => scheduleEventOverlayClearance()
+        );
+        overlayResizeObserver.observe(drawer);
+        overlayResizeObserver.observe(dashboardMount);
+      }
+
+      applyEventContentHeight(state.eventContentHeight);
+      renderFallback();
+      window.setInterval(() => postScreenRect(false), 2000);
+    })();
+  </script>
+</body>
+</html>

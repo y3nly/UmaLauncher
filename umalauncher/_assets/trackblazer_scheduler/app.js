@@ -6,6 +6,8 @@ let state = {
   windows: [],
   epithets: [],
   manual_locks: {},
+  launcher_controlled: false,
+  launcher_lock_keys: new Set(),
   current_selected: [],
   freeze_before_index: null,
   ranks: [],
@@ -14,11 +16,61 @@ let state = {
   years: [],
   halves: [],
   forced_epithets: [],
-  all_epithet_defs: []
+  all_epithet_defs: [],
+  extra_race_info: {},
+  default_settings: null
 };
 
 let autoSolveTimer = null;
 let solveSequence = 0;
+let schedulerReady = false;
+const pendingLauncherActions = [];
+
+function runWhenSchedulerReady(action) {
+  if (schedulerReady) {
+    action();
+    return;
+  }
+  pendingLauncherActions.push(action);
+}
+
+function flushPendingLauncherActions() {
+  schedulerReady = true;
+  while (pendingLauncherActions.length) {
+    pendingLauncherActions.shift()();
+  }
+}
+
+function cloneState(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+function resetSettingsToLauncherDefaults() {
+  if (!state.default_settings) return false;
+  const defaults = cloneState(state.default_settings);
+  state.settings = defaults;
+  state.forced_epithets = [];
+  loadSettingsToUI(defaults);
+  return true;
+}
+
+function beginLauncherControl({ resetSettings = false } = {}) {
+  let changed = false;
+  if (!state.launcher_controlled) {
+    state.launcher_controlled = true;
+    state.manual_locks = {};
+    state.launcher_lock_keys = new Set();
+    state.freeze_before_index = null;
+    state.extra_race_info = {};
+    localStorage.removeItem('uma-schedule');
+    resetSettings = true;
+    changed = true;
+  }
+  if (resetSettings && resetSettingsToLauncherDefaults()) {
+    changed = true;
+  }
+  return changed;
+}
 
 const ids = {
   preset: document.getElementById('preset'),  // hidden input for value
@@ -970,6 +1022,10 @@ function applyPayload(payload) {
 }
 
 function saveStateToStorage() {
+  if (state.launcher_controlled) {
+    localStorage.removeItem('uma-schedule');
+    return;
+  }
   try {
     const data = {
       s: settingsFromUI(),
@@ -1110,6 +1166,7 @@ async function init() {
 
   const [payload, allEpDefs] = await Promise.all([initialPayload(), getAllEpithetNames()]);
   state.all_epithet_defs = allEpDefs;
+  state.default_settings = cloneState(payload.settings);
   populateStaticControls(payload);
   renderForcedEpithetList();
 
@@ -1150,11 +1207,12 @@ async function init() {
   queueSolve(0);
 
   bindAutoSolveListeners();
+  flushPendingLauncherActions();
 }
 
 // Global API for UmaLauncher external injection
-window.setAutoSchedulerSettings = function (raceBonus, aptitudes) {
-  let changed = false;
+function applyAutoSchedulerSettings(raceBonus, aptitudes) {
+  let changed = beginLauncherControl();
 
   if (raceBonus != null && state.settings.race_bonus_pct !== raceBonus) {
     state.settings.race_bonus_pct = raceBonus;
@@ -1185,19 +1243,37 @@ window.setAutoSchedulerSettings = function (raceBonus, aptitudes) {
   if (changed) {
     queueSolve(0);
   }
+}
+
+window.setAutoSchedulerSettings = function (raceBonus, aptitudes) {
+  runWhenSchedulerReady(() => applyAutoSchedulerSettings(raceBonus, aptitudes));
 };
 
-window.syncCompletedRaces = function (completedRacesDict, currentTurnIndex, extraRaceInfo) {
-  let changed = false;
-  if (extraRaceInfo) {
-    state.extra_race_info = extraRaceInfo;
+function applyCompletedRaces(completedRacesDict, currentTurnIndex, extraRaceInfo) {
+  let changed = beginLauncherControl();
+
+  if (!changed || state.launcher_lock_keys.size) {
+    for (const key of state.launcher_lock_keys) {
+      if (state.manual_locks[key] !== undefined) {
+        delete state.manual_locks[key];
+        changed = true;
+      }
+    }
+    state.launcher_lock_keys = new Set();
+  }
+
+  const nextExtraRaceInfo = extraRaceInfo || {};
+  if (JSON.stringify(state.extra_race_info || {}) !== JSON.stringify(nextExtraRaceInfo)) {
+    state.extra_race_info = nextExtraRaceInfo;
     changed = true;
   }
+
   for (const [turnStr, raceName] of Object.entries(completedRacesDict)) {
     if (state.manual_locks[turnStr] !== raceName) {
       state.manual_locks[turnStr] = raceName;
       changed = true;
     }
+    state.launcher_lock_keys.add(turnStr);
   }
 
   // Auto-lock blanks for missing races if we have advanced past their turns?
@@ -1211,6 +1287,9 @@ window.syncCompletedRaces = function (completedRacesDict, currentTurnIndex, extr
         state.manual_locks[String(i)] = '[No race]';
         changed = true;
       }
+      if (!completedRacesDict[String(i)]) {
+        state.launcher_lock_keys.add(String(i));
+      }
     }
   }
 
@@ -1222,15 +1301,28 @@ window.syncCompletedRaces = function (completedRacesDict, currentTurnIndex, extr
   if (changed) {
     queueSolve(0);
   }
+}
+
+window.syncCompletedRaces = function (completedRacesDict, currentTurnIndex, extraRaceInfo) {
+  runWhenSchedulerReady(() => applyCompletedRaces(completedRacesDict, currentTurnIndex, extraRaceInfo));
 };
 
-window.clearCompletedRaces = function () {
+function clearLauncherCompletedRaces() {
+  beginLauncherControl({ resetSettings: true });
+  state.launcher_lock_keys = new Set();
   state.manual_locks = {};
+  state.extra_race_info = {};
   for (const idx of DEFAULT_SUMMER_BLOCKS) {
     state.manual_locks[String(idx)] = '[No race]';
+    state.launcher_lock_keys.add(String(idx));
   }
   state.freeze_before_index = null;
+  localStorage.removeItem('uma-schedule');
   queueSolve(0);
+}
+
+window.clearCompletedRaces = function () {
+  runWhenSchedulerReady(() => clearLauncherCompletedRaces());
 };
 
 init().catch(err => {

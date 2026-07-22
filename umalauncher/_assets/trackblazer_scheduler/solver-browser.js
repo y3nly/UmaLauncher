@@ -1,4 +1,4 @@
-import GLPK from 'https://cdn.jsdelivr.net/npm/glpk.js@5.0.0/dist/index.js';
+import GLPK from './vendor/glpk.js-5.0.0/index.js';
 
 const glpkPromise = GLPK();
 
@@ -168,8 +168,8 @@ function clone(obj) {
 async function loadData() {
   if (DATA) return DATA;
   const [races, epithets, glpk] = await Promise.all([
-    fetch('races.json').then(r => r.json()),
-    fetch('epithets.json').then(r => r.json()),
+    fetch('races.json', { cache: 'no-store' }).then(r => r.json()),
+    fetch('epithets.json', { cache: 'no-store' }).then(r => r.json()),
     glpkPromise
   ]);
 

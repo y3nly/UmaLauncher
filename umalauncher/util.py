@@ -2,18 +2,13 @@ import os
 import sys
 import base64
 import io
-import ctypes
 import win32event
-from SteamPathFinder import get_app_path, get_steam_path, get_game_path
-from win32com.shell.shell import ShellExecuteEx
-from win32com.shell import shellcon
+from SteamPathFinder import get_steam_path, get_game_path
 import win32con
 import win32process
 from PIL import Image
 from loguru import logger
-import json
 import constants
-import shutil
 
 ignore_errors = False
 
@@ -27,12 +22,7 @@ if hasattr(sys, "_MEIPASS"):
     os.chdir(relative_dir)
 is_debug = is_script
 
-if 'IS_UL_GLOBAL' in os.environ:
-    appdata_dir = os.path.expandvars("%AppData%\\Uma-Launcher-Global\\")
-elif 'IS_JP_STEAM' in os.environ:
-    appdata_dir = os.path.expandvars("%AppData%\\Uma-Launcher-JP-Steam\\")
-else:
-    appdata_dir = os.path.expandvars("%AppData%\\Uma-Launcher\\")
+appdata_dir = os.path.expandvars("%AppData%\\Uma-Launcher-Global\\")
 
 if is_script:
     appdata_dir = os.path.join(relative_dir, "appdata")
@@ -52,7 +42,15 @@ def get_relative(relative_path):
 def get_asset(asset_path):
     """Gets the absolute path of an asset relative to the unpack directory.
     """
-    return os.path.join(unpack_dir, asset_path)
+    path = os.path.join(unpack_dir, asset_path)
+    if is_script and not os.path.exists(path):
+        source_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            asset_path,
+        )
+        if os.path.exists(source_path):
+            return source_path
+    return path
 
 
 
@@ -86,134 +84,37 @@ import win32gui
 import win32con
 import traceback
 import math
-import time
 import requests
 from pywintypes import error as pywinerror  # pylint: disable=no-name-in-module
 from PIL import Image
-import numpy as np
 import mdb
 import gui
 
 TRAINING_LOGS_FOLDER = get_appdata("training_logs")
 
-last_failed_request = None
-has_failed_once = False
 def do_get_request(url, error_title=None, error_message=None, ignore_timeout=False):
-    global last_failed_request
-    global has_failed_once
-
     try:
-        if not ignore_timeout and last_failed_request is not None:
-            # Ignore everything from umapyoi.net for 5 minutes to avoid spamming requests.
-            if time.perf_counter() - last_failed_request > 60 * 5:
-                last_failed_request = None
-            else:
-                return None
         logger.debug(f"GET request to {url}")
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         return response
-    except:
+    except Exception:
         logger.warning(f"Failed to connect to {url}")
         logger.warning(traceback.format_exc())
-        if ignore_timeout or not has_failed_once:
-            has_failed_once = True
-            logger.warning(traceback.format_exc())
-            show_warning_box(
-                "Failed to connect to server" if error_title is None else error_title,
-                "Uma Launcher failed to connect to umapyoi.net to load English translations.<br>You can still use Uma Launcher, but some text (rich presence, CSV) may be in Japanese." if error_message is None else error_message
-            )
-        if not ignore_timeout:
-            last_failed_request = time.perf_counter()
+        show_warning_box(
+            "Failed to connect to server" if error_title is None else error_title,
+            "The requested server could not be reached." if error_message is None else error_message
+        )
         return None
 
 
 def get_game_folder():
-    game_data = None
     try:
-        if 'IS_UL_GLOBAL' in os.environ:
-            steam_path = get_steam_path()
-            app_id = "3224770"
-            game_name = "UmamusumePrettyDerby"
-            try:
-                return get_game_path(steam_path, app_id, game_name)
-            except FileNotFoundError as e:
-                logger.error("Could not locate steam game directory!")
-                logger.error(traceback.format_exc())
-                return None
-        elif 'IS_JP_STEAM' in os.environ:
-            steam_path = get_steam_path()
-            app_id = "3564400"
-            game_name = "UmamusumePrettyDerby_Jpn"
-            try:
-                return get_game_path(steam_path, app_id, game_name)
-            except FileNotFoundError as e:
-                logger.error( "Could not locate steam JP game directory!" )
-                logger.error(traceback.format_exc())
-                return None
-        else:
-            with open(os.path.expandvars("%AppData%\\dmmgameplayer5\\dmmgame.cnf"), "r", encoding='utf-8') as f:
-                game_data = json.loads(f.read())
-    except OSError as e:
-        logger.error( "Could not locate DMM game directory!")
+        return get_game_path(get_steam_path(), "3224770", "UmamusumePrettyDerby")
+    except (FileNotFoundError, OSError):
+        logger.error("Could not locate the Global Steam game directory.")
         logger.error(traceback.format_exc())
-        show_error_box_no_report("Error", "Could not locate game directory (tried reading %AppData%\\dmmgameplayer5\\dmmgame.cnf).<br> Make sure that you have DMM Game Player installed.")
         return None
-
-    if not game_data or not game_data.get('contents'):
-        return None
-    
-    path = None
-    for game in game_data['contents']:
-        if game.get('productId') == 'umamusume':
-            path = game.get('detail', {}).get('path', None)
-            break
-    
-    return path
-
-
-def fetch_latest_github_release(username, repo, prerelease=False):
-    url = f'https://umapyoi.net/api/v1/github/{username}/{repo}/releases'
-    try:
-        r = requests.get(url)
-        r.raise_for_status()
-        if not (200 <= r.status_code < 300):
-            raise Exception("Umapyoi.net API request failed")
-        data = r.json()
-    except:
-        # Fallback to github api
-        url = f'https://api.github.com/repos/{username}/{repo}/releases'
-        r = requests.get(url)
-        r.raise_for_status()
-        if not (200 <= r.status_code < 300):
-            raise Exception("Github API request failed")
-        data = r.json()
-    cur_version = None
-    for version in data:
-        if version['prerelease'] and not prerelease:
-            continue
-        cur_version = version
-        break
-
-    if not cur_version:
-        raise Exception("No release found")
-    
-    return cur_version
-
-
-def download_file(url, path):
-    tmp_path = path + ".tmp"
-
-    if os.path.exists(tmp_path):
-        os.remove(tmp_path)
-
-    with requests.get(url, stream=True) as r:
-        r.raise_for_status()
-        with open(tmp_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
-    
-    shutil.move(tmp_path, path)
 
 def open_folder(path):
     try:
@@ -353,13 +254,7 @@ def get_window_handle_from_pid( pid: int ) -> str:
     return window_handle
 
 def get_game_handle():
-    return get_window_handle("umamusume", type=EXACT)
-
-def get_game_handle_global():
     return get_window_handle("Umamusume", type=EXACT)
-
-def get_game_handle_jp_steam():
-    return get_window_handle("UmamusumePrettyDerby_Jpn", type=EXACT)
 
 
 def get_position_rgb(image: Image.Image, position: tuple[float,float]) -> tuple[int,int,int]:
@@ -464,37 +359,11 @@ def is_minimized(handle):
         # Default to it being minimized as to not save the game window.
         return True
 
-downloaded_chara_dict = {}
 def get_character_name_dict(force=False):
-    global downloaded_chara_dict
+    return mdb.get_chara_name_dict(force=force)
 
-    if force or not downloaded_chara_dict:
-        chara_dict = mdb.get_chara_name_dict()
-        response = do_get_request("https://umapyoi.net/api/v1/character/names")
-        if not response:
-            return chara_dict
-
-        for character in response.json():
-            chara_dict[character['game_id']] = character['name']
-
-        downloaded_chara_dict.update(chara_dict)
-    return downloaded_chara_dict
-
-downloaded_outfit_dict = {}
 def get_outfit_name_dict(force=False):
-    global downloaded_outfit_dict
-
-    if force or not downloaded_outfit_dict:
-        outfit_dict = mdb.get_outfit_name_dict()
-        response = do_get_request("https://umapyoi.net/api/v1/outfit")
-        if not response:
-            return outfit_dict
-
-        for outfit in response.json():
-            outfit_dict[outfit['id']] = outfit['title']
-
-        downloaded_outfit_dict.update(outfit_dict)
-    return downloaded_outfit_dict
+    return mdb.get_outfit_name_dict(force=force)
 
 downloaded_race_name_dict = {}
 def get_race_name_dict(force=False):
@@ -506,15 +375,26 @@ def get_race_name_dict(force=False):
         
     return downloaded_race_name_dict
 
-def create_gametora_helper_url(card_id, scenario_id, support_ids, language="English", server="ja"):
+def _base36(value):
+    alphabet = "0123456789abcdefghijklmnopqrstuvwxyz"
+    value = int(value)
+    if value == 0:
+        return "0"
+    digits = []
+    while value:
+        value, remainder = divmod(value, 36)
+        digits.append(alphabet[remainder])
+    return "".join(reversed(digits))
+
+
+def create_gametora_helper_url(card_id, scenario_id, support_ids):
     support_ids = list(map(str, support_ids))
     if len(support_ids) < 6:
         logger.error("Support_ids list does not contain 6 items!")
         logger.error(support_ids)
         # Pad it to length of 6 with zeros
         support_ids += ['0'] * (6 - len(support_ids))
-    language_segment = constants.GT_LANGUAGE_URL_DICT.get(language, "")
-    return f"https://gametora.com/{language_segment}umamusume/training-event-helper?deck={np.base_repr(int(str(card_id) + str(scenario_id)), 36)}-{np.base_repr(int(support_ids[0] + support_ids[1] + support_ids[2]), 36)}-{np.base_repr(int(support_ids[3] + support_ids[4] + support_ids[5]), 36)}&server={server}".lower()
+    return f"https://gametora.com/umamusume/training-event-helper?deck={_base36(str(card_id) + str(scenario_id))}-{_base36(support_ids[0] + support_ids[1] + support_ids[2])}-{_base36(support_ids[3] + support_ids[4] + support_ids[5])}&server=en".lower()
 
 gm_fragment_dict = {}
 def get_gm_fragment_dict(force=False):
@@ -604,7 +484,10 @@ def get_gl_token_dict(force=False):
 
     if force or not gl_token_dict:
         logger.debug("Loading Grand Live token images...")
-        gl_token_dict.update(assets_folder_images_to_dict("_assets/gl/tokens", (36, 36)))
+        token_folder = "_assets/gl/tokens"
+        if not os.path.exists(get_asset(token_folder)):
+            return gl_token_dict
+        gl_token_dict.update(assets_folder_images_to_dict(token_folder, (36, 36)))
 
     return gl_token_dict
 
@@ -654,50 +537,12 @@ def get_group_support_id_to_passion_zone_effect_id_dict(force=False):
 
     return GROUP_SUPPORT_ID_TO_PASSION_ZONE_EFFECT_ID_DICT
 
-def heroes_score_to_league_string(score):
-    current_league = list(constants.HEROES_SCORE_TO_LEAGUE_DICT.keys())[0]
-    for score_threshold, league in constants.HEROES_SCORE_TO_LEAGUE_DICT.items():
-        if score >= score_threshold:
-            current_league = league
-        else:
-            break
-    return current_league
-
-def scouting_score_to_rank_string(score):
-    current_rank = list(mdb.get_scouting_score_to_rank_dict().keys())[0]
-    for score_threshold, rank in mdb.get_scouting_score_to_rank_dict().items():
-        if score >= score_threshold:
-            current_rank = rank
-        else:
-            break
-    return current_rank
-
-UPDATE_FUNCS = [
-    get_character_name_dict,
-    get_outfit_name_dict,
-    get_race_name_dict,
-    get_gm_fragment_dict,
-    get_uaf_sport_image_dict,
-    get_uaf_genre_image_dict,
-    get_gff_veg_image_dict,
-    get_gl_token_dict,
-    get_rmu_image_dict,
-    get_dreams_image_dict,
-    get_group_support_id_to_passion_zone_effect_id_dict,
-]
-
 def get_game_variant_string():
-    if 'IS_UL_GLOBAL' in os.environ:
-        return "Global"
-    elif 'IS_JP_STEAM' in os.environ:
-        return "JP Steam"
-    else:
-        return "DMM"
+    return "Global"
 
 commit_hash = None
 branch = None
 build_date = None
-remote_url  = None
 def get_commit_hash(force=False):
     global commit_hash
     if force or commit_hash is None:
@@ -725,15 +570,5 @@ def get_build_date(force=False):
         if os.path.exists(file_path):
             build_date = open(file_path, 'r').read().strip()
     if build_date is None:
-        return "(Unknown)"
-    return build_date
-
-def get_remote_url(force=False):
-    global remote_url
-    if force or remote_url is None:
-        file_path = get_asset("_assets/remote_url.txt")
-        if os.path.exists(file_path):
-            remote_url = open(file_path, 'r').read().strip()
-    if remote_url is None:
         return "(Unknown)"
     return build_date

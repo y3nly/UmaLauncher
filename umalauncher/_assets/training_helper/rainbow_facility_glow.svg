@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <filter id="soft-glow" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="1.15"/>
+    </filter>
+  </defs>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" transform="rotate(-90 32 32)">
+    <g stroke-width="8" filter="url(#soft-glow)" opacity="0.48">
+      <rect x="8" y="8" width="48" height="48" rx="13" pathLength="100" stroke="#39dcff" stroke-dasharray="25.5 74.5" stroke-dashoffset="0"/>
+      <rect x="8" y="8" width="48" height="48" rx="13" pathLength="100" stroke="#ddf34e" stroke-dasharray="25.5 74.5" stroke-dashoffset="-25"/>
+      <rect x="8" y="8" width="48" height="48" rx="13" pathLength="100" stroke="#43d5ed" stroke-dasharray="25.5 74.5" stroke-dashoffset="-50"/>
+      <rect x="8" y="8" width="48" height="48" rx="13" pathLength="100" stroke="#ff55c6" stroke-dasharray="25.5 74.5" stroke-dashoffset="-75"/>
+    </g>
+    <g stroke-width="3" opacity="0.82">
+      <rect x="8" y="8" width="48" height="48" rx="13" pathLength="100" stroke="#58e8ff" stroke-dasharray="25.5 74.5" stroke-dashoffset="0"/>
+      <rect x="8" y="8" width="48" height="48" rx="13" pathLength="100" stroke="#eaf968" stroke-dasharray="25.5 74.5" stroke-dashoffset="-25"/>
+      <rect x="8" y="8" width="48" height="48" rx="13" pathLength="100" stroke="#63e7f5" stroke-dasharray="25.5 74.5" stroke-dashoffset="-50"/>
+      <rect x="8" y="8" width="48" height="48" rx="13" pathLength="100" stroke="#ff73d2" stroke-dasharray="25.5 74.5" stroke-dashoffset="-75"/>
+    </g>
+    <rect x="8" y="8" width="48" height="48" rx="13" stroke="#fff" stroke-width="0.8" opacity="0.52"/>
+  </g>
+</svg>

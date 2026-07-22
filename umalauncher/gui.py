@@ -65,7 +65,7 @@ def stop_application():
 class UmaApp():
     def __init__(self):
         self.app = qtw.QApplication([])
-        self.app.setWindowIcon(qtg.QIcon(util.get_asset("_assets/icon/default.ico")))
+        self.app.setWindowIcon(qtg.QIcon(util.get_asset("_assets/icon/global/default.ico")))
         self.main_widget = None
 
         self.init_app()
@@ -567,6 +567,8 @@ class UmaNewPresetDialog(UmaMainDialog):
 class UmaSettingsDialog(UmaMainDialog):
     def init_ui(self, settings_var, tab=" General", window_title="Change options", command_dict={}, width_delta=0, *args, **kwargs):
         self.setting_elements = {}
+        self.setting_group_boxes = {}
+        self.setting_input_widgets = {}
         self.settings_var = settings_var
         self.tab = tab
         self.command_dict = command_dict
@@ -622,6 +624,9 @@ class UmaSettingsDialog(UmaMainDialog):
             else:
                 self.verticalLayout.removeItem(self.verticalLayout.itemAt(i))
 
+        self.setting_group_boxes = {}
+        self.setting_input_widgets = {}
+
         # Adding group boxes to the scroll area
         settings_keys = self.settings_var[0].keys()
         last_setting = settings_keys[-1]
@@ -632,7 +637,7 @@ class UmaSettingsDialog(UmaMainDialog):
             if setting.hidden or setting.tab != self.tab:
                 continue
 
-            group_box, value_func = self.add_group_box(setting)
+            group_box, value_func = self.add_group_box(setting, setting_key)
 
             if not group_box:
                 continue
@@ -642,6 +647,8 @@ class UmaSettingsDialog(UmaMainDialog):
             if value_func:
                 self.setting_elements[setting_key] = value_func
 
+            self.setting_group_boxes[setting_key] = group_box
+
             if setting_key == last_setting:
                 self.verticalLayout.addWidget(group_box, 0, qtc.Qt.AlignTop)
             else:
@@ -649,12 +656,37 @@ class UmaSettingsDialog(UmaMainDialog):
         
         self.verticalSpacer = qtw.QSpacerItem(0, 0, qtw.QSizePolicy.Minimum, qtw.QSizePolicy.Expanding)
         self.verticalLayout.addItem(self.verticalSpacer)
+
+        self.configure_helper_theme_controls()
+
+    def configure_helper_theme_controls(self):
+        theme_widgets = self.setting_input_widgets.get("helper_theme", [])
+        if not theme_widgets:
+            return
+
+        theme_combobox = theme_widgets[0]
+        color_setting_keys = (
+            "helper_theme_text_color",
+            "helper_theme_border_color",
+            "helper_theme_background_color",
+            "helper_theme_panel_color",
+        )
+
+        def update_color_controls(theme_index):
+            custom_theme_selected = theme_index == 1
+            for setting_key in color_setting_keys:
+                group_box = self.setting_group_boxes.get(setting_key)
+                if group_box:
+                    group_box.setEnabled(custom_theme_selected)
+
+        theme_combobox.currentIndexChanged.connect(update_color_controls)
+        update_color_controls(theme_combobox.currentIndex())
     
     def restore_defaults(self):
         default_settings_var = type(self.settings_var[0])()
         for setting_key in default_settings_var.keys():
             setting = getattr(default_settings_var, setting_key)
-            if setting.priority < 0 or setting.tab != self.tab:
+            if setting.hidden or setting.tab != self.tab:
                 continue
             logger.debug(f"Resetting {setting_key} to {setting.value}")
             getattr(self.settings_var[0], setting_key).value = setting.value
@@ -677,7 +709,7 @@ class UmaSettingsDialog(UmaMainDialog):
             self.settings_var[0][key].value = value
         return True
 
-    def add_group_box(self, setting):
+    def add_group_box(self, setting, setting_key=None):
         # If the setting is a divider, add a horizontal line.
         if setting.type == se.SettingType.DIVIDER:
             line = qtw.QFrame(self.scrollAreaWidgetContents)
@@ -756,6 +788,9 @@ class UmaSettingsDialog(UmaMainDialog):
         for input_widget in input_widgets:
             if input_widget:
                 horizontalLayout.addWidget(input_widget)
+
+        if setting_key:
+            self.setting_input_widgets[setting_key] = input_widgets
 
         return grp_setting, value_func
 
@@ -900,11 +935,24 @@ class UmaSettingsDialog(UmaMainDialog):
         lne_color_hex.setText(setting.value)
         lne_color_hex.setMaxLength(7)
 
+        def normalize_hex_color(value):
+            value = value.strip()
+            if not value.startswith("#") and len(value) == 6:
+                value = "#" + value
+            if (
+                len(value) == 7
+                and value.startswith("#")
+                and all(
+                    character in "0123456789abcdefABCDEF"
+                    for character in value[1:]
+                )
+            ):
+                return value.upper()
+            return None
+
         def update_color():
-            tmp_color = lne_color_hex.text()
-            if not tmp_color.startswith("#") and len(tmp_color) == 6 and tmp_color.isalnum():
-                tmp_color = "#" + tmp_color
-            if tmp_color.startswith("#") and len(tmp_color) == 7 and tmp_color[1:].isalnum():
+            tmp_color = normalize_hex_color(lne_color_hex.text())
+            if tmp_color:
                 lbl_picked_color.setStyleSheet(f"background-color: {tmp_color};")
 
         lne_color_hex.textChanged.connect(update_color)
@@ -928,13 +976,8 @@ class UmaSettingsDialog(UmaMainDialog):
         btn_pick_color.clicked.connect(pick_color)
 
         def get_color():
-            out_color = None
-            tmp_color = lne_color_hex.text()
-            if not tmp_color.startswith("#") and len(tmp_color) == 6 and tmp_color.isalnum():
-                tmp_color = "#" + tmp_color
-            if tmp_color.startswith("#") and len(tmp_color) == 7 and tmp_color[1:].isalnum():
-                out_color = tmp_color
-            else:
+            out_color = normalize_hex_color(lne_color_hex.text())
+            if not out_color:
                 raise ValueError("Invalid color format")
             return out_color
 
@@ -1073,7 +1116,6 @@ class UmaPreferences(UmaMainWidget):
         unique_tabs = sorted(list({getattr(general_var[0], key).tab for key in general_var[0].keys()}))
 
         # # Hack
-        # unique_tabs.append(unique_tabs.pop(unique_tabs.index("English Patch")))
 
         self.command_dict = {
             "open_training_logs": lambda: util.open_folder(util.TRAINING_LOGS_FOLDER)
@@ -1220,54 +1262,6 @@ class UmaUpdateConfirm(UmaMainWidget):
     def _skip(self):
         self.choice.append(2)
         self.close()
-
-class UmaRestartConfirm(UmaMainWidget):
-    def init_ui(self, choice: list, *args, **kwargs):
-        self.choice = choice
-
-        self.setWindowTitle("Restart Required")
-        self.setWindowFlag(qtc.Qt.WindowType.WindowStaysOnTopHint, True)
-
-        self.layout = qtw.QVBoxLayout()
-        self.setLayout(self.layout)
-
-        self.label = qtw.QLabel("A game update was detected, and the game must be\nrestarted to reapply the English translations.\nWould you like Uma Launcher to restart the game right now?")
-        # Center label text
-        self.label.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
-        self.layout.addWidget(self.label)
-
-        self.button_layout = qtw.QHBoxLayout()
-        self.layout.addLayout(self.button_layout)
-
-        self.left_horizontal_spacer = qtw.QSpacerItem(40, 20, qtw.QSizePolicy.Policy.Expanding, qtw.QSizePolicy.Policy.Minimum)
-        self.button_layout.addItem(self.left_horizontal_spacer)
-
-        self.yes_button = qtw.QPushButton("Yes")
-        self.yes_button.clicked.connect(self._yes)
-        self.yes_button.setDefault(True)
-        self.button_layout.addWidget(self.yes_button)
-
-        self.no_button = qtw.QPushButton("No")
-        self.no_button.clicked.connect(self._no)
-        self.button_layout.addWidget(self.no_button)
-
-        self.right_horizontal_spacer = qtw.QSpacerItem(40, 20, qtw.QSizePolicy.Policy.Expanding, qtw.QSizePolicy.Policy.Minimum)
-        self.button_layout.addItem(self.right_horizontal_spacer)
-
-        # Hide maxminize and minimize buttons
-        self.setWindowFlag(qtc.Qt.WindowType.WindowMaximizeButtonHint, False)
-        self.setWindowFlag(qtc.Qt.WindowType.WindowMinimizeButtonHint, False)
-
-    @qtc.pyqtSlot()
-    def _yes(self):
-        self.choice.append(True)
-        self.close()
-
-    @qtc.pyqtSlot()
-    def _no(self):
-        self.choice.append(False)
-        self.close()
-
 
 class UmaBorderlessPopup(UmaMainWidget):
     update_object = None
@@ -1478,7 +1472,10 @@ class AboutDialog(UmaMainDialog):
         sizePolicy.setHeightForWidth(self.lbl_about.sizePolicy().hasHeightForWidth())
         self.lbl_about.setSizePolicy(sizePolicy)
         self.lbl_about.setLayoutDirection(qtc.Qt.LeftToRight)
-        self.lbl_about.setText("""<html><head><meta name="qrichtext" content="1" /><style type="text/css">p, li { white-space: pre-wrap; }</style></head><body style=" font-family:'MS Shell Dlg 2'; font-size:8pt; font-weight:400; font-style:normal;"><p style=" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">Created by KevinVG207 and <a href="https://github.com/qwcan/UmaLauncher/graphs/contributors">Contributors</a><br /><a href="https://github.com/qwcan/UmaLauncher"><span style=" text-decoration: underline; color:#0000ff;">Github</span></a> - <a href="https://umapyoi.net/uma-launcher"><span style=" text-decoration: underline; color:#0000ff;">Website</span></a> - <a href="https://twitter.com/kevinvg207"><span style=" text-decoration: underline; color:#0000ff;">Twitter</span></a></p><a href="https://github.com/KevinVG207/UmaLauncher/blob/main/FAQ.md">Frequently Asked Questions</a></p><p style=" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><b>Special thanks to:</b><br /><a href="https://github.com/CNA-Bld"><span style=" text-decoration: underline; color:#0000ff;">CNA-Bld</span></a> for the race data parser and CarrotJuicer.<br /></p></body></html>""")
+        self.lbl_about.setText("""<html><body><p>Global helper-only Uma Launcher fork.<br />
+        <a href="https://github.com/qwcan/UmaLauncher">Upstream project</a> -
+        <a href="https://github.com/qwcan/CarrotBlender">CarrotBlender</a></p>
+        <p>Uses GameTora for the training-event and skill pages.</p></body></html>""")
         self.lbl_about.setOpenExternalLinks(True)
         self.lbl_about.setAlignment(qtc.Qt.AlignCenter)
 
@@ -1534,9 +1531,7 @@ class AboutDialog(UmaMainDialog):
     
     def update_check(self):
         self.btn_update.setEnabled(False)
-        result = version.auto_update(self.settings, force=True)
-        if result:
-            util.show_info_box("No updates found", "You are running the latest version of Uma Launcher.")
+        version.force_update(self.settings)
         self.btn_update.setEnabled(True)
     
     def on_refresh_id(self):

@@ -1,5 +1,7 @@
 import enum
-import os
+import html as html_lib
+import json
+import re
 import traceback
 
 from loguru import logger
@@ -21,6 +23,156 @@ TABLE_HEADERS = {
     "pr_activities": "PR Activities",
 }
 
+MODERN_FACILITY_ICON_FILES = {
+    "speed": "speed.png",
+    "stamina": "stamina.png",
+    "power": "power.png",
+    "guts": "guts.png",
+    "wiz": "wisdom.png",
+}
+MODERN_UNITY_CHARGE_FILES = {
+    1: "unity_charge_1.png",
+    2: "unity_charge_2.png",
+    3: "unity_charge_3.png",
+    4: "unity_charge_4.png",
+}
+MODERN_MOOD_ICON_FILES = {
+    "Awful": "mood_0.png",
+    "Bad": "mood_1.png",
+    "Normal": "mood_2.png",
+    "Good": "mood_3.png",
+    "Great": "mood_4.png",
+}
+TRAINING_HELPER_ASSET_URL = "/training-helper/assets"
+LEGACY_CELL_STYLE = (
+    "text-overflow: clip;white-space: nowrap;overflow: hidden;"
+)
+
+
+def render_modern_hint_marker():
+    """Render GameTora's in-game hint badge attached to its source portrait."""
+    size = 20
+    source = f"{TRAINING_HELPER_ASSET_URL}/hint.png"
+    return (
+        f'<span class="hint-marker" aria-label="Hint available" title="Hint available" '
+        f'style="position:absolute;right:-3px;top:-3px;width:{size}px;height:{size}px;'
+        'filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));z-index:10;pointer-events:none;">'
+        f'<img src="{source}" alt="" width="{size}" height="{size}"></span>'
+    )
+
+
+def render_modern_scenario_marker(status):
+    """Render only the active blue/purple Unity Cup burst badge."""
+    marker_assets = {
+        "spirit_burst": ("Spirit Burst", "spirit_burst.png"),
+        "extreme_burst": ("Extreme Spirit Burst", "extreme_spirit_burst.png"),
+    }
+    marker = marker_assets.get(status)
+    if not marker:
+        return ""
+    label, filename = marker
+    source = f"{TRAINING_HELPER_ASSET_URL}/{filename}"
+    css_status = status.replace("_", "-")
+    escaped_label = html_lib.escape(label, quote=True)
+    return (
+        f'<span class="scenario-marker scenario-marker-{css_status}" '
+        f'aria-label="{escaped_label}" title="{escaped_label}">'
+        f'<img src="{source}" alt="" width="14" height="15"></span>'
+    )
+
+
+def render_modern_unity_charge(value):
+    """Render the game's Unity Cup soul bubble at its current fill stage."""
+    try:
+        value = max(0, min(4, int(value)))
+    except (TypeError, ValueError):
+        return ""
+
+    base = f"{TRAINING_HELPER_ASSET_URL}/unity_charge_base.png"
+
+    label = html_lib.escape(f"Spirit gauge {value} of 4", quote=True)
+    layers = [
+        f'<img class="unity-charge-base" src="{html_lib.escape(base, quote=True)}" alt="">'
+    ]
+    fill_filename = MODERN_UNITY_CHARGE_FILES.get(value)
+    if fill_filename:
+        fill = f"{TRAINING_HELPER_ASSET_URL}/{fill_filename}"
+        frame = f"{TRAINING_HELPER_ASSET_URL}/unity_charge_frame.png"
+        layers.append(
+            f'<img class="unity-charge-fill unity-charge-fill-{value}" '
+            f'src="{fill}" alt="">'
+        )
+        layers.append(
+            f'<img class="unity-charge-frame" src="{frame}" alt="">'
+        )
+    return (
+        f'<span class="unity-charge unity-charge-{value}" role="img" '
+        f'aria-label="{label}" title="{label}">{"".join(layers)}</span>'
+    )
+
+
+def render_modern_mood(motivation):
+    """Render the matching in-game Global mood badge with a text fallback."""
+    label = str(motivation or "Unknown")
+    escaped_label = html_lib.escape(label)
+    filename = MODERN_MOOD_ICON_FILES.get(label)
+    source = f"{TRAINING_HELPER_ASSET_URL}/{filename}" if filename else ""
+    if not source:
+        return f'<strong class="modern-mood-fallback">{escaped_label}</strong>'
+    source = html_lib.escape(source, quote=True)
+    accessible_label = html_lib.escape(f"Mood: {label}", quote=True)
+    return (
+        f'<img class="modern-mood-icon" src="{source}" '
+        f'alt="{accessible_label}" title="{accessible_label}">'
+    )
+
+
+def render_modern_bond_indicator(value, display_type):
+    """Render the configured Off/Number/Bar/Both bond representation."""
+    if display_type not in (1, 2, 3):
+        return ""
+
+    try:
+        value = max(0, min(100, int(value)))
+    except (TypeError, ValueError):
+        return ""
+
+    color = ""
+    for cutoff, candidate in constants.BOND_COLOR_DICT.items():
+        if value < cutoff:
+            break
+        color = candidate
+    number = f'<span class="bond-number" style="color:{color};">{value}</span>'
+    if display_type == 1:
+        return (
+            '<span class="bond-indicator bond-indicator-number">'
+            f'{number}</span>'
+        )
+
+    segments = ''.join(
+        f'<i class="bond-bar-segment" style="left:{cutoff}%"></i>'
+        for cutoff in (20, 40, 60, 80)
+    )
+    overlay = (
+        f'<span class="bond-number bond-number-overlay" aria-hidden="true">'
+        f'{value}</span>'
+        if display_type == 3 else ""
+    )
+    bar = (
+        '<span class="bond-bar" '
+        f'role="meter" aria-label="Bond {value}" aria-valuemin="0" '
+        f'aria-valuemax="100" aria-valuenow="{value}" '
+        f'style="--bond-value:{value}%;--bond-color:{color};">'
+        '<span class="bond-bar-fill" aria-hidden="true"></span>'
+        f'{segments}</span>'
+    )
+    mode = "both" if display_type == 3 else "bar"
+    return (
+        f'<span class="bond-indicator bond-indicator-{mode}">'
+        f'{bar}{overlay}</span>'
+    )
+
+
 class Colors(enum.Enum):
     """Defines the colors used in the helper table.
     """
@@ -31,7 +183,7 @@ class Colors(enum.Enum):
 
 
 class Cell():
-    def __init__(self, value="", bold=False, color=None, background=None, percent=False, title="", style="text-overflow: clip;white-space: nowrap;overflow: hidden;"):
+    def __init__(self, value="", bold=False, color=None, background=None, percent=False, title="", style=LEGACY_CELL_STYLE):
         self.value = value
         self.bold = bold
         self.color = color
@@ -67,6 +219,7 @@ class Row():
 
     dialog = None
     style = None
+    modern_column_width = 44
 
     """Defines a row in the helper table.
     """
@@ -89,6 +242,10 @@ class Row():
         """Returns the value of the row at the given column index.
         """
         return self._generate_cells(command_info)
+
+    def get_modern_column_width(self):
+        """Return the stable facility-column width needed by this row."""
+        return self.modern_column_width
 
     def display_settings_dialog(self, parent):
         """Displays the settings dialog for this row.
@@ -132,7 +289,7 @@ class PresetSettings(se.NewSettings):
         "support_bonds": se.Setting(
             "Show support bonds",
             "Choose how to display support bonds.",
-            2,
+            3,
             se.SettingType.COMBOBOX,
             choices=["Off", "Number", "Bar", "Both"],
         ),
@@ -401,6 +558,443 @@ class Preset():
         inner = ''.join(partners)
 
         return f"<div id=\"support-bonds\" style=\"max-width: 100vw; display: flex; flex-direction: row; flex-wrap: nowrap; overflow-x: auto; gap:0.3rem; scrollbar-width: none;\">{inner}</div>"
+
+    def generate_modern_overlay(self, main_info, command_info):
+        """Render the packet-derived sidecar without exposing raw packet data."""
+        facility_info = {
+            key: value
+            for key, value in command_info.items()
+            if key in TABLE_HEADERS and key != "fac"
+        }
+        if not facility_info:
+            return ""
+
+        facility_count = len(facility_info)
+        modern_column_width = Row.modern_column_width
+
+        row_cells = []
+        for row in self.initialized_rows:
+            if row.disabled:
+                continue
+            if type(row).__name__ == "CurrentStatsRow":
+                continue
+            try:
+                cells = row.get_cells(facility_info)
+            except Exception as exc:
+                logger.error(f"Error generating modern helper row {type(row).__name__}: {exc}")
+                continue
+            if not cells:
+                continue
+            width_getter = getattr(row, "get_modern_column_width", None)
+            width_hint = (
+                width_getter()
+                if callable(width_getter)
+                else getattr(row, "modern_column_width", Row.modern_column_width)
+            )
+            if isinstance(width_hint, (int, float)) and not isinstance(width_hint, bool):
+                modern_column_width = max(
+                    modern_column_width,
+                    max(Row.modern_column_width, min(120, int(width_hint))),
+                )
+            label = str(cells[0].value or row.short_name or "")
+            values = list(cells[1:])
+            if len(values) < len(facility_info):
+                values.extend(Cell() for _ in range(len(facility_info) - len(values)))
+            row_cells.append((
+                label,
+                cells[0].title or row.description or "",
+                values,
+            ))
+
+        modern_grid_width = 78 + (modern_column_width * facility_count)
+
+        display_type = self.settings.support_bonds.value
+        rainbow_glow_source = (
+            f"{TRAINING_HELPER_ASSET_URL}/rainbow_training_ring.png"
+        )
+        rainbow_facility_glow_source = (
+            f"{TRAINING_HELPER_ASSET_URL}/rainbow_facility_glow.svg"
+        )
+        facility_headers = []
+        facility_partner_cells = []
+        has_visible_partners = False
+        current_stats = main_info.get("stats", {})
+        for facility, info in facility_info.items():
+            partners = info.get("partners", [])
+            has_extreme = bool(info.get("extreme_spirit_burst_partner_count")) or any(
+                partner.get("extreme_burst") for partner in partners
+            )
+            has_spirit = bool(info.get("spirit_burst_partner_count")) or any(
+                partner.get("spirit_burst") for partner in partners
+            )
+            has_rainbow = any(partner.get("rainbow") for partner in partners)
+            if has_extreme:
+                state = "extreme"
+                state_description = "Extreme Burst available"
+            elif has_spirit:
+                state = "spirit"
+                state_description = "Spirit Burst available"
+            elif has_rainbow:
+                state = "rainbow"
+                state_description = "Rainbow training available"
+            else:
+                state = "normal"
+                state_description = "No special training state"
+            state_classes = [f"state-{state}"]
+            if has_rainbow and state != "rainbow":
+                state_classes.append("state-rainbow")
+            facility_state_classes = " ".join(state_classes)
+
+            partner_html = []
+            for partner in partners:
+                statuses = []
+                for key, label in (
+                    ("rainbow", "Rainbow"),
+                    ("unity", "Unity"),
+                    ("near_ready", "Near Ready"),
+                    ("spirit_burst", "Spirit Burst"),
+                    ("extreme_burst", "Extreme Burst"),
+                ):
+                    if partner.get(key):
+                        statuses.append(label)
+                scenario_status = next(
+                    (
+                        key for key in ("extreme_burst", "spirit_burst")
+                        if partner.get(key)
+                    ),
+                    None,
+                )
+
+                name = html_lib.escape(str(partner.get("name") or "Unknown"), quote=True)
+                image = html_lib.escape(str(partner.get("img") or ""), quote=True)
+                bond = partner.get("bond")
+                hide_maxed_bond = (
+                    self.settings.hide_support_bonds.value
+                    and bond is not None
+                    and int(bond) >= 100
+                )
+                details = [name]
+                if partner.get("show_bond") and bond is not None and not hide_maxed_bond:
+                    details.append(f"Bond {int(bond)}")
+                details.extend(statuses)
+                accessible_details = html_lib.escape(", ".join(details), quote=True)
+                rainbow_glow = (
+                    '<span class="rainbow-portrait-glow" aria-hidden="true">'
+                    f'<img class="rainbow-portrait-glow-outer" src="{rainbow_glow_source}" alt="">'
+                    f'<img class="rainbow-portrait-glow-inner" src="{rainbow_glow_source}" alt="">'
+                    '</span>'
+                    if partner.get("rainbow") and rainbow_glow_source else ""
+                )
+                hint = render_modern_hint_marker() if partner.get("hint") else ""
+                scenario_marker = render_modern_scenario_marker(scenario_status)
+                unity_charge_html = render_modern_unity_charge(
+                    partner.get("unity_charge")
+                )
+                bond_html = ""
+                if partner.get("show_bond") and not hide_maxed_bond:
+                    bond_html = render_modern_bond_indicator(bond, display_type)
+                bond_overlay_html = (
+                    f'<span class="modern-partner-bond">{bond_html}</span>'
+                    if bond_html else ""
+                )
+                hint_details = partner.get("hint_details") or {
+                    "title": partner.get("name") or "Unknown",
+                    "message": "Hint details are unavailable.",
+                    "skills": [],
+                }
+                hint_details_attr = html_lib.escape(
+                    json.dumps(hint_details, ensure_ascii=False, separators=(",", ":")),
+                    quote=True,
+                )
+                if partner.get("hint"):
+                    opening_tag = (
+                        '<button type="button" class="modern-partner modern-hint-partner" '
+                        f'data-hint-details="{hint_details_attr}" '
+                        f'aria-label="{accessible_details}. Show possible skill hints" '
+                        f'title="{accessible_details}" aria-haspopup="dialog">'
+                    )
+                    closing_tag = "</button>"
+                else:
+                    opening_tag = (
+                        '<div class="modern-partner" '
+                        f'aria-label="{accessible_details}" title="{accessible_details}">'
+                    )
+                    closing_tag = "</div>"
+                partner_html.append(
+                    opening_tag
+                    + '<span class="portrait-frame">'
+                    + f'{rainbow_glow}<img src="{image}" alt="" loading="lazy">{hint}{scenario_marker}'
+                    + f'{unity_charge_html}'
+                    + f'{bond_overlay_html}</span>'
+                    + closing_tag
+                )
+            has_visible_partners = has_visible_partners or bool(partner_html)
+
+            facility_name = TABLE_HEADERS.get(facility, facility.title())
+            facility_label = html_lib.escape(
+                f"{facility_name} training. {state_description}.", quote=True
+            )
+            icon_filename = MODERN_FACILITY_ICON_FILES.get(facility)
+            icon = (
+                f"{TRAINING_HELPER_ASSET_URL}/{icon_filename}"
+                if icon_filename else ""
+            )
+            icon_html = (
+                f'<img class="facility-icon" src="{icon}" alt="">'
+                if icon else (
+                    '<span class="modern-facility-name" aria-hidden="true">'
+                    f'{html_lib.escape(facility_name)}</span>'
+                )
+            )
+            facility_rainbow_glow = (
+                '<span class="rainbow-facility-glow" aria-hidden="true">'
+                f'<img src="{rainbow_facility_glow_source}" alt=""></span>'
+                if has_rainbow else ""
+            )
+            current_stat_html = ""
+            if facility in current_stats:
+                current_stat = html_lib.escape(str(current_stats[facility]))
+                stat_value = html_lib.escape(
+                    str(current_stats[facility]), quote=True
+                )
+                current_stat_html = (
+                    '<span class="modern-facility-stat" '
+                    f'aria-label="Current stat {current_stat}">'
+                    f'<span class="modern-stat-value" data-stat-key="{facility}" '
+                    f'data-stat-value="{stat_value}">{current_stat}</span></span>'
+                )
+            facility_headers.append(
+                f'<section class="modern-facility {facility_state_classes}" data-facility="{facility}" '
+                f'role="columnheader" aria-label="{facility_label}" '
+                f'title="{facility_label}">'
+                f'<div class="facility-icon-shell">{facility_rainbow_glow}{icon_html}</div>'
+                f'{current_stat_html}'
+                '</section>'
+            )
+            partner_label = html_lib.escape(f"{facility_name} partners", quote=True)
+            facility_partner_cells.append(
+                f'<div class="modern-partners" data-facility="{facility}" role="cell" '
+                f'aria-label="{partner_label}">{"".join(partner_html)}</div>'
+            )
+
+        partner_strip_html = ""
+        if has_visible_partners:
+            partner_strip_html = (
+                '<section class="modern-partner-strip" aria-label="Training partners">'
+                '<div class="modern-partner-spacer" aria-hidden="true"></div>'
+                f'{"".join(facility_partner_cells)}</section>'
+            )
+
+        g1_race_items = []
+        g1_race_names = []
+        for race in main_info.get("g1_races") or ():
+            if not isinstance(race, dict):
+                continue
+            name = str(race.get("name") or "G1 race")
+            thumb_url = str(race.get("thumb_url") or "")
+            if not thumb_url:
+                continue
+            escaped_name = html_lib.escape(name, quote=True)
+            escaped_url = html_lib.escape(thumb_url, quote=True)
+            g1_race_names.append(name)
+            g1_race_items.append(
+                '<span class="modern-g1-race" title="'
+                f'{escaped_name}"><img src="{escaped_url}" alt="{escaped_name}" '
+                'width="68" height="34" loading="lazy" decoding="async"></span>'
+            )
+
+        g1_panel_html = ""
+        if g1_race_items:
+            panel_label = html_lib.escape(
+                "Races: " + ", ".join(g1_race_names), quote=True
+            )
+            g1_panel_html = (
+                f'<section class="modern-g1-panel" aria-label="{panel_label}">'
+                '<span class="modern-g1-label" aria-hidden="true">Races</span>'
+                '<div class="modern-g1-races">'
+                f'{"".join(g1_race_items)}</div></section>'
+            )
+
+        lower_stage_html = ""
+        if g1_panel_html or partner_strip_html:
+            lower_stage_html = (
+                '<div class="modern-lower-stage">'
+                f'{g1_panel_html}{partner_strip_html}</div>'
+            )
+
+        metric_rows = []
+        for label, description, values in row_cells:
+            row_label = label.replace("<br>", " ").replace("<br/>", " ")
+            title_attr = html_lib.escape(
+                str(description or row_label).replace("\n", " "), quote=True
+            )
+            value_cells = []
+            rich_row = False
+            multiline_row = False
+            for facility_index, facility in enumerate(facility_info):
+                cell = values[facility_index] if facility_index < len(values) else Cell()
+                style = (
+                    "" if cell.style == LEGACY_CELL_STYLE else cell.style or ""
+                )
+                if cell.bold:
+                    style += "font-weight:bold;"
+                if cell.color:
+                    style += f"color:{cell.color};"
+                if cell.background:
+                    style += f"background:{cell.background};"
+                style_attr = (
+                    f' style="{html_lib.escape(style, quote=True)}"'
+                    if style else ""
+                )
+                value = "" if cell.value is None else str(cell.value)
+                suffix = "%" if cell.percent else ""
+                rich_row = rich_row or bool(
+                    re.search(r"<(?:br|div|img|span)\b", value, re.IGNORECASE)
+                )
+                multiline_row = multiline_row or bool(
+                    re.search(r"<br\s*/?>", value, re.IGNORECASE)
+                )
+                value_cells.append(
+                    f'<div class="modern-row-value" data-facility="{facility}" '
+                    f'role="cell"{style_attr}>'
+                    f'{value}{suffix}</div>'
+                )
+            row_classes = []
+            if rich_row:
+                row_classes.append("modern-rich-row")
+            if multiline_row:
+                row_classes.append("modern-multiline-row")
+            rich_class = (
+                " " + " ".join(row_classes)
+                if row_classes else ""
+            )
+            metric_rows.append(
+                f'<div class="modern-training-row{rich_class}" role="row">'
+                f'<div class="modern-row-label" role="rowheader" title="{title_attr}">{label}</div>'
+                f'{"".join(value_cells)}'
+                '</div>'
+            )
+
+        raw_scenario_name = str(main_info.get("scenario_name") or "")
+        if main_info.get("scenario_id") == 2 or raw_scenario_name == "Aoharu Cup":
+            raw_scenario_name = "Unity Cup"
+        scenario_name = html_lib.escape(raw_scenario_name)
+        raw_motivation = str(main_info.get("motivation") or "-")
+        raw_motivation = {
+            "Very Low": "Awful",
+            "Low": "Bad",
+            "High": "Good",
+            "Very High": "Great",
+        }.get(raw_motivation, raw_motivation)
+        mood_html = render_modern_mood(raw_motivation)
+        energy = main_info.get("energy", 0)
+        max_energy = main_info.get("max_energy", 0)
+        energy_value = html_lib.escape(str(energy), quote=True)
+        try:
+            energy_percent = max(0, min(100, float(energy) / float(max_energy) * 100))
+        except (TypeError, ValueError, ZeroDivisionError):
+            energy_percent = 0
+        energy_text = html_lib.escape(f"{energy}/{max_energy}")
+
+        # SP and Fans are core trainee context in Modern. The shared preset
+        # switches continue to control Legacy's optional standalone blocks.
+        skillpt = main_info.get("skillpt", 0)
+        skillpt_value = html_lib.escape(str(skillpt), quote=True)
+        fans = main_info.get("fans", 0)
+        fans_value = html_lib.escape(str(fans), quote=True)
+        vitals_html = (
+            '<div class="modern-vitals">'
+            '<span class="modern-vital"><small>SP</small>'
+            '<strong class="modern-stat-value" data-stat-key="skillpt" '
+            f'data-stat-value="{skillpt_value}">{skillpt:,}</strong></span>'
+            '<span class="modern-vital"><small>Fans</small>'
+            '<strong class="modern-stat-value" data-stat-key="fans" '
+            f'data-stat-value="{fans_value}">{fans:,}</strong></span>'
+            '</div>'
+        )
+
+        energy_bar_html = ""
+        energy_row_class = "modern-energy-row modern-energy-row-mood-only"
+        if self.settings.energy_enabled.value:
+            energy_row_class = "modern-energy-row"
+            energy_bar_html = (
+                '<span class="modern-vital-energy">'
+                '<span class="modern-energy-bar" role="progressbar" '
+                'aria-label="Energy" aria-valuemin="0" '
+                f'aria-valuemax="{html_lib.escape(str(max_energy), quote=True)}" '
+                f'aria-valuenow="{html_lib.escape(str(energy), quote=True)}">'
+                f'<span class="modern-energy-fill" style="width:{energy_percent:.2f}%"></span>'
+                '<span class="modern-energy-text">'
+                '<span class="modern-energy-value" data-stat-key="energy" '
+                f'data-stat-value="{energy_value}">{energy_text}</span></span>'
+                '</span></span>'
+            )
+        energy_row_html = (
+            f'<div class="{energy_row_class}">{energy_bar_html}'
+            f'<span class="modern-vital-mood">{mood_html}</span></div>'
+        )
+
+        context_panels = []
+        if self.settings.progress_bar.value:
+            context_panels.append(self.generate_progress_bar(main_info))
+        if self.settings.schedule_enabled.value:
+            context_panels.append(self.generate_schedule(main_info))
+        mant_panel = ""
+        if self.settings.scenario_specific_enabled.value:
+            context_panels.extend((
+                self.generate_gm_table(main_info),
+                self.generate_gl_table(main_info),
+                self.generate_arc(main_info),
+                self.generate_uaf(main_info),
+                self.generate_gff(main_info),
+            ))
+            mant_panel = self.generate_mant(main_info)
+        context_html = "".join(panel for panel in context_panels if panel)
+        context_panel_html = (
+            '<section class="modern-context-panels" '
+            f'aria-label="Training context">{context_html}</section>'
+            if context_html else ""
+        )
+        mant_panel_html = (
+            '<section class="modern-context-panels modern-context-after" '
+            f'aria-label="Scenario details">{mant_panel}</section>'
+            if mant_panel else ""
+        )
+
+        stat_context = html_lib.escape(
+            f'{main_info.get("scenario_id", "")}:{main_info.get("trainee_name", "")}',
+            quote=True,
+        )
+        turn_value = html_lib.escape(str(main_info.get("turn", 0)), quote=True)
+
+        return (
+            f'<div id="modern-training-helper" style="--mth-column-count:{facility_count};'
+            f'--mth-facility-column:{modern_column_width}px;'
+            f'--mth-grid-width:{modern_grid_width}px" data-stat-context="{stat_context}" '
+            f'data-turn="{turn_value}">'
+            '<header class="modern-header">'
+            '<div class="modern-header-main">'
+            '<div class="modern-run-meta">'
+            f'<strong class="modern-run-scenario" title="{html_lib.escape(raw_scenario_name, quote=True)}">'
+            f'{scenario_name}</strong>'
+            f'<span class="modern-run-turn">&middot; Turn {main_info.get("turn", 0)}</span>'
+            '</div>'
+            f'{vitals_html}'
+            '</div>'
+            f'{energy_row_html}'
+            '</header>'
+            f'{context_panel_html}'
+            '<main class="modern-facilities" role="table" aria-label="Training comparison">'
+            '<div class="modern-grid-header" role="row">'
+            '<div class="modern-grid-corner" role="columnheader" aria-label="Metric"></div>'
+            f'{"".join(facility_headers)}</div>'
+            '<div class="modern-table-shell" role="rowgroup">'
+            f'{"".join(metric_rows)}</div>'
+            '</main>'
+            f'{lower_stage_html}'
+            f'{mant_panel_html}'
+            '</div>'
+        )
 
     def generate_gm_table(self, main_info):
         if main_info['scenario_id'] != 5:
@@ -930,7 +1524,7 @@ class Preset():
             util.show_warning_box(f"Could not get program data for program_id {program_id}")
             return None
 
-        thumb_url = f"https://gametora.com/images/umamusume/{'en/' if 'IS_UL_GLOBAL' in os.environ else ''}race_banners/thum_race_rt_000_{str(program_data['race_instance_id'])[:4]}_00.png"
+        thumb_url = f"https://gametora.com/images/umamusume/en/race_banners/thum_race_rt_000_{str(program_data['race_instance_id'])[:4]}_00.png"
         return thumb_url
 
     def to_dict(self):

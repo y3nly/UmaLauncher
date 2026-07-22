@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import threading
 import traceback
 
 from loguru import logger
@@ -8,16 +9,15 @@ import constants
 import gui
 
 DB_PATH = None
+_MDB_CACHE_LOCK = threading.RLock()
+_MDB_CACHE_FINGERPRINT = None
+
+
 def get_db_path():
     global DB_PATH
     if DB_PATH:
         return DB_PATH
-    if 'IS_UL_GLOBAL' in os.environ:
-        DB_PATH = os.path.expandvars("%userprofile%\\AppData\\LocalLow\\Cygames\\Umamusume\\master\\master.mdb")
-    elif 'IS_JP_STEAM' in os.environ:
-        DB_PATH = os.path.expandvars("%userprofile%\\AppData\\LocalLow\\Cygames\\UmamusumePrettyDerby_Jpn\\master\\master.mdb")
-    else:
-        DB_PATH = os.path.expandvars("%userprofile%\\AppData\\LocalLow\\Cygames\\umamusume\\master\\master.mdb")
+    DB_PATH = os.path.expandvars("%userprofile%\\AppData\\LocalLow\\Cygames\\Umamusume\\master\\master.mdb")
     # New installs have the files in the game directory
     if not os.path.exists(DB_PATH):
         logger.debug( f"Could not find mdb at path: {DB_PATH}, trying game install directory")
@@ -28,13 +28,7 @@ def get_db_path():
             if gui.THREADER:
                 gui.THREADER.stop()
             return DB_PATH
-        if 'IS_UL_GLOBAL' in os.environ:
-            # Global doesn't use this yet, but just in case it updates
-            DB_PATH = os.path.join( game_install_path, "UmamusumePrettyDerby_Data\\Persistent\\master\\master.mdb")
-        elif 'IS_JP_STEAM' in os.environ:
-            DB_PATH = os.path.join( game_install_path, "UmamusumePrettyDerby_Jpn_Data\\Persistent\\master\\master.mdb")
-        else:
-            DB_PATH = os.path.join( game_install_path, "umamusume_Data\\Persistent\\master\\master.mdb")
+        DB_PATH = os.path.join(game_install_path, "UmamusumePrettyDerby_Data\\Persistent\\master\\master.mdb")
         if not os.path.exists(DB_PATH):
             logger.error(f"Could not find mdb at game install path: {DB_PATH}")
             util.show_error_box_no_report("Error",f"Could not find the game database file.<br>Make sure the game is installed. If the game is updating, try restarting Uma Launcher after the update finishes.<br>Uma Launcher will now close.")
@@ -44,11 +38,35 @@ def get_db_path():
     return DB_PATH
 
 
-def update_mdb_cache():
-    logger.info("Reloading cached dicts.")
-    all_update_funcs = UPDATE_FUNCS + util.UPDATE_FUNCS
-    for func in all_update_funcs:
-        func(force=True)
+def _get_db_fingerprint():
+    """Return the stable identity used to invalidate master-data caches."""
+    db_path = os.path.normcase(os.path.realpath(os.path.abspath(get_db_path())))
+    stat = os.stat(db_path)
+    return db_path, stat.st_mtime_ns, stat.st_size
+
+
+def update_mdb_cache(force=False):
+    """Refresh all master-data caches when master.mdb has changed.
+
+    The lock covers the fingerprint check and the complete refresh so the two
+    CarrotBlender startup paths cannot both perform the same expensive reload.
+    ``force`` remains available for callers that explicitly need a rebuild.
+    """
+    global _MDB_CACHE_FINGERPRINT
+
+    with _MDB_CACHE_LOCK:
+        fingerprint = _get_db_fingerprint()
+        if not force and fingerprint == _MDB_CACHE_FINGERPRINT:
+            logger.debug("master.mdb is unchanged; keeping cached data.")
+            return
+
+        logger.info("Reloading cached dicts.")
+        _MDB_CACHE_FINGERPRINT = None
+        _clear_update_caches()
+        for func in UPDATE_FUNCS:
+            func(force=True)
+        _refresh_query_catalogs(force=True, fingerprint=fingerprint)
+        _MDB_CACHE_FINGERPRINT = fingerprint
 
 class Connection():
     def __init__(self):
@@ -79,6 +97,143 @@ def get_columns(cursor):
 
 def rows_to_dict(rows, columns, keep_newline=False):
     return [{columns[i]: data if not isinstance(data, str) or keep_newline else data.replace("\\n", "") for i, data in enumerate(row)} for row in rows]
+
+
+_QUERY_CATALOG_FINGERPRINT = None
+_SKILL_CATALOG = {}
+_SKILLS_BY_GROUP = {}
+_SKILLS_BY_GROUP_RARITY = {}
+_CARD_INHERENT_SKILLS = {}
+_SUPPORT_HINT_POOL_DICT = {}
+
+# _SKILL_CATALOG tuple indexes.
+_SKILL_GROUP_ID = 0
+_SKILL_RARITY = 1
+_SKILL_GROUP_RATE = 2
+_SKILL_CATEGORY = 3
+_SKILL_DISPLAY_ORDER = 4
+
+
+def _refresh_query_catalogs(force=False, fingerprint=None):
+    """Load frequently queried skill/card data through one SQLite connection."""
+    global _QUERY_CATALOG_FINGERPRINT
+    global _SKILL_CATALOG
+    global _SKILLS_BY_GROUP
+    global _SKILLS_BY_GROUP_RARITY
+    global _CARD_INHERENT_SKILLS
+    global _SUPPORT_HINT_POOL_DICT
+
+    with _MDB_CACHE_LOCK:
+        if not force and _QUERY_CATALOG_FINGERPRINT is not None:
+            return
+        if fingerprint is None:
+            fingerprint = _get_db_fingerprint()
+
+        with Connection() as (_, cursor):
+            cursor.execute(
+                """SELECT id, group_id, rarity, group_rate, skill_category, disp_order
+                FROM skill_data"""
+            )
+            skill_rows = cursor.fetchall()
+            cursor.execute(
+                """SELECT cd.id, ass.skill_id, ass.need_rank
+                FROM card_data cd
+                JOIN available_skill_set ass
+                  ON cd.available_skill_set_id = ass.available_skill_set_id"""
+            )
+            card_rows = cursor.fetchall()
+            try:
+                cursor.execute(
+                    """SELECT smhg.support_card_id,
+                              smhg.hint_value_1,
+                              td.text,
+                              smhg.hint_value_2,
+                              sd.group_id,
+                              sd.rarity,
+                              sd.group_rate,
+                              sd.disp_order
+                       FROM single_mode_hint_gain smhg
+                       JOIN skill_data sd
+                         ON sd.id = smhg.hint_value_1
+                       JOIN text_data td
+                         ON td.category = 47
+                        AND td."index" = smhg.hint_value_1
+                       WHERE smhg.hint_gain_type = 0
+                       ORDER BY smhg.support_card_id, smhg.hint_group, smhg.id"""
+                )
+                support_hint_rows = cursor.fetchall()
+            except sqlite3.OperationalError:
+                # Some test fixtures and older master-data snapshots do not
+                # contain the support hint catalog. The other hot-query
+                # catalogs remain useful and should still be published.
+                support_hint_rows = []
+
+        skill_catalog = {}
+        skills_by_group = {}
+        skills_by_group_rarity = {}
+        for skill_id, group_id, rarity, group_rate, category, disp_order in skill_rows:
+            skill_catalog[skill_id] = (
+                group_id,
+                rarity,
+                group_rate,
+                category,
+                disp_order,
+            )
+            if group_rate is not None and group_rate > 0:
+                group_row = (group_rate, skill_id, category)
+                skills_by_group.setdefault(group_id, []).append(group_row)
+                skills_by_group_rarity.setdefault((group_id, rarity), []).append(group_row)
+
+        for group_rows in skills_by_group.values():
+            group_rows.sort(key=lambda row: (row[0], row[1]))
+        for group_rows in skills_by_group_rarity.values():
+            group_rows.sort(key=lambda row: (row[0], row[1]))
+
+        card_inherent_skills = {}
+        for card_id, skill_id, need_rank in card_rows:
+            card_inherent_skills.setdefault(card_id, []).append((skill_id, need_rank))
+
+        support_hint_pool_dict = {}
+        for (
+            support_card_id,
+            skill_id,
+            name,
+            granted_level,
+            group_id,
+            rarity,
+            group_rate,
+            display_order,
+        ) in support_hint_rows:
+            entry = {
+                "skill_id": skill_id,
+                "name": name.replace("\\n", "") if isinstance(name, str) else name,
+                "granted_level": granted_level,
+                "group_id": group_id,
+                "rarity": rarity,
+                "group_rate": group_rate,
+                "display_order": display_order,
+            }
+            support_hint_pool_dict.setdefault(support_card_id, []).append(entry)
+        support_hint_pool_dict = {
+            support_card_id: tuple(entries)
+            for support_card_id, entries in support_hint_pool_dict.items()
+        }
+
+        # Publish complete snapshots only after all queries and processing
+        # succeed. Readers therefore see either the old catalog or the new one.
+        _SKILL_CATALOG = skill_catalog
+        _SKILLS_BY_GROUP = skills_by_group
+        _SKILLS_BY_GROUP_RARITY = skills_by_group_rarity
+        _CARD_INHERENT_SKILLS = card_inherent_skills
+        _SUPPORT_HINT_POOL_DICT = support_hint_pool_dict
+        _QUERY_CATALOG_FINGERPRINT = fingerprint
+
+
+def get_support_hint_pool_dict(force=False):
+    """Return display-ready hint pools keyed by the exact support-card ID."""
+    with _MDB_CACHE_LOCK:
+        _refresh_query_catalogs(force=force)
+        return _SUPPORT_HINT_POOL_DICT
 
 
 def _get_event_titles_special(story_id, card_id):
@@ -119,7 +274,13 @@ def _get_event_titles_special(story_id, card_id):
                 larc_ids.append(str_id)
             elif str_id.startswith("50"):
                 default_ids.append(str_id)
-        
+
+        # Scenario stories also use 40-prefixed IDs. Some dress-icon groups
+        # therefore have no corresponding default 50-prefixed story at all;
+        # they are not L'Arc outfit variants and must keep their own title.
+        if not default_ids:
+            return event_titles
+
         try:
             index = larc_ids.index(str(story_id)) % len(default_ids)
         except ValueError:
@@ -179,15 +340,6 @@ def get_event_titles(story_id, card_id):
 
     return event_titles
 
-def get_song_title(song_id):
-    with Connection() as (_, cursor):
-        cursor.execute(
-            """SELECT text FROM text_data WHERE category = 16 AND "index" = ? LIMIT 1""",
-            (song_id,)
-        )
-        song_title = cursor.fetchone()[0]
-    return song_title
-
 def get_status_name(status_id):
     with Connection() as (_, cursor):
         cursor.execute(
@@ -207,14 +359,10 @@ def get_skill_name(skill_id):
     return skill_name
 
 def get_skill_rarity(skill_id):
-    with Connection() as (_, cursor):
-        cursor.execute(
-            """SELECT rarity FROM skill_data WHERE id = ? LIMIT 1""",
-            (skill_id,)
-        )
-        result = cursor.fetchone()
-        skill_rarity = result[0] if result else 1
-    return skill_rarity
+    with _MDB_CACHE_LOCK:
+        _refresh_query_catalogs()
+        skill_data = _SKILL_CATALOG.get(skill_id)
+        return skill_data[_SKILL_RARITY] if skill_data else 1
 
 def get_skill_hint_name(group_id, rarity):
     with Connection() as (_, cursor):
@@ -630,17 +778,8 @@ def get_group_card_effect_ids(force=False):
     return GROUP_CARD_EFFECT_IDS
 
 def get_program_id_grade(program_id):
-    with Connection() as (_, cursor):
-        cursor.execute(
-            """SELECT r.grade FROM single_mode_program smp JOIN race_instance ri on smp.race_instance_id = ri.id JOIN race r on ri.race_id = r.id WHERE smp.id = ?;""",
-            (program_id,)
-        )
-        row = cursor.fetchone()
-
-    if not row:
-        return None
-
-    return row[0]
+    program_data = get_program_id_data(program_id)
+    return program_data.get("race_grade") if program_data else None
 
 
 PROGRAM_ID_DICT = {}
@@ -650,7 +789,15 @@ def get_program_id_dict(force=False):
         with Connection() as (_, cursor):
             try:
                 cursor.execute(
-                    """SELECT * FROM single_mode_program;"""
+                    """
+                    SELECT
+                        smp.*,
+                        r.grade AS race_grade,
+                        r.thumbnail_id AS race_thumbnail_id
+                    FROM single_mode_program smp
+                    LEFT JOIN race_instance ri ON smp.race_instance_id = ri.id
+                    LEFT JOIN race r ON ri.race_id = r.id;
+                    """
                 )
                 rows = cursor.fetchall()
                 columns = get_columns(cursor)
@@ -751,74 +898,42 @@ def get_deck_race_bonus(deck_array):
             
     return total_rb
 
-SCOUTING_SCORE_TO_RANK_DICT = {}
-def get_scouting_score_to_rank_dict(force=False):
-    global SCOUTING_SCORE_TO_RANK_DICT
-    if force or not SCOUTING_SCORE_TO_RANK_DICT:
-        with Connection() as (_, cursor):
-            try:
-
-                cursor.execute(
-                    """SELECT team_min_value FROM team_building_rank"""
-                )
-                rows = cursor.fetchall()
-            except sqlite3.OperationalError as e:
-                logger.error(f"get_group_card_effect_ids failed: {e}\n{traceback.format_exc()}")
-                rows = []
-
-        tmp_dict = {}
-        for i, row in enumerate(rows):
-            min_score = row[0]
-            try:
-                rank = constants.SCOUTING_RANK_LIST[i]
-            except IndexError:
-                rank = constants.SCOUTING_RANK_LIST[-1]
-            tmp_dict[min_score] = rank
-        
-        SCOUTING_SCORE_TO_RANK_DICT.update(tmp_dict)
-
-    return SCOUTING_SCORE_TO_RANK_DICT
-
 def get_card_inherent_skills(card_id, level=99):
-    skills = []
-    rows = []
-
-    with Connection() as (_, cursor):
-        cursor.execute(
-            """SELECT ass.skill_id FROM card_data cd JOIN available_skill_set ass ON cd.available_skill_set_id = ass.available_skill_set_id WHERE cd.id = ? AND ass.need_rank <= ?;""",
-            (card_id, level)
-        )
-        rows = cursor.fetchall()
-    
-    if not rows:
-        return skills
-    
-    for row in rows:
-        skills.append(row[0])
-    
-    return skills
+    with _MDB_CACHE_LOCK:
+        _refresh_query_catalogs()
+        return [
+            skill_id
+            for skill_id, need_rank in _CARD_INHERENT_SKILLS.get(card_id, ())
+            if need_rank is not None and need_rank <= level
+        ]
 
 def sort_skills_by_display_order(skill_id_list):
-    with Connection() as (_, cursor):
-        cursor.execute(
-            f"""SELECT id FROM skill_data WHERE id in ({','.join(['?'] * len(skill_id_list))}) ORDER BY disp_order ASC, id ASC;""",
-            skill_id_list
-        )
-        rows = cursor.fetchall()
-    
+    with _MDB_CACHE_LOCK:
+        _refresh_query_catalogs()
+        requested_ids = set(skill_id_list)
+        rows = [
+            (skill_id, skill_data)
+            for skill_id, skill_data in _SKILL_CATALOG.items()
+            if skill_id in requested_ids
+        ]
+
     if not rows:
         return None
-    
+
+    rows.sort(
+        key=lambda row: (
+            row[1][_SKILL_DISPLAY_ORDER] is not None,
+            row[1][_SKILL_DISPLAY_ORDER] or 0,
+            row[0],
+        )
+    )
     return [row[0] for row in rows]
 
 
 def determine_skill_id_from_group_id(group_id, rarity, skills_id_list):
-    with Connection() as (_, cursor):
-        cursor.execute(
-            """SELECT id, skill_category FROM skill_data WHERE group_id = ? AND rarity = ? AND group_rate > 0 ORDER BY group_rate ASC;""",
-            (group_id, rarity)
-        )
-        rows = cursor.fetchall()
+    with _MDB_CACHE_LOCK:
+        _refresh_query_catalogs()
+        rows = _SKILLS_BY_GROUP_RARITY.get((group_id, rarity), ())
 
     if not rows:
         return None
@@ -826,9 +941,9 @@ def determine_skill_id_from_group_id(group_id, rarity, skills_id_list):
     skill_id = None
     skill_category = None
 
-    for row in rows:
-        skill_id = row[0]
-        skill_category = row[1]
+    for _, row_skill_id, row_skill_category in rows:
+        skill_id = row_skill_id
+        skill_category = row_skill_category
 
         if skill_id not in skills_id_list:
             break
@@ -845,33 +960,65 @@ def get_prerequisite_skill_ids(skill_id):
     true_id = skill_id
     if 900000 <= true_id < 1000000:
         true_id -= 800000
-        
-    with Connection() as (_, cursor):
-        cursor.execute("SELECT group_id, group_rate FROM skill_data WHERE id = ?", (true_id,))
-        row = cursor.fetchone()
-        if not row:
+
+    with _MDB_CACHE_LOCK:
+        _refresh_query_catalogs()
+        skill_data = _SKILL_CATALOG.get(true_id)
+        if not skill_data:
             return []
-            
-        group_id, group_rate = row
-        
-        cursor.execute(
-            "SELECT id, skill_category FROM skill_data WHERE group_id = ? AND group_rate > 0 AND group_rate < ? ORDER BY group_rate ASC",
-            (group_id, group_rate)
-        )
-        rows = cursor.fetchall()
-        
-    if not rows:
-        return []
-        
+
+        group_id = skill_data[_SKILL_GROUP_ID]
+        group_rate = skill_data[_SKILL_GROUP_RATE]
+        if group_rate is None:
+            return []
+        rows = [
+            row
+            for row in _SKILLS_BY_GROUP.get(group_id, ())
+            if row[0] < group_rate
+        ]
+
     prereqs = []
-    for r in rows:
-        pid = r[0]
-        pcat = r[1]
+    for _, pid, pcat in rows:
         if pcat == 5 and 100000 <= pid < 300000:
             pid += 800000
         prereqs.append(pid)
-        
+
     return prereqs
+
+
+def get_next_skill_id_in_chain(skill_id):
+    """Return the next positive-rate skill defined by the same master group."""
+    true_id = skill_id
+    if 900000 <= true_id < 1000000:
+        true_id -= 800000
+
+    with _MDB_CACHE_LOCK:
+        _refresh_query_catalogs()
+        skill_data = _SKILL_CATALOG.get(true_id)
+        if not skill_data:
+            return None
+
+        group_id = skill_data[_SKILL_GROUP_ID]
+        group_rate = skill_data[_SKILL_GROUP_RATE]
+        if group_rate is None:
+            return None
+
+        next_row = next(
+            (
+                row
+                for row in _SKILLS_BY_GROUP.get(group_id, ())
+                if row[0] > group_rate
+            ),
+            None,
+        )
+
+    if next_row is None:
+        return None
+
+    _, next_id, next_category = next_row
+    if next_category == 5 and 100000 <= next_id < 300000:
+        next_id += 800000
+    return next_id
 
 DOUBLE_CIRCLE_UPGRADE_DICT = {}
 def get_double_circle_upgrade_dict(force=False):
@@ -1036,6 +1183,51 @@ def get_single_mode_unique_chara_dict(force=False):
     return SINGLE_MODE_UNIQUE_CHARA_DICT
 
 
+def _clear_update_caches():
+    """Remove stale rows before UPDATE_FUNCS repopulates its caches."""
+    global _QUERY_CATALOG_FINGERPRINT
+    global _SKILL_CATALOG
+    global _SKILLS_BY_GROUP
+    global _SKILLS_BY_GROUP_RARITY
+    global _CARD_INHERENT_SKILLS
+    global _SUPPORT_HINT_POOL_DICT
+
+    for cache in (
+        CHARA_NAME_DICT,
+        EVENT_TITLE_DICT,
+        RACE_PROGRAM_NAME_DICT,
+        SKILL_NAME_DICT,
+        SKILL_HINT_NAME_DICT,
+        STATUS_NAME_DICT,
+        OUTFIT_NAME_DICT,
+        SUPPORT_CARD_DICT,
+        SUPPORT_CARD_STRING_DICT,
+        MANT_ITEM_STRING_DICT,
+        GL_LESSON_DICT,
+        GROUP_CARD_EFFECT_IDS,
+        SKILL_ID_DICT,
+        DOUBLE_CIRCLE_UPGRADE_DICT,
+        GROUP_ID_DICT,
+        SKILL_EFFECTS_DICT,
+        SKILL_SCORE_DICT,
+        SINGLE_MODE_UNIQUE_CHARA_DICT,
+        PROGRAM_ID_DICT,
+        RACE_NAME_DICT,
+        RACE_DISTANCE_DICT,
+        RACE_SURFACE_DICT,
+        SKILL_COSTS_DICT,
+        SKILL_CONDITIONS_DICT,
+    ):
+        cache.clear()
+
+    _SKILL_CATALOG = {}
+    _SKILLS_BY_GROUP = {}
+    _SKILLS_BY_GROUP_RARITY = {}
+    _CARD_INHERENT_SKILLS = {}
+    _SUPPORT_HINT_POOL_DICT = {}
+    _QUERY_CATALOG_FINGERPRINT = None
+
+
 UPDATE_FUNCS = [
     get_chara_name_dict,
     get_event_title_dict,
@@ -1054,7 +1246,6 @@ UPDATE_FUNCS = [
     get_group_id_dict,
     get_skill_effects_dict,
     get_skill_score_dict,
-    get_scouting_score_to_rank_dict,
     get_single_mode_unique_chara_dict,
     get_program_id_dict,
     get_race_name_dict,

@@ -1,9 +1,8 @@
 import os
 import json
+import tempfile
+import threading
 import uuid
-from math import trunc
-
-from win32com.shell import shell
 import traceback
 from loguru import logger
 import util
@@ -13,6 +12,10 @@ import gui
 import settings_elements as se
 import helper_table_defaults as htd
 import helper_table_elements as hte
+import helper_theme
+
+
+_SETTINGS_SAVE_LOCK = threading.RLock()
 
 
 class DefaultSettings(se.NewSettings):
@@ -73,28 +76,10 @@ class DefaultSettings(se.NewSettings):
             se.SettingType.BOOL,
             hidden=False
         ),
-        "discord_rich_presence": se.Setting(
-            "Discord rich presence",
-            "Display your current status in Discord.",
-            True,
-            se.SettingType.BOOL,
-        ),
-        "enable_carrotjuicer": se.Setting(
-            "Enable CarrotJuicer",
-            "Enable CarrotJuicer functionality.",
-            True,
-            se.SettingType.BOOL,
-        ),
-        "hide_carrotjuicer": se.Setting(
-            "Hide CarrotJuicer console",
-            "Hide the CarrotJuicer console window.",
-            True,
-            se.SettingType.BOOL,
-        ),
         "track_trainings": se.Setting(
             "Log trainings",
             "Log training events as gzip files.",
-            True,
+            False,
             se.SettingType.BOOL,
         ),
         "open_training_logs": se.Setting(
@@ -131,9 +116,23 @@ class DefaultSettings(se.NewSettings):
             se.SettingType.BOOL,
             tab="Position"
         ),
+        "browser_pair": se.Setting(
+            "Pair helper with game",
+            "Minimize and restore the helper window as focus leaves and returns to the game.",
+            True,
+            se.SettingType.BOOL,
+            tab="Position"
+        ),
         "skills_position": se.Setting(
             "Skills browser position",
             "Position of the skills browser window.",
+            None,
+            se.SettingType.XYWHSPINBOXES,
+            tab="Position"
+        ),
+        "events_position": se.Setting(
+            "Events browser position",
+            "Position of the events browser window.",
             None,
             se.SettingType.XYWHSPINBOXES,
             tab="Position"
@@ -144,20 +143,6 @@ class DefaultSettings(se.NewSettings):
             None,
             se.SettingType.XYWHSPINBOXES,
             tab="Position"
-        ),
-        "maximize_safezone": se.Setting(
-            "Safezone for \"Maximize + center game\" in tray menu",
-            "Amount of pixels to leave around the game window when maximizing.<br><b>If you are having issues streaming the game on Discord,</b> try adding a safezone of at least 8 pixels where your taskbar is.",
-            None,
-            se.SettingType.LRTBSPINBOXES,
-            tab="Position"
-        ),
-        "enable_browser": se.Setting(
-            "Enable browser",
-            "Enable the Automatic Training Event helper browser.",
-            True,
-            se.SettingType.BOOL,
-            tab="Event Helper"
         ),
         "selected_browser": se.Setting(
             "Browser type",
@@ -171,22 +156,49 @@ class DefaultSettings(se.NewSettings):
             se.SettingType.RADIOBUTTONS,
             tab="Event Helper"
         ),
-        "gametora_dark_mode": se.Setting(
-            "GameTora dark mode",
-            "Enable dark mode for GameTora.",
-            True,
-            se.SettingType.BOOL,
+        "training_helper_ui": se.Setting(
+            "Training helper interface",
+            "Choose the original helper or the modern training dashboard.",
+            0,
+            se.SettingType.COMBOBOX,
+            choices=["Legacy", "Modern"],
             tab="Event Helper"
         ),
-        "gametora_language": se.Setting(
-            "GameTora language",
-            "Choose language for GameTora.<br>You may need to restart Uma Launcher for this to take effect.",
-            {
-                "English": True,
-                "Japanese": False
-            },
-            se.SettingType.RADIOBUTTONS,
-            tab="Event Helper"
+        "helper_theme": se.Setting(
+            "Theme",
+            "Use the built-in Dark theme or the custom colors below. Custom colors apply to the Modern helper only.",
+            helper_theme.THEME_DARK,
+            se.SettingType.COMBOBOX,
+            choices=["Dark", "Custom"],
+            tab="Helper Theme",
+        ),
+        "helper_theme_text_color": se.Setting(
+            "Base text color",
+            "Primary text color used by the Modern helper.",
+            helper_theme.DARK_THEME["text"],
+            se.SettingType.COLOR,
+            tab="Helper Theme",
+        ),
+        "helper_theme_border_color": se.Setting(
+            "Table border color",
+            "Border and grid-line color used by the training table.",
+            helper_theme.DARK_THEME["border"],
+            se.SettingType.COLOR,
+            tab="Helper Theme",
+        ),
+        "helper_theme_background_color": se.Setting(
+            "Window background color",
+            "Main background color used by the Modern helper window.",
+            helper_theme.DARK_THEME["background"],
+            se.SettingType.COLOR,
+            tab="Helper Theme",
+        ),
+        "helper_theme_panel_color": se.Setting(
+            "Window sub-background color",
+            "Background color used by headers, controls, and secondary panels.",
+            helper_theme.DARK_THEME["panel"],
+            se.SettingType.COLOR,
+            tab="Helper Theme",
         ),
         "custom_browser_divider": se.Setting(
             "Custom browser divider",
@@ -268,38 +280,30 @@ class DefaultSettings(se.NewSettings):
             se.SettingType.DICT,
             hidden=True
         ),
+        "carrotblender_port": se.Setting(
+            "CarrotBlender Port",
+            "Port to listen on for CarrotBlender.",
+            17229,
+            se.SettingType.INT,
+            max_value=65535
+        ),
+        "carrotblender_host": se.Setting(
+            "CarrotBlender Hostname",
+            "Hostname/IP address to listen on for CarrotBlender. Don't change this unless you know what you're doing.",
+            "127.0.0.1",
+            se.SettingType.STRING,
+            hidden=True
+        ),
+        "carrotblender_max_buffer_size": se.Setting(
+            "CarrotBlender Max Buffer Size",
+            "Buffer size for CarrotBlender (in bytes). Don't change this unless you really know what you're doing.",
+            262144,
+            se.SettingType.INT,
+            hidden=True,
+            max_value=1048576
+        ),
 
     }
-
-    # Enable global-specific config and hide jp-only config
-    if 'IS_UL_GLOBAL' in os.environ:
-        _settings.update({
-            "carrotblender_port": se.Setting(
-                "CarrotBlender Port",
-                "Port to listen on for CarrotBlender.",
-                17229,
-                se.SettingType.INT,
-                max_value=65535
-            ),
-            "carrotblender_host": se.Setting(
-                "CarrotBlender Hostname",
-                "Hostname/IP address to listen on for CarrotBlender. Don't change this unless you know what you're doing.",
-                '127.0.0.1',
-                se.SettingType.STRING,
-                hidden=True
-            ),
-            "carrotblender_max_buffer_size": se.Setting(
-                "CarrotBlender Max Buffer Size",
-                "Buffer size for CarrotBlender (in bytes). Don't change this unless you really know what you're doing.",
-                262144, # TODO this is completely arbitrary
-                se.SettingType.INT,
-                hidden=True,
-                max_value=1048576 # 1MB
-            )
-        })
-        _settings.get("enable_carrotjuicer").name = "Enable CarrotBlender"
-        _settings.get("enable_carrotjuicer").description = "Enable CarrotBlender functionality."
-        _settings.get("hide_carrotjuicer").hidden=True
 
 
 
@@ -322,26 +326,38 @@ class SettingsHandler():
     def regenerate_unique_id(self):
         self['unique_id'] = str(uuid.uuid4())
 
-    def make_user_choose_folder(self, setting, file_to_verify, title, error):
-        if not os.path.exists(os.path.join(self[setting], file_to_verify)):
-            logger.debug(self[setting])
-            pidl, _, _ = shell.SHBrowseForFolder(None, None, title)
-            try:
-                selected_directory = shell.SHGetPathFromIDListW(pidl)
-            except:
-                selected_directory = None
-
-            if selected_directory and os.path.exists(os.path.join(selected_directory, file_to_verify)):
-                self[setting] = selected_directory
-            else:
-                util.show_warning_box("Error", f"{error}<br>Uma Launcher will now close.")
-                self.threader.stop()
-    
     def save_settings(self):
-        with open(util.get_appdata(self.settings_file), "w", encoding="utf-8") as f:
-            json.dump(self.loaded_settings.to_dict(), f, ensure_ascii=False, indent=4)
+        settings_path = util.get_appdata(self.settings_file)
+        settings_directory = os.path.dirname(settings_path)
+        with _SETTINGS_SAVE_LOCK:
+            descriptor, temporary_path = tempfile.mkstemp(
+                dir=settings_directory or ".",
+                prefix=f".{self.settings_file}.",
+                suffix=".tmp",
+            )
+            try:
+                with os.fdopen(descriptor, "w", encoding="utf-8") as settings_file:
+                    json.dump(
+                        self.loaded_settings.to_dict(),
+                        settings_file,
+                        ensure_ascii=False,
+                        indent=4,
+                    )
+                    settings_file.flush()
+                    os.fsync(settings_file.fileno())
+                os.replace(temporary_path, settings_path)
+            except BaseException:
+                try:
+                    os.unlink(temporary_path)
+                except FileNotFoundError:
+                    pass
+                raise
     
     def load_settings(self, first_load=False):
+        with _SETTINGS_SAVE_LOCK:
+            self._load_settings(first_load=first_load)
+
+    def _load_settings(self, first_load=False):
         raw_settings = ""
 
         settings_path = util.get_appdata(self.settings_file)
@@ -365,7 +381,36 @@ class SettingsHandler():
         #             new_key = key[2:]
         #             new_settings[new_key] = raw_settings[key]
         #     raw_settings = new_settings
+        raw_settings.pop("training_helper_scale", None)
         self.loaded_settings.from_dict(raw_settings, keep_undefined=True)
+
+        # Normalize development-era aliases before the value reaches the GUI's
+        # integer-backed combo box. Both-mode now retains the Modern opt-in.
+        helper_mode = self.loaded_settings.training_helper_ui.value
+        if isinstance(helper_mode, str):
+            helper_mode = {
+                "legacy": 0,
+                "compact": 1,
+                "modern": 1,
+                "both": 1,
+            }.get(helper_mode.strip().lower(), helper_mode)
+        try:
+            helper_mode = int(helper_mode)
+        except (TypeError, ValueError):
+            helper_mode = 0
+        self.loaded_settings.training_helper_ui.value = (
+            1 if helper_mode in (1, 2) else 0
+        )
+
+        self.loaded_settings.helper_theme.value = helper_theme.normalize_theme_mode(
+            self.loaded_settings.helper_theme.value
+        )
+        for theme_key, setting_key in helper_theme.THEME_SETTING_KEYS.items():
+            setting = getattr(self.loaded_settings, setting_key)
+            setting.value = helper_theme.normalize_color(
+                setting.value,
+                helper_theme.DARK_THEME[theme_key],
+            )
 
         if first_load:
             success = version.auto_update(self)
@@ -374,7 +419,9 @@ class SettingsHandler():
 
         version.upgrade(self, raw_settings)
 
-        if self['debug_mode']:
+        # Source runs are always diagnostic builds. Packaged builds keep the
+        # persisted (hidden) override, which defaults to disabled.
+        if util.is_script or self['debug_mode']:
             util.is_debug = True
             util.log_set_trace()
             logger.debug("Debug mode enabled. Logging more.")
@@ -401,33 +448,14 @@ class SettingsHandler():
         return value
     
     def __setitem__(self, key, value):
-        logger.info(f"Setting {key} to {value}")
-        getattr(self.loaded_settings, key).value = value
-        self.save_settings()
+        with _SETTINGS_SAVE_LOCK:
+            logger.info(f"Setting {key} to {value}")
+            getattr(self.loaded_settings, key).value = value
+            self.save_settings()
     
     def __repr__(self):
         return repr(self.loaded_settings)
     
-
-    def save_game_position(self, pos, portrait):
-        if util.is_minimized(self.threader.screenstate.game_handle):
-            # logger.warning(f"Game minimized, cannot save {constants.ORIENTATION_DICT[portrait]}: {pos}")
-            return
-        
-        orientation_key = constants.ORIENTATION_DICT[portrait]
-
-        if pos is not None and pos[0] <= -10666 and pos[1] <= -10666:
-            # logger.warning(f"Game minimized, cannot save {constants.ORIENTATION_DICT[portrait]}: {pos}")
-            return
-
-        orientation_key = constants.ORIENTATION_DICT[portrait]
-        self[orientation_key] = pos
-        logger.info(f"Saving {orientation_key}: {pos}")
-        self.save_settings()
-
-    def load_game_position(self, portrait):
-        orientation_key = constants.ORIENTATION_DICT[portrait]
-        return self[orientation_key]
 
     def get_preset_list(self):
         preset_list = []
@@ -481,12 +509,6 @@ class SettingsHandler():
                 self.threader.carrotjuicer.helper_table.update_presets(*self.get_helper_table_data())
             self.save_settings()
 
-    def notify_server(self):
-        version_str = version.VERSION
-        if util.is_script:
-            version_str += ".script"
-        util.do_get_request(f"https://umapyoi.net/api/v1/umalauncher/startup/{self['unique_id']}/{version_str}")
-
     def display_preferences(self):
         general_var = [self.loaded_settings]
         
@@ -523,7 +545,9 @@ class SettingsHandler():
         if self.threader.carrotjuicer.helper_table:
             self.threader.carrotjuicer.helper_table.update_presets(*self.get_helper_table_data())
 
-        self.threader.carrotjuicer.restart_time()
         self.save_settings()
         self.load_settings()
+        carrotjuicer = getattr(self.threader, "carrotjuicer", None)
+        if carrotjuicer:
+            carrotjuicer.apply_modern_helper_theme()
         self.threader.tray.icon_thread.update_menu()

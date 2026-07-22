@@ -8,9 +8,9 @@ class UmaTray():
     icon_thread = None
     threader = None
     default_title = "Uma Launcher"
-    default_icon = Image.open(util.get_asset("_assets/icon/default.ico"))
-    connecting_icon = Image.open(util.get_asset("_assets/icon/connecting.ico"))
-    connected_icon = Image.open(util.get_asset("_assets/icon/connected.ico"))
+    default_icon = Image.open(util.get_asset("_assets/icon/global/default.ico"))
+    connecting_icon = Image.open(util.get_asset("_assets/icon/global/connecting.ico"))
+    connected_icon = Image.open(util.get_asset("_assets/icon/global/connected.ico"))
 
     def __init__(self, threader):
         self.threader = threader

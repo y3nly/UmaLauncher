@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800;900&family=Outfit:wght@400;500;600;700;800&display=swap');
-
 /* ═══════════════════════════════════════════════════
    LIGHT THEME (default)
    ═══════════════════════════════════════════════════ */
@@ -103,7 +101,7 @@
 html, body { height: 100%; margin: 0; }
 
 body {
-  font-family: 'Outfit', 'M PLUS Rounded 1c', system-ui, sans-serif;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   background: var(--bg);
   color: var(--text);
   overflow-x: hidden;
@@ -723,7 +721,7 @@ details.advanced[open] summary::before { transform: rotate(90deg); }
   border-radius: var(--radius-sm); border: 2px solid var(--stroke);
   background: var(--panel-2); color: var(--text);
   padding: 0 10px; font-size: 13px; font-weight: 500;
-  outline: none; font-family: 'Outfit', monospace;
+  outline: none; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
 }
 .share-link-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(121,202,11,0.15); }
 .share-copy-btn { width: 100%; margin-top: 0; }
