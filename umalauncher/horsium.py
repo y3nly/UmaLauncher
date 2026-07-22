@@ -16,6 +16,7 @@ import win32gui
 from loguru import logger
 from selenium.common.exceptions import WebDriverException
 from selenium import webdriver
+from selenium.webdriver.common.options import ArgOptions
 from selenium.webdriver.remote.webdriver import WebDriver as RemoteWebDriver
 from selenium.webdriver.firefox.service import Service as FirefoxService
 from selenium.webdriver.edge.service import Service as EdgeService
@@ -27,6 +28,11 @@ import requests
 
 OLD_DRIVERS = []
 DYNAMIC_BLOCKLIST_CACHE = None
+
+def set_browser_version(options: ArgOptions, settings):
+    if not settings['browser_version'] or not settings['browser_version'].strip():
+        return
+    options.browser_version = settings['browser_version']
 
 def _is_port_open(port: int, host: str = "127.0.0.1", timeout: float = 0.15) -> bool:
     try:
@@ -47,6 +53,7 @@ def firefox_setup(helper_url, settings):
     profile = webdriver.FirefoxProfile(util.get_asset("ff_profile"))
     profile.set_preference("security.fileuri.strict_origin_policy", False) # Disable CORS protections
     options = webdriver.FirefoxOptions()
+    set_browser_version(options, settings)
     options.profile = profile
 
     binary_path = None
@@ -91,6 +98,7 @@ def get_dynamic_blocklist():
 def chromium_setup(service, options_class, driver_class, profile, helper_url, settings, binary_path=None, base_port=9222, max_port=9229):
     service.creation_flags = CREATE_NO_WINDOW
     options = options_class()
+    set_browser_version(options, settings)
 
     options.page_load_strategy = 'eager'
 
