@@ -19,7 +19,7 @@ jobs:
         Write-Error "Manual release workflow must be run from the dev branch. Selected ref: $env:GITHUB_REF_NAME"
         exit 1
     - name: Set up Python 3.12
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v5
       with:
         python-version: "3.12"
     - name: Setup virtual environment
@@ -32,12 +32,22 @@ jobs:
         cd ../../
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+    - name: Compile Python sources
+      run: ./venv/Scripts/python.exe -m compileall -q umalauncher scripts tests
+    - name: Run functional tests
+      run: ./venv/Scripts/python.exe -m unittest discover -s tests -v
+    - name: Check public source boundary
+      run: ./venv/Scripts/python.exe scripts/check_public_boundary.py
+    - name: Check patch formatting
+      run: git diff --check
     - name: Package
       run: |
         cd ./venv/Scripts/
         ./activate
         cd ../../
         ./build_global.bat
+    - name: Check packaged public boundary
+      run: ./venv/Scripts/python.exe scripts/check_public_boundary.py --archive umalauncher/dist/UmaLauncher-Global.exe
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:

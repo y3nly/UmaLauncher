@@ -2566,17 +2566,18 @@ class CarrotJuicer:
                     # but they do resolve any previous multi-choice event.
                     self.close_active_event_drawer()
 
+            self.runtime_extensions.on_response(
+                data,
+                response_event_generation
+                or getattr(self, "_active_event_generation", None),
+            )
+
             if 'chara_info' not in data and self.last_helper_data:
                 if 'reserved_race_array' in data:
                     self.last_helper_data['reserved_race_array'] = data['reserved_race_array']
                     data = self.last_helper_data
                     self.update_helper_table(data)
 
-            self.runtime_extensions.on_response(
-                data,
-                response_event_generation
-                or getattr(self, "_active_event_generation", None),
-            )
             self.last_data = data
         except Exception:
             logger.error("ERROR IN HANDLING RESPONSE MSGPACK")
