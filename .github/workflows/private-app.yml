@@ -1,0 +1,144 @@
+name: Private helper build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-helper-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate private branch
+        if: ${{ github.ref_name != 'yen' }}
+        run: |
+          Write-Error "Private builds must be run from the yen branch. Selected ref: $env:GITHUB_REF_NAME"
+          exit 1
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Compile Python sources
+        run: python -m compileall -q umalauncher scripts tests
+
+      - name: Run public and private functional tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Check patch formatting
+        run: git diff --check
+
+      - name: Build private executable
+        run: .\build_private.bat
+
+      - name: Inspect packaged private archive
+        shell: pwsh
+        run: |
+          $exe = "umalauncher/dist/UmaLauncher-Private.exe"
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
+            throw "Private executable is missing: $exe"
+          }
+
+          $archiveLines = & python -m PyInstaller.utils.cliutils.archive_viewer --recursive --brief $exe 2>&1 |
+            ForEach-Object { ($_ -replace '\\', '/').Trim().ToLowerInvariant() }
+          if ($LASTEXITCODE -ne 0) {
+            throw "PyInstaller archive inspection failed"
+          }
+          $archiveLines | Set-Content -LiteralPath "archive-contents.txt"
+
+          $requiredModules = @(
+            "runtime_extensions",
+            "umalauncher_private",
+            "umalauncher_private.runtime",
+            "umalauncher_private.event_prediction",
+            "umalauncher_private.training_sim",
+            "umalauncher_private.training_rows",
+            "umalauncher_private.umasim",
+            "umalauncher_private.umasim.packet",
+            "umalauncher_private.umasim.training"
+          )
+          foreach ($entry in $requiredModules) {
+            if ($archiveLines -notcontains $entry) {
+              throw "Required private archive module is missing: $entry"
+            }
+          }
+
+          $requiredAssets = @(
+            "_assets/training_helper/index.html",
+            "_assets/umasim-cli.exe",
+            "selenium/webdriver/common/windows/selenium-manager.exe",
+            "umalauncher_private/assets/legacy_prediction.js",
+            "umalauncher_private/assets/modern_prediction.js",
+            "umalauncher_private/umasim/data/chara.txt",
+            "umalauncher_private/umasim/data/support_card.txt"
+          )
+          foreach ($entry in $requiredAssets) {
+            if ($archiveLines -notcontains $entry) {
+              throw "Required private archive asset is missing: $entry"
+            }
+          }
+
+          $forbiddenPayloads = @(
+            "selenium/webdriver/common/linux/selenium-manager",
+            "selenium/webdriver/common/macos/selenium-manager",
+            "pyqt5/qt5/translations/",
+            "pyqt5/qt5/plugins/imageformats/qwebp.dll",
+            "pil/_avif",
+            "pil/_webp",
+            "threader_jp_steam",
+            "jp_steam_runtime_hook",
+            "translation",
+            "vpn"
+          )
+          foreach ($entry in $forbiddenPayloads) {
+            $match = $archiveLines | Where-Object { $_.Contains($entry) }
+            if ($match) {
+              throw "Retired packaged payload is present: $entry"
+            }
+          }
+
+      - name: Record artifact
+        shell: pwsh
+        run: |
+          $path = "umalauncher/dist/UmaLauncher-Private.exe"
+          $file = Get-Item -LiteralPath $path
+          $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $path
+          $commit = (git rev-parse HEAD).Trim()
+          $pythonVersion = (python -c "import platform; print(platform.python_version())").Trim()
+          $version = $file.VersionInfo.FileVersion.Trim()
+          @(
+            "File=$($file.Name)",
+            "Version=$version",
+            "Commit=$commit",
+            "Python=$pythonVersion",
+            "ExecutableBytes=$($file.Length)",
+            "ExecutableSHA256=$($hash.Hash)"
+          ) | Set-Content -LiteralPath "artifact-manifest.txt"
+          Get-Content -LiteralPath "artifact-manifest.txt"
+
+      - name: Upload private artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UmaLauncher-Private
+          path: |
+            umalauncher/dist/UmaLauncher-Private.exe
+            artifact-manifest.txt
+            archive-contents.txt
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14
