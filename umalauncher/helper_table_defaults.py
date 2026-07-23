@@ -325,7 +325,7 @@ class UsefulBondSettings(se.NewSettings):
 class UsefulBondRow(hte.Row):
     long_name = "Useful bond gained total"
     short_name = "Useful Bond"
-    description = "Shows the useful bond gain for each facility. Useful includes supports until orange bar, excluding friend/group cards.<br>Also Akikawa until green bar (except Project L'Arc). During L'Arc, Mei counts as useful until green bar."
+    description = "Shows the useful bond gain for each facility. Useful includes supports until orange bar, excluding friend/group cards and NPCs.<br>During Project L'Arc, Mei counts as useful until green bar. During UAF, Ryoka counts as useful until green bar."
 
     def __init__(self):
         super().__init__()
@@ -1606,7 +1606,6 @@ class DefaultPreset(hte.Preset):
         RowTypes.UAF_SPORT_POINT_GAIN,
         RowTypes.GFF_VEGETABLES,
         RowTypes.RMU_RESEARCH,
-        RowTypes.AOHARU_UNITY_SCORE,
         RowTypes.DYI_POINTS_DIST,
         RowTypes.ONSEN_POINTS_DIST,
         RowTypes.DREAM_PARTNERS,

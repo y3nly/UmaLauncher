@@ -277,7 +277,7 @@ class PresetSettings(se.NewSettings):
         "progress_bar": se.Setting(
             "Show progress bar",
             "Displays the training run progress.",
-            True,
+            False,
             se.SettingType.BOOL,
         ),
         "energy_enabled": se.Setting(
@@ -296,7 +296,7 @@ class PresetSettings(se.NewSettings):
         "hide_support_bonds": se.Setting(
             "Auto-hide maxed supports",
             "When support bonds are enabled, automatically hide characters when they reach 100.",
-            True,
+            False,
             se.SettingType.BOOL,
         ),
         "displayed_value": se.Setting(
@@ -326,7 +326,7 @@ class PresetSettings(se.NewSettings):
         ),
         "scenario_specific_enabled": se.Setting(
             "Show scenario specific elements",
-            "Show scenario specific elements in the event helper, above the main table.",
+            "Show scenario specific elements in the event helper.",
             True,
             se.SettingType.BOOL,
         ),
@@ -815,11 +815,23 @@ class Preset():
                 f'{"".join(g1_race_items)}</div></section>'
             )
 
+        gl_panel_html = (
+            self.generate_modern_gl_panel(main_info)
+            if self.settings.scenario_specific_enabled.value else ""
+        )
+        lower_side_html = ""
+        if g1_panel_html or gl_panel_html:
+            lower_side_html = (
+                '<aside class="modern-lower-side" '
+                'aria-label="Current training context">'
+                f'{g1_panel_html}{gl_panel_html}</aside>'
+            )
+
         lower_stage_html = ""
-        if g1_panel_html or partner_strip_html:
+        if lower_side_html or partner_strip_html:
             lower_stage_html = (
                 '<div class="modern-lower-stage">'
-                f'{g1_panel_html}{partner_strip_html}</div>'
+                f'{lower_side_html}{partner_strip_html}</div>'
             )
 
         metric_rows = []
@@ -943,7 +955,6 @@ class Preset():
         if self.settings.scenario_specific_enabled.value:
             context_panels.extend((
                 self.generate_gm_table(main_info),
-                self.generate_gl_table(main_info),
                 self.generate_arc(main_info),
                 self.generate_uaf(main_info),
                 self.generate_gff(main_info),
@@ -1025,6 +1036,46 @@ class Preset():
         bottom_row = f"<tr>{''.join(bottom_row)}</tr>"
 
         return f"<table id=\"gl-tokens\"><thead>{top_row}</thead><tbody>{bottom_row}</tbody></table>"
+
+    def generate_modern_gl_panel(self, main_info):
+        if main_info.get("scenario_id") != 3:
+            return ""
+
+        gl_stats = main_info.get("gl_stats") or {}
+        token_rows = []
+        for token_type in constants.GL_TOKEN_LIST:
+            label = token_type.title()
+            raw_value = gl_stats.get(token_type, 0)
+            try:
+                value = f"{int(raw_value):,}"
+            except (TypeError, ValueError):
+                value = str(raw_value)
+            escaped_label = html_lib.escape(label, quote=True)
+            escaped_value = html_lib.escape(value)
+            icon_source = html_lib.escape(
+                str(self.gl_token_dict.get(token_type) or ""),
+                quote=True,
+            )
+            icon_html = (
+                f'<img src="{icon_source}" alt="" width="22" height="22">'
+                if icon_source else (
+                    '<span class="modern-gl-token-fallback" aria-hidden="true">'
+                    f'{html_lib.escape(label[:1])}</span>'
+                )
+            )
+            token_rows.append(
+                '<span class="modern-gl-token" '
+                f'aria-label="{escaped_label} {escaped_value}">'
+                f'{icon_html}<strong>{escaped_value}</strong></span>'
+            )
+
+        return (
+            '<section class="modern-gl-panel" '
+            'aria-label="Grand Live performance">'
+            '<span class="modern-gl-label" aria-hidden="true">Live</span>'
+            '<div class="modern-gl-tokens">'
+            f'{"".join(token_rows)}</div></section>'
+        )
     
     def generate_schedule(self, main_info):
         cur_turn = main_info['turn']
