@@ -138,6 +138,15 @@
       .has-packet-predictions .gametora-reward-line {
         display: inline;
         margin-top: 0;
+        color: var(--text);
+      }
+      .has-packet-predictions .gametora-reward-line.is-owned {
+        color: #7d8594;
+      }
+      .has-packet-predictions .gametora-reward-line .semantic-skill,
+      .has-packet-predictions .gametora-reward-line .semantic-gain,
+      .has-packet-predictions .gametora-reward-line .semantic-value {
+        color: inherit;
       }
       .has-packet-predictions .gametora-reward-line:not(:last-child)::after {
         content: " ·";
