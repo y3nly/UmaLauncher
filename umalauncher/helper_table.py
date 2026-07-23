@@ -229,11 +229,8 @@ class TrainingPartner():
         effective_bond = 0
 
         if 6 < self.partner_id <= 1000:
-            if self.partner_id in (102, ) and not self.chara_info['scenario_id'] in (1, 6, 4):  # Disable Akikawa usefulness in certain scenarios
-                usefulness_cutoff = 60
-            else:
-                # Skip all non-Umas except Akikawa
-                return 0
+            # NPC bond never contributes to the Useful Bond comparison.
+            return 0
 
         new_bond = min(cur_bond, usefulness_cutoff)
         effective_bond = new_bond - starting_bond
