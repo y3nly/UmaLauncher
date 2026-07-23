@@ -9,7 +9,7 @@ It listens for local [CarrotBlender](https://github.com/qwcan/CarrotBlender) pac
 - Steam launch, Global game-window tracking, single-instance locking, and shutdown after the game closes.
 - Selectable Legacy and Modern training helpers with configurable table presets.
 - A reusable current-run Events browser for browsing GameTora event chains.
-- Skill planning and CM16/CM17 simulations.
+- Skill planning and CM17 simulations.
 - Local Trackblazer race scheduler, including its pinned GLPK solver runtime.
 - Optional compressed training logs (`.gz`).
 - Optional packet, race, veteran, friend-veteran, and race-schedule exports.
