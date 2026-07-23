@@ -99,5 +99,6 @@ class HelperAndServerFunctionalTests(unittest.TestCase):
         self.assertEqual(client.post("/open-event-window").status_code, 200)
         self.assertTrue(juicer.open_event_window)
 
+
 if __name__ == "__main__":
     unittest.main()
