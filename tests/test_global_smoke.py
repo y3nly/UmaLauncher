@@ -12,12 +12,19 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "umalauncher"))
 
 import horsium
+import runtime_extensions
 import steam
 import util
 import version
 
 
 class GlobalRuntimeSmokeTests(unittest.TestCase):
+    def test_release_config_drives_shared_version_policy(self):
+        self.assertEqual(
+            (version.PRIVATE_BUILD, version.UPDATE_ASSET_NAME),
+            runtime_extensions.get_release_config(),
+        )
+
     def test_global_helper_url_and_steam_launch_command(self):
         self.assertEqual(
             util.create_gametora_helper_url(100101, 1, [1, 2, 3, 4, 5, 6]),
