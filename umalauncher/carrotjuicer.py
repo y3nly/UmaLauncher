@@ -2774,6 +2774,7 @@ class CarrotJuicer:
             13: {"name": "Taurus Cup", "location": 10006, "course": 10606, "season": 1, "weather": 1, "ground_condition": "GOOD"},
             14: {"name": "Gemini Cup", "location": 10006, "course": 10602, "season": 1, "weather": 1, "ground_condition": "GOOD"},
             15: {"name": "Cancer Cup", "location": 10009, "course": 10906, "season": 2, "weather": 2, "ground_condition": "YAYAOMO"}, # Cloudy/Good
+            16: {"name": "Leo Cup", "location": 10005, "course": 10501, "season": 2, "weather": 1, "ground_condition": "GOOD"},
             17: {"name": "Virgo Cup", "location": 10101, "course": 11103, "season": 3, "weather": 1, "ground_condition": "YAYAOMO"},
             18: {"name": "Libra Cup", "location": 10009, "course": 10903, "season": 3, "weather": 2, "ground_condition": "GOOD"}, # Cloudy/Firm
             19: {"name": "Scorpio Cup", "location": 10008, "course": 10808, "season": 3, "weather": 1, "ground_condition": "GOOD"},
