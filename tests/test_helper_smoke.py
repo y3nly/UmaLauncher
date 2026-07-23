@@ -99,6 +99,24 @@ class HelperAndServerFunctionalTests(unittest.TestCase):
         self.assertEqual(client.post("/open-event-window").status_code, 200)
         self.assertTrue(juicer.open_event_window)
 
+    def test_retired_cm_definition_falls_forward_to_cm17(self):
+        juicer = types.SimpleNamespace(
+            open_skill_window=False,
+            selected_cm_definition=16,
+        )
+        previous_threader = umaserver.threader
+        self.addCleanup(setattr, umaserver, "threader", previous_threader)
+        umaserver.threader = types.SimpleNamespace(carrotjuicer=juicer)
+        client = umaserver.app.test_client()
+
+        cm_response = client.post(
+            "/skill-window-cm-definition",
+            data="16",
+        )
+        self.assertEqual(cm_response.status_code, 200)
+        self.assertEqual(juicer.selected_cm_definition, 17)
+        self.assertTrue(juicer.open_skill_window)
+
 
 if __name__ == "__main__":
     unittest.main()

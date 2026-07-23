@@ -152,7 +152,7 @@ class CarrotJuicer:
     open_event_window = False
     event_browser = None
     last_events_rect = None
-    selected_cm_definition = 16
+    selected_cm_definition = 17
     open_schedule_window = False
     schedule_browser = None
     last_schedule_rect = None
@@ -221,7 +221,7 @@ class CarrotJuicer:
         self.skill_data = {}
         self.skills_list = []
         self.style = ''
-        self.selected_cm_definition = 16
+        self.selected_cm_definition = 17
 
 
         self.runtime_extensions = runtime_extensions.create(self)
@@ -2774,8 +2774,7 @@ class CarrotJuicer:
             13: {"name": "Taurus Cup", "location": 10006, "course": 10606, "season": 1, "weather": 1, "ground_condition": "GOOD"},
             14: {"name": "Gemini Cup", "location": 10006, "course": 10602, "season": 1, "weather": 1, "ground_condition": "GOOD"},
             15: {"name": "Cancer Cup", "location": 10009, "course": 10906, "season": 2, "weather": 2, "ground_condition": "YAYAOMO"}, # Cloudy/Good
-            16: {"name": "Leo Cup", "location": 10005, "course": 10501, "season": 2, "weather": 1, "ground_condition": "GOOD"},
-            17: {"name": "Virgo Cup", "location": 10101, "course": 11103, "season": 3, "weather": 1, "ground_condition": "GOOD"},
+            17: {"name": "Virgo Cup", "location": 10101, "course": 11103, "season": 3, "weather": 1, "ground_condition": "YAYAOMO"},
             18: {"name": "Libra Cup", "location": 10009, "course": 10903, "season": 3, "weather": 2, "ground_condition": "GOOD"}, # Cloudy/Firm
             19: {"name": "Scorpio Cup", "location": 10008, "course": 10808, "season": 3, "weather": 1, "ground_condition": "GOOD"},
             20: {"name": "Sagittarius Cup", "location": 10005, "course": 10506, "season": 4, "weather": 2, "ground_condition": "YAYAOMO"}, # Cloudy/Good
@@ -2784,15 +2783,15 @@ class CarrotJuicer:
             23: {"name": "Pisces Cup", "location": 10005, "course": 10504, "season": 1, "weather": 1, "ground_condition": "GOOD"},
             24: {"name": "Aries Cup", "location": 10008, "course": 10811, "season": 1, "weather": 1, "ground_condition": "GOOD"},
         }
-        available_cm_definitions = (16, 17)
-        cm_pref = self.skill_browser.execute_script("return window.localStorage.getItem('UL_CM_DEF') || '16';")
+        available_cm_definitions = (17,)
+        cm_pref = self.skill_browser.execute_script("return window.localStorage.getItem('UL_CM_DEF') || '17';")
         try:
             selected_cm_definition = int(cm_pref)
         except (TypeError, ValueError):
             selected_cm_definition = self.selected_cm_definition
 
         if selected_cm_definition not in available_cm_definitions:
-            selected_cm_definition = 16
+            selected_cm_definition = 17
 
         self.selected_cm_definition = selected_cm_definition
         cm_options = [
@@ -2808,12 +2807,14 @@ class CarrotJuicer:
             u_power = chara_info.get('power', 0)
             u_guts = chara_info.get('guts', 0)
             u_wisdom = chara_info.get('wiz', 0)
+            u_condition = "GOOD"
         else:
-            u_speed = 1200
-            u_stamina = 2000
-            u_power = 1100
-            u_guts = 1100
-            u_wisdom = 1100
+            u_speed = 1600
+            u_stamina = 1300
+            u_power = 1200
+            u_guts = 600
+            u_wisdom = 1200
+            u_condition = "BEST"
 
         cm_data = CM_CONFIGS[selected_cm_definition]
         mock_payload = {
@@ -2821,7 +2822,7 @@ class CarrotJuicer:
                 "umaStatus": {
                     "charaName": "Place Holder",
                     "speed": u_speed, "stamina": u_stamina, "power": u_power, "guts": u_guts, "wisdom": u_wisdom,
-                    "condition": "GOOD", "style": STYLE_INTERNAL_MAP[self.style],
+                    "condition": u_condition, "style": STYLE_INTERNAL_MAP[self.style],
                     "distanceFit": "S", "surfaceFit": "A", "styleFit": "A",
                     "popularity": 1, "gateNumber": 0,
                 },
@@ -3092,7 +3093,7 @@ class CarrotJuicer:
             let uma_next = arguments[15] || 0;
             let proj_next = arguments[16] || 0;
             let cmOptions = arguments[17] || [];
-            let selectedCmDefinition = String(arguments[18] || 16);
+            let selectedCmDefinition = String(arguments[18] || 17);
             let projRankMin = arguments[19] || 0;
             let projRankMax = arguments[20] || 0;
             let availableSp = arguments[21] || 0;
