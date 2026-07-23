@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "umalauncher"))
 
 
-class PrivateFeatureSmokeTests(unittest.TestCase):
+class FeatureFunctionalTests(unittest.TestCase):
     def test_event_reward_packet_produces_renderable_choice_summaries(self):
         from umalauncher_private.event_prediction import (
             EventPredictionExtension,
