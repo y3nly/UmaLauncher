@@ -91,8 +91,8 @@
   function removeRenderedPredictions() {
     document.querySelectorAll(".packet-prediction[data-ul-private='true']")
       .forEach(element => element.remove());
-    document.querySelectorAll(".gametora-outcome.has-packet-prediction")
-      .forEach(element => element.classList.remove("has-packet-prediction"));
+    document.querySelectorAll(".gametora-outcomes.has-packet-predictions")
+      .forEach(element => element.classList.remove("has-packet-predictions"));
   }
 
   function ensureStyle() {
@@ -119,25 +119,129 @@
       }
       .packet-reward { color: var(--text); }
       .packet-reward + .packet-reward { margin-top: 2px; }
-      .packet-reward.is-positive { color: #8ce8aa; }
-      .packet-reward.is-negative { color: #ff8c95; }
-      .packet-reward.is-hint { color: #ffd66e; }
-      .gametora-outcome.has-packet-prediction .gametora-reward-lines {
+      .packet-reward.is-positive:not(.has-signed-value),
+      .semantic-skill,
+      .semantic-gain,
+      .semantic-value.is-positive {
+        color: #ff9d54;
+      }
+      .packet-reward.is-negative:not(.has-signed-value),
+      .semantic-value.is-negative {
+        color: #69b7ff;
+      }
+      .has-packet-predictions .gametora-reward-lines {
         display: block;
         max-width: 100%;
         overflow-wrap: anywhere;
         white-space: normal;
       }
+      .has-packet-predictions .gametora-reward-line {
+        display: inline;
+        margin-top: 0;
+      }
+      .has-packet-predictions .gametora-reward-line:not(:last-child)::after {
+        content: " ·";
+        color: var(--muted);
+      }
     `;
     document.head.appendChild(style);
   }
 
-  function appendTextElement(parent, className, text) {
-    const element = document.createElement("div");
+  function appendTextElement(parent, tagName, className, text) {
+    const element = document.createElement(tagName);
     element.className = className;
     element.textContent = safeText(text);
     parent.appendChild(element);
     return element;
+  }
+
+  function appendSemanticTokens(parent, text) {
+    const semanticTokenPattern = /([+-]\d+(?:\.\d+)?%?|\bgains?\b)/gi;
+    let cursor = 0;
+    let match;
+    let hasSignedValue = false;
+    while ((match = semanticTokenPattern.exec(text)) !== null) {
+      if (match.index > cursor) {
+        parent.appendChild(document.createTextNode(text.slice(cursor, match.index)));
+      }
+      if (match[0].startsWith("+") || match[0].startsWith("-")) {
+        hasSignedValue = true;
+        const valueTone = match[0].startsWith("-") ? "negative" : "positive";
+        appendTextElement(
+          parent,
+          "span",
+          `semantic-value is-${valueTone}`,
+          match[0]
+        );
+      } else {
+        appendTextElement(parent, "span", "semantic-gain", match[0]);
+      }
+      cursor = match.index + match[0].length;
+    }
+    if (cursor < text.length) {
+      parent.appendChild(document.createTextNode(text.slice(cursor)));
+    }
+    return hasSignedValue;
+  }
+
+  function appendSemanticText(parent, value, tone = "neutral", highlights = []) {
+    const text = safeText(value);
+    const highlightSignedValues = tone !== "hint";
+    const highlightValues = [...new Set(
+      (Array.isArray(highlights) ? highlights : [])
+        .map(highlight => safeText(highlight))
+        .filter(Boolean)
+    )].sort((left, right) => right.length - left.length);
+    const highlightRanges = [];
+    highlightValues.forEach(highlight => {
+      let fromIndex = 0;
+      while (fromIndex < text.length) {
+        const index = text.indexOf(highlight, fromIndex);
+        if (index < 0) {
+          break;
+        }
+        const end = index + highlight.length;
+        const overlaps = highlightRanges.some(range => (
+          index < range.end && end > range.index
+        ));
+        if (!overlaps) {
+          highlightRanges.push({index, end, text: highlight});
+        }
+        fromIndex = end;
+      }
+    });
+    highlightRanges.sort((left, right) => left.index - right.index);
+
+    let cursor = 0;
+    let hasSignedValue = false;
+    highlightRanges.forEach(range => {
+      if (range.index > cursor) {
+        const leadingText = text.slice(cursor, range.index);
+        if (highlightSignedValues) {
+          hasSignedValue = appendSemanticTokens(parent, leadingText)
+            || hasSignedValue;
+        } else {
+          parent.appendChild(document.createTextNode(leadingText));
+        }
+      }
+      appendTextElement(parent, "span", "semantic-skill", range.text);
+      cursor = range.end;
+    });
+    if (cursor < text.length) {
+      const trailingText = text.slice(cursor);
+      if (highlightSignedValues) {
+        hasSignedValue = appendSemanticTokens(parent, trailingText)
+          || hasSignedValue;
+      } else {
+        parent.appendChild(document.createTextNode(trailingText));
+      }
+    }
+    if (hasSignedValue) {
+      parent.classList.add("has-signed-value");
+    }
+    if (["positive", "negative", "hint"].includes(tone)) {
+      parent.classList.add(`is-${tone}`);
+    }
   }
 
   function render() {
@@ -157,35 +261,56 @@
     const choices = new Map(
       state.prediction.choices.map(choice => [choice.choiceNumber, choice])
     );
+    let rendered = false;
     cards.forEach((card, index) => {
       const choice = choices.get(index + 1);
       if (!choice) {
         return;
       }
 
+      const rewards = choice.rewards;
+      if (!rewards.length && !choice.summary) {
+        return;
+      }
+
       const prediction = document.createElement("div");
       prediction.className = "packet-prediction";
       prediction.dataset.ulPrivate = "true";
-      appendTextElement(prediction, "packet-prediction-label", "Prediction");
+      appendTextElement(
+        prediction,
+        "div",
+        "packet-prediction-label",
+        "Prediction"
+      );
 
-      const rewards = choice.rewards.length
-        ? choice.rewards
-        : [{
-          text: choice.summary || `Outcome ${choice.outcomeIndex || 1}`,
-          tone: "neutral"
-        }];
-      rewards.forEach(reward => {
-        const line = appendTextElement(prediction, "packet-reward", reward.text);
-        if (["positive", "negative", "hint"].includes(reward.tone)) {
-          line.classList.add(`is-${reward.tone}`);
-        }
-      });
+      if (rewards.length) {
+        rewards.forEach(reward => {
+          const line = document.createElement("div");
+          line.className = "packet-reward";
+          appendSemanticText(
+            line,
+            reward.text,
+            reward.tone,
+            reward.highlights
+          );
+          prediction.appendChild(line);
+        });
+      } else {
+        const line = document.createElement("div");
+        line.className = "packet-reward";
+        appendSemanticText(line, choice.summary);
+        prediction.appendChild(line);
+      }
 
       const rewardLines = card.querySelector(":scope > .gametora-reward-lines");
       card.insertBefore(prediction, rewardLines || card.firstChild);
-      card.classList.add("has-packet-prediction");
+      const outcomes = card.closest(".gametora-outcomes");
+      if (outcomes) {
+        outcomes.classList.add("has-packet-predictions");
+      }
+      rendered = true;
     });
-    return true;
+    return rendered;
   }
 
   const originalOpen = window.UL_OPEN_EVENT_DRAWER;
