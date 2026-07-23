@@ -19,7 +19,7 @@ def frame(message_type: int, payload: bytes) -> bytes:
     return bytes((message_type,)) + len(payload).to_bytes(2, "big") + payload
 
 
-class CarrotBlenderProtocolSmokeTests(unittest.TestCase):
+class CarrotBlenderProtocolFunctionalTests(unittest.TestCase):
     def test_encrypted_multipart_response_and_request_are_dispatched(self):
         response_payload = {"data": {"chara_info": {"turn": 3}}}
         plaintext = b"\0\0\0\0" + msgpack.packb(response_payload)
