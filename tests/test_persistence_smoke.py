@@ -96,7 +96,7 @@ def create_master_fixture(path: Path) -> None:
         connection.execute("INSERT INTO race VALUES (100, 100, 9020)")
 
 
-class PersistenceSmokeTests(unittest.TestCase):
+class PersistenceFunctionalTests(unittest.TestCase):
     def test_temporary_master_database_serves_skill_hint_and_race_queries(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             database = Path(temporary_directory) / "master.mdb"
