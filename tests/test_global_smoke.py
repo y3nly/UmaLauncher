@@ -21,7 +21,7 @@ import version
 class GlobalRuntimeSmokeTests(unittest.TestCase):
     def test_release_config_drives_shared_version_policy(self):
         self.assertEqual(
-            (version.PRIVATE_BUILD, version.UPDATE_ASSET_NAME),
+            (version.UPDATES_ENABLED, version.UPDATE_ASSET_NAMES),
             runtime_extensions.get_release_config(),
         )
 

@@ -13,7 +13,7 @@ import glob
 import runtime_extensions
 
 VERSION = "1.19.3"
-PRIVATE_BUILD, UPDATE_ASSET_NAME = runtime_extensions.get_release_config()
+UPDATES_ENABLED, UPDATE_ASSET_NAMES = runtime_extensions.get_release_config()
 
 def parse_version(version_string: str):
     """Convert version string to tuple."""
@@ -117,8 +117,8 @@ def upgrade(umasettings, raw_settings):
     umasettings["version"] = vstr(script_version)
 
 def force_update(umasettings):
-    if PRIVATE_BUILD:
-        util.show_info_box("Updates disabled", "Updates are disabled for private builds.")
+    if not UPDATES_ENABLED:
+        util.show_info_box("Updates disabled", "Updates are disabled for this build.")
         return
 
     result = auto_update(umasettings, force=True)
@@ -128,8 +128,8 @@ def force_update(umasettings):
 def auto_update(umasettings, force=False):
     logger.info("Checking for updates...")
 
-    if PRIVATE_BUILD:
-        logger.info("Skipping auto-update because this is a private build.")
+    if not UPDATES_ENABLED:
+        logger.info("Skipping auto-update because updates are disabled for this build.")
         return True
 
     script_version = parse_version(VERSION)
@@ -226,9 +226,7 @@ class Updater():
     def run(self):
         logger.debug("Updater thread started.")
         for asset in self.assets:
-            if asset['name'] == UPDATE_ASSET_NAME or (
-                PRIVATE_BUILD and asset['name'] == "UmaLauncher-Global.exe"
-            ):
+            if asset['name'] in UPDATE_ASSET_NAMES:
                 # Found the correct file, download and overwrite
                 download_url = asset['browser_download_url']
                 parsed = urlparse(download_url)
@@ -278,5 +276,8 @@ class Updater():
                     logger.error(e)
                     self.close_me = True
                     return
-        logger.error(f"No compatible launcher asset was found: {UPDATE_ASSET_NAME}")
+        logger.error(
+            "No compatible launcher asset was found. Expected one of: "
+            f"{', '.join(UPDATE_ASSET_NAMES)}"
+        )
         self.close_me = True

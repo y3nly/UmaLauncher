@@ -31,7 +31,7 @@ class RuntimeExtensions:
 
 def get_release_config():
     """Return build-specific updater policy without branching version.py."""
-    return True, "UmaLauncher-Private.exe"
+    return False, ("UmaLauncher-Private.exe", "UmaLauncher-Global.exe")
 
 
 def create(owner):
