@@ -29,6 +29,11 @@ class RuntimeExtensions:
         pass
 
 
+def get_release_config():
+    """Return build-specific updater policy without branching version.py."""
+    return True, "UmaLauncher-Private.exe"
+
+
 def create(owner):
     from umalauncher_private.runtime import PrivateRuntimeExtensions
 

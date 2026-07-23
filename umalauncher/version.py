@@ -10,10 +10,10 @@ from loguru import logger
 import util
 import gui
 import glob
+import runtime_extensions
 
 VERSION = "1.19.3"
-PRIVATE_BUILD = True
-UPDATE_ASSET_NAME = "UmaLauncher-Private.exe"
+PRIVATE_BUILD, UPDATE_ASSET_NAME = runtime_extensions.get_release_config()
 
 def parse_version(version_string: str):
     """Convert version string to tuple."""
