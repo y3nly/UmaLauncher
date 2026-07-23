@@ -20,7 +20,6 @@
       --text: var(--helper-text);
       --muted: #aeb5c2;
       --accent: #69d391;
-      --event-content-height: 160px;
       --event-overlay-clearance: 0px;
       --event-overlay-max-height: 100dvh;
       font-family: "Segoe UI";
@@ -102,37 +101,8 @@
       background: #1b1f29;
     }
 
-    #helper-toolbar.is-event-obscured {
-      position: absolute;
-      z-index: 30;
-      right: 0;
-      bottom: 0;
-      left: 0;
-      transform: translateY(calc(100% - 5px));
-      opacity: 0.45;
-    }
-
-    #helper-toolbar.is-event-obscured::before {
-      content: "";
-      position: absolute;
-      top: 1px;
-      left: 50%;
-      width: 34px;
-      height: 2px;
-      border-radius: 2px;
-      background: rgba(255, 255, 255, 0.55);
-      transform: translateX(-50%);
-    }
-
-    #helper-toolbar.is-event-obscured:hover,
-    #helper-toolbar.is-event-obscured:focus-within {
-      transform: none;
-      opacity: 1;
-    }
-
-    #helper-toolbar.is-event-obscured:hover::before,
-    #helper-toolbar.is-event-obscured:focus-within::before {
-      opacity: 0;
+    #helper-toolbar.is-event-hidden {
+      display: none;
     }
 
     .toolbar-spacer {
@@ -229,12 +199,17 @@
       pointer-events: none;
     }
 
+    #event-region.is-expanded {
+      height: min(calc(100% - 6px), var(--event-overlay-max-height));
+    }
+
     #event-drawer {
       position: relative;
       display: flex;
-      flex: 0 1 auto;
+      flex: 1 1 auto;
       flex-direction: column;
       width: 100%;
+      height: 100%;
       max-height: 100%;
       min-width: 0;
       min-height: 0;
@@ -287,12 +262,14 @@
 
     #event-content {
       position: relative;
-      flex: 0 1 var(--event-content-height);
+      flex: 1 1 auto;
       min-width: 0;
-      height: var(--event-content-height);
+      height: auto;
       min-height: 0;
-      overflow: auto;
+      overflow-x: hidden;
+      overflow-y: auto;
       overscroll-behavior: none;
+      scrollbar-gutter: stable;
       scroll-behavior: auto;
     }
 
@@ -636,10 +613,8 @@
         payload: null,
         eventChain: null,
         chainNavigationPending: false,
-        eventContentHeight: 160,
         eventOverlayClearance: 0,
         eventOverlayMaxHeight: null,
-        eventOverlayFrame: null,
         lastPostedRect: "",
         rectPostTimer: null,
         statSnapshot: null,
@@ -733,22 +708,6 @@
         }, 180);
       }
 
-      function clampEventContentHeight(value) {
-        const numeric = Number(value);
-        return Number.isFinite(numeric)
-          ? Math.max(120, Math.min(5000, Math.ceil(numeric)))
-          : 160;
-      }
-
-      function applyEventContentHeight(value) {
-        state.eventContentHeight = clampEventContentHeight(value);
-        document.documentElement.style.setProperty(
-          "--event-content-height",
-          state.eventContentHeight + "px"
-        );
-        scheduleEventOverlayClearance();
-      }
-
       function syncEventOverlayClearance() {
         if (!state.drawerExpanded || drawer.hidden) {
           state.eventOverlayMaxHeight = null;
@@ -794,24 +753,6 @@
           "--event-overlay-clearance",
           clearance + "px"
         );
-      }
-
-      function scheduleEventOverlayClearance() {
-        if (!state.drawerExpanded || drawer.hidden) {
-          if (state.eventOverlayFrame !== null) {
-            window.cancelAnimationFrame(state.eventOverlayFrame);
-            state.eventOverlayFrame = null;
-          }
-          syncEventOverlayClearance();
-          return;
-        }
-        if (state.eventOverlayFrame !== null) {
-          return;
-        }
-        state.eventOverlayFrame = window.requestAnimationFrame(() => {
-          state.eventOverlayFrame = null;
-          syncEventOverlayClearance();
-        });
       }
 
       function readDashboardStatSnapshot() {
@@ -947,12 +888,6 @@
         event.stopPropagation();
         scroller.scrollTop += wheelDeltaPixels(event, "y", scroller);
         scroller.scrollLeft += wheelDeltaPixels(event, "x", scroller);
-      }
-
-      function syncFallbackHeight() {
-        if (state.eventActive && !fallback.hidden) {
-          applyEventContentHeight(Math.max(120, fallback.scrollHeight));
-        }
       }
 
       function safeText(value) {
@@ -1120,7 +1055,6 @@
         const payload = state.payload && typeof state.payload === "object" ? state.payload : {};
         if (payload.gametoraEvent && Array.isArray(payload.gametoraEvent.outcomes)) {
           appendGametoraEvent(fallback, payload.gametoraEvent);
-          syncFallbackHeight();
           return;
         }
         const title = payload.fallbackTitle ?? payload.title ?? "Event information unavailable";
@@ -1137,7 +1071,6 @@
           });
           fallback.appendChild(list);
         }
-        syncFallbackHeight();
       }
 
       function closeHintDialog() {
@@ -1186,12 +1119,10 @@
         drawer.hidden = !state.drawerExpanded;
         reopenButton.hidden = state.drawerExpanded || !state.eventActive;
         eventRegion.classList.toggle("is-active", state.eventActive);
+        eventRegion.classList.toggle("is-expanded", state.drawerExpanded);
         dashboardScroll.classList.toggle("has-event-overlay", state.drawerExpanded);
-        helperToolbar.classList.toggle("is-event-obscured", state.drawerExpanded);
-        if (state.drawerExpanded) {
-          syncFallbackHeight();
-        }
-        scheduleEventOverlayClearance();
+        helperToolbar.classList.toggle("is-event-hidden", state.drawerExpanded);
+        syncEventOverlayClearance();
       }
 
       function readOpenGeneration(payload) {
@@ -1304,7 +1235,6 @@
           dashboardScroll.scrollHeight - dashboardScroll.clientHeight
         );
         dashboardScroll.scrollTop = Math.min(previousScrollTop, maximumScrollTop);
-        scheduleEventOverlayClearance();
         const helper = document.getElementById("modern-training-helper");
         const style = helper ? getComputedStyle(helper) : null;
         const gridWidth = Number.parseFloat(
@@ -1340,7 +1270,6 @@
         state.payload = payload && typeof payload === "object" ? payload : {};
         if (isNewGeneration) {
           state.eventSourceAvailable = false;
-          applyEventContentHeight(160);
         }
         if (Object.prototype.hasOwnProperty.call(state.payload, "eventSourceAvailable")) {
           state.eventSourceAvailable = Boolean(state.payload.eventSourceAvailable);
@@ -1468,23 +1397,9 @@
 
       window.addEventListener("resize", () => {
         scheduleScreenRectPost();
-        scheduleEventOverlayClearance();
+        syncEventOverlayClearance();
       });
-      dashboardScroll.addEventListener(
-        "scroll",
-        scheduleEventOverlayClearance,
-        { passive: true }
-      );
 
-      if (typeof ResizeObserver === "function") {
-        const overlayResizeObserver = new ResizeObserver(
-          () => scheduleEventOverlayClearance()
-        );
-        overlayResizeObserver.observe(drawer);
-        overlayResizeObserver.observe(dashboardMount);
-      }
-
-      applyEventContentHeight(state.eventContentHeight);
       renderFallback();
       window.setInterval(() => postScreenRect(false), 2000);
     })();
