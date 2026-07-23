@@ -11,7 +11,7 @@ import util
 import gui
 import glob
 
-VERSION = "1.19.2"
+VERSION = "1.19.3"
 PRIVATE_BUILD = True
 UPDATE_ASSET_NAME = "UmaLauncher-Private.exe"
 
