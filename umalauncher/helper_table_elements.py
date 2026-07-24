@@ -1047,9 +1047,15 @@ class Preset():
             label = token_type.title()
             raw_value = gl_stats.get(token_type, 0)
             try:
-                value = f"{int(raw_value):,}"
+                numeric_value = int(raw_value)
+                value = f"{numeric_value:,}"
+                stat_attributes = (
+                    f' data-stat-key="gl-{html_lib.escape(token_type, quote=True)}"'
+                    f' data-stat-value="{numeric_value}"'
+                )
             except (TypeError, ValueError):
                 value = str(raw_value)
+                stat_attributes = ""
             escaped_label = html_lib.escape(label, quote=True)
             escaped_value = html_lib.escape(value)
             icon_source = html_lib.escape(
@@ -1066,13 +1072,13 @@ class Preset():
             token_rows.append(
                 '<span class="modern-gl-token" '
                 f'aria-label="{escaped_label} {escaped_value}">'
-                f'{icon_html}<strong>{escaped_value}</strong></span>'
+                f'{icon_html}<strong class="modern-stat-value"'
+                f'{stat_attributes}>{escaped_value}</strong></span>'
             )
 
         return (
             '<section class="modern-gl-panel" '
             'aria-label="Grand Live performance">'
-            '<span class="modern-gl-label" aria-hidden="true">Live</span>'
             '<div class="modern-gl-tokens">'
             f'{"".join(token_rows)}</div></section>'
         )
