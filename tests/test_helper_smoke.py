@@ -62,6 +62,7 @@ class HelperAndServerFunctionalTests(unittest.TestCase):
         self.assertNotIn('id="gl-tokens"', rendered)
         self.assertIn('class="modern-lower-side"', rendered)
         self.assertIn('class="modern-gl-panel"', rendered)
+        self.assertNotIn('class="modern-gl-label"', rendered)
         self.assertLess(
             rendered.index('class="modern-g1-panel"'),
             rendered.index('class="modern-gl-panel"'),
@@ -77,6 +78,11 @@ class HelperAndServerFunctionalTests(unittest.TestCase):
             )
         ]
         self.assertEqual(token_positions, sorted(token_positions))
+        for token_type, value in main_info["gl_stats"].items():
+            self.assertIn(
+                f'data-stat-key="gl-{token_type}" data-stat-value="{value}"',
+                rendered,
+            )
 
     def test_modern_helper_assets_and_events_route_are_served(self):
         juicer = types.SimpleNamespace(open_event_window=False)
