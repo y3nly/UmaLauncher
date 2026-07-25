@@ -40,9 +40,9 @@ def get_db_path():
 
 def _get_db_fingerprint():
     """Return the stable identity used to invalidate master-data caches."""
-    db_path = os.path.normcase(os.path.realpath(os.path.abspath(get_db_path())))
+    db_path = os.path.realpath(os.path.abspath(get_db_path()))
     stat = os.stat(db_path)
-    return db_path, stat.st_mtime_ns, stat.st_size
+    return os.path.normcase(db_path), stat.st_mtime_ns, stat.st_size
 
 
 def update_mdb_cache(force=False):
