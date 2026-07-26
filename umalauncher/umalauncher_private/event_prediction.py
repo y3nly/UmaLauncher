@@ -6,6 +6,8 @@ import threading
 
 from loguru import logger
 
+import constants
+
 
 PARAMETER_NAMES = {
     1: "Speed",
@@ -31,6 +33,11 @@ TRAINING_NAMES = {
     102: "Power",
     103: "Guts",
     106: "Wisdom",
+}
+
+LIVE_PERFORMANCE_NAMES = {
+    index: token_name.title()
+    for index, token_name in enumerate(constants.GL_TOKEN_LIST, start=1)
 }
 
 EFFECT_VALUE_TYPE_NONE = 0
@@ -72,6 +79,7 @@ EVENT_CHOICE_REWARD_META = {
     20: ("Previously trained attribute -{0}", DISPLAY_TYPE_TEXT, (EFFECT_VALUE_TYPE_VALUE, EFFECT_VALUE_TYPE_NONE, EFFECT_VALUE_TYPE_NONE)),
     21: "Stat gains based on race grade",
     22: "Stat gains based on race grade and result",
+    23: ("{0} +{1}", DISPLAY_TYPE_TEXT, (EFFECT_VALUE_TYPE_SCENARIO_LIVE_PERFORMANCE, EFFECT_VALUE_TYPE_VALUE, EFFECT_VALUE_TYPE_NONE)),
     27: ("Friendship with {1} lowest-friendship Support Card(s) +{2} (Excludes {0})", DISPLAY_TYPE_TEXT, (EFFECT_VALUE_TYPE_CHARACTER, EFFECT_VALUE_TYPE_VALUE, EFFECT_VALUE_TYPE_VALUE)),
     28: ("Friendship with {0} lowest-friendship Support Card(s) +{1}", DISPLAY_TYPE_TEXT, (EFFECT_VALUE_TYPE_VALUE, EFFECT_VALUE_TYPE_VALUE, EFFECT_VALUE_TYPE_NONE)),
     29: ("Friendship with lowest-friendship Support Card +{1} (Excludes {0})", DISPLAY_TYPE_TEXT, (EFFECT_VALUE_TYPE_CHARACTER, EFFECT_VALUE_TYPE_VALUE, EFFECT_VALUE_TYPE_NONE)),
@@ -259,7 +267,7 @@ class EventRewardParser:
                 tone = "hint"
             elif display_id in (
                 1, 3, 4, 5, 9, 10, 11, 13, 14, 15, 16, 19,
-                27, 28, 29, 30, 39,
+                23, 27, 28, 29, 30, 39,
             ):
                 tone = "positive"
             elif display_id in (2, 12, 17, 18, 20, 34, 35, 36, 37, 38, 40):
@@ -349,7 +357,10 @@ class EventRewardParser:
             return f"Turn {value}"
 
         if value_type == EFFECT_VALUE_TYPE_SCENARIO_LIVE_PERFORMANCE:
-            return f"Grand Live performance {value}"
+            return LIVE_PERFORMANCE_NAMES.get(
+                value,
+                f"Grand Live performance {value}",
+            )
 
         if value_type == EFFECT_VALUE_TYPE_SCENARIO_VENUS_SPIRIT:
             return f"Grand Masters spirit {value}"
@@ -464,7 +475,7 @@ def _safe_int(value, default=None):
 
 
 def _reward_kind(display_id):
-    if display_id in (1, 2, 3, 13, 14, 19, 20, 21, 22, 34, 38, 39):
+    if display_id in (1, 2, 3, 13, 14, 19, 20, 21, 22, 23, 34, 38, 39):
         return "parameter"
 
     if display_id in (4, 5, 11, 27, 28, 29, 30, 35, 36):
