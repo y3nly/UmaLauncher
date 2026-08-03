@@ -811,8 +811,11 @@ class CarrotJuicer:
         with open(out_path, 'w', encoding='utf-8') as f:
             f.write(data)
 
+    def _is_stopping(self):
+        return self.should_stop or getattr(self.threader, "should_stop", False)
+
     def open_helper(self):
-        if self.should_stop:
+        if self._is_stopping():
             return
         self.close_browser()
 
@@ -2229,6 +2232,9 @@ class CarrotJuicer:
 
 
     def handle_response(self, message, is_json=False):
+        if self._is_stopping():
+            return
+
         data = message
         pending_selection = getattr(self, "_pending_event_selection", None)
         response_has_data = False
@@ -2595,6 +2601,9 @@ class CarrotJuicer:
                 self.finish_event_selection_response(pending_selection)
 
     def handle_request(self, message, is_json=False):
+        if self._is_stopping():
+            return
+
         data = self.load_request(message, is_json=is_json)
 
         if not data:
@@ -2658,6 +2667,9 @@ class CarrotJuicer:
             # self.close_browser()
 
     def update_helper_table(self, data):
+        if self._is_stopping():
+            return
+
         overlay_html = self.helper_table.create_helper_elements(
             data, self.last_helper_data
         )
