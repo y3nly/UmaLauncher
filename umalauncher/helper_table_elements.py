@@ -240,6 +240,7 @@ class Preset():
             html_elements.append(self.generate_arc(main_info))
             html_elements.append(self.generate_uaf(main_info))
             html_elements.append(self.generate_gff(main_info))
+            html_elements.append(self.generate_ramen(main_info))
 
         html_elements.append(self.generate_table(command_info, main_info))
 
@@ -610,6 +611,17 @@ class Preset():
 
         
         return f"<div id='gff' style='display:flex; flex-flow: column; justify-content:center; align-items:center; gap: 0.5rem;'>{internal}</div>"
+
+    def generate_ramen(self, main_info):
+        # Ramen scenario
+        if main_info['scenario_id'] != 14:
+            return ""
+
+        #TODO
+        internal = ""
+        return internal
+
+
 
     def generate_mant(self, main_info):
         if main_info['scenario_id'] != 4:

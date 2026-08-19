@@ -711,6 +711,32 @@ def get_cooking_vegetable_max_count(veg_id: int, veg_lv: int) -> int:
     return row[0]
 
 
+RAMEN_COST_DICT = {}
+def get_ramen_cost(region_id: int, force: bool ) -> tuple[int, int, int]:
+    # Get the cost of a particular ramen type, given a region. Returns a tuple of (noodles, broth, toppings)
+
+    if region_id not in RAMEN_COST_DICT or force:
+        with Connection() as (_, cursor):
+            cursor.execute(
+                """
+                SELECT r.feeling_id, r.feeling_num
+                FROM single_mode_14_region_feeling r
+                WHERE r.region_id = ? 
+                """,
+                (region_id,)
+            )
+            rows = cursor.fetchall()
+
+        if not rows:
+            return 0,0,0
+        noodles = next((row[1] for row in rows if row[0] == 1), 0)
+        broth = next((row[1] for row in rows if row[0] == 2), 0)
+        toppings = next((row[1] for row in rows if row[0] == 3), 0)
+        RAMEN_COST_DICT.update({region_id: (noodles, broth, toppings)})
+
+    return RAMEN_COST_DICT[region_id]
+
+
 SINGLE_MODE_UNIQUE_CHARA_DICT = {}
 def get_single_mode_unique_chara_dict(force=False):
     global SINGLE_MODE_UNIQUE_CHARA_DICT

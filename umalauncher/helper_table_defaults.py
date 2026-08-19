@@ -544,10 +544,30 @@ class GrandLiveTotalTokensRow(hte.Row):
 
 
 
+class GrandLiveTokensDistributionSettings(se.NewSettings):
+    _settings = {
+        "highlight_light_hello": se.Setting(
+            "Highlight SSR Light Hello",
+            "Highlights Token Gain Distribution on facilities where SSR Light Hello is present (only when she is in your support deck).",
+            True,
+            se.SettingType.BOOL
+        ),
+        "highlight_light_hello_color": se.Setting(
+            "Highlight SSR Light Hello color",
+            "The color to use to highlight facilities where SSR Light Hello is present.",
+            "#90EE90",
+            se.SettingType.COLOR
+        ),
+    }
+
 class GrandLiveTokensDistributionRow(hte.Row):
     long_name = "Grand Live tokens gained distribution"
     short_name = "Token Gain <br>Distribution"
     description = "[Scenario-specific] Shows the distribution of Grand Live tokens on each facility. Hidden in other scenarios."
+
+    def __init__(self):
+        super().__init__()
+        self.settings = GrandLiveTokensDistributionSettings()
 
     def _generate_cells(self, game_state) -> list[hte.Cell]:
         if list(game_state.values())[0]['scenario_id'] != 3:
@@ -568,7 +588,11 @@ class GrandLiveTokensDistributionRow(hte.Row):
 
             cell_text += "</div>"
 
-            cells.append(hte.Cell(cell_text))
+            # Bold highlight for training with SSR Light Hello
+            if self.settings.highlight_light_hello.value and command.get('has_ssr_light_hello'):
+                cells.append(hte.Cell(cell_text, bold=True, color=self.settings.highlight_light_hello_color.value))
+            else:
+                cells.append(hte.Cell(cell_text))
 
         return cells
     
@@ -1465,6 +1489,72 @@ class DreamPointsRow(hte.Row):
 
         return cells
 
+class RamenExpertiseSettings(se.NewSettings):
+    _settings = {
+        "highlight_level_up": se.Setting(
+            "Highlight Expertise Level Up",
+            "Highlights the facilities that will level up a ramen expertise",
+            True,
+            se.SettingType.BOOL
+        ),
+        "level_up_color": se.Setting(
+            "Level up color",
+            "The color to use to highlight the facilities that will level up a ramen expertise.",
+            "#FFA30D",
+            se.SettingType.COLOR
+        ),
+    }
+
+class RamenExpertiseRow(hte.Row):
+    long_name = "Ramen Expertise"
+    short_name = "Expertise"
+    description = "[Scenario-specific] Displays the amount of Ramen Expertise gained for each training facility."
+
+    def __init__(self):
+        super().__init__()
+        self.settings = RamenExpertiseSettings()
+
+    def generate_row_cells(self, game_state, feeling_id: str) -> list[hte.Cell]:
+        if list(game_state.values())[0]['scenario_id'] != 14:
+            return []
+        feeling_id_to_name = {
+            '1': 'Noodles',
+            '2': 'Stock',
+            '3': 'Toppings'
+        }
+        img_name = feeling_id_to_name[feeling_id].lower()
+        img_path = util.get_ramen_image_dict()[img_name]
+        img = f"<img src=\"{img_path}\" height=\"20\" width=\"20\" style=\"position:sticky;top:10%;height:20px;width:auto;\" />"
+
+
+        cells = [hte.Cell(img, title=feeling_id_to_name.get(feeling_id, "Unknown"))]
+        for command_key, command_data in game_state.items():
+            expertise_gain = next((x['turn'] for x in command_data['feeling_turn_array'] if x['feeling_id'] == int(feeling_id)), 0)
+            expertise_left = next((x['remain_turn'] for x in command_data['feeling_turn_info_array'] if x['feeling_id'] == int(feeling_id)), 0)
+            is_level_up = expertise_gain >= expertise_left
+            if is_level_up and self.settings.highlight_level_up.value:
+                cells.append(hte.Cell(f'{expertise_gain if not is_level_up else expertise_left}', bold=is_level_up, color=self.settings.level_up_color.value))
+            else:
+                cells.append(hte.Cell(f'{expertise_gain if not is_level_up else expertise_left}'))
+        return cells
+
+    def to_tr(self, game_state):
+        if list(game_state.values())[0]['scenario_id'] != 14:
+            return ""
+        # Hide if no data (URA) finale
+        has_data = True
+        for command_key, command_data in game_state.items():
+            if not 'feeling_turn_array' in command_data or not 'feeling_turn_info_array' in command_data:
+                has_data = False
+            elif command_data['feeling_turn_array'] == [] or command_data['feeling_turn_info_array'] == []:
+                has_data = False
+        if not has_data:
+            return ""
+        # This actually generates 3 rows, so we need to override the default behavior
+        td1 = ''.join(cell.to_td() for cell in self.generate_row_cells(game_state, '1'))
+        td2 = ''.join(cell.to_td() for cell in self.generate_row_cells(game_state, '2'))
+        td3 = ''.join(cell.to_td() for cell in self.generate_row_cells(game_state, '3'))
+        return f'<tr>{td1}</tr><tr>{td2}</tr><tr>{td3}</tr>'
 
 def generate_div(member):
     cell_text = "<div style=\"display: flex; flex-direction: column; align-items: center; justify-content: center;\">"
@@ -1548,6 +1638,7 @@ class RowTypes(Enum):
     ONSEN_POINTS_DIST = OnsenPointsDistributionRow
     DREAM_PARTNERS = DreamsPartnersRow
     DP_GAIN = DreamPointsRow
+    RAMEN_EXPERTISE = RamenExpertiseRow
 
 
 class DefaultPreset(hte.Preset):
@@ -1565,6 +1656,7 @@ class DefaultPreset(hte.Preset):
         RowTypes.ONSEN_POINTS_DIST,
         RowTypes.DREAM_PARTNERS,
         RowTypes.DP_GAIN,
+        RowTypes.RAMEN_EXPERTISE,
         RowTypes.CURRENT_STATS,
         RowTypes.GAINED_STATS,
         RowTypes.USEFUL_BOND,
