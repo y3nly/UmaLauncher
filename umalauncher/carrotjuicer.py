@@ -19,6 +19,7 @@ import util
 import constants
 import mdb
 import helper_table
+import uma_rating
 import training_tracker
 import helper_theme
 import horsium
@@ -57,32 +58,6 @@ def normalize_choice_array(value):
         return []
     return [choice for choice in value if isinstance(choice, dict)]
 
-
-STAT_BLOCK_MULTIPLIERS = [
-    0.5, 0.8, 1.0, 1.3, 1.6, 1.8, 2.1, 2.4, 2.6, 2.8, 
-    2.9, 3.0, 3.1, 3.3, 3.4, 3.5, 3.9, 4.1, 4.2, 4.3, 
-    5.2, 5.5, 6.6, 6.8
-]
-
-STAT_SCORES = [0] * 1202
-_score_scaled = 0
-for _i in range(1, 1201):
-    _block = (_i - 1) // 50
-    _score_scaled += int(STAT_BLOCK_MULTIPLIERS[_block] * 10)
-    STAT_SCORES[_i - 1] = _score_scaled // 10
-STAT_SCORES[1200] = 3841
-
-STAT_MULTIPLIERS_10 = {
-    1210: 8.0, 1220: 8.1, 1230: 8.3, 1240: 8.4, 1250: 8.5, 1260: 8.6, 1270: 8.8, 1280: 8.9, 1290: 9.0,
-    1300: 9.2, 1310: 9.3, 1320: 9.4, 1330: 9.6, 1340: 9.7, 1350: 9.8, 1360: 10.0, 1370: 10.1, 1380: 10.2, 1390: 10.3,
-    1400: 10.5, 1410: 10.6, 1420: 10.7, 1430: 10.9, 1440: 11.0, 1450: 11.1, 1460: 11.3, 1470: 11.4, 1480: 11.5, 1490: 11.7,
-    1500: 11.8, 1510: 11.9, 1520: 12.1, 1530: 12.2, 1540: 12.3, 1550: 12.4, 1560: 12.6, 1570: 12.7, 1580: 12.8, 1590: 13.0,
-    1600: 13.1, 1610: 13.2, 1620: 13.4, 1630: 13.5, 1640: 13.6, 1650: 13.8, 1660: 13.9, 1670: 14.0, 1680: 14.1, 1690: 14.3,
-    1700: 14.4, 1710: 14.5, 1720: 14.7, 1730: 14.8, 1740: 14.9, 1750: 15.1, 1760: 15.2, 1770: 15.3, 1780: 15.5, 1790: 15.6,
-    1800: 15.7, 1810: 15.9, 1820: 16.0, 1830: 16.1, 1840: 16.2, 1850: 16.4, 1860: 16.5, 1870: 16.6, 1880: 16.8, 1890: 16.9,
-    1900: 17.0, 1910: 17.2, 1920: 17.3, 1930: 17.4, 1940: 17.6, 1950: 17.7, 1960: 17.8, 1970: 17.9, 1980: 18.1, 1990: 18.2,
-    2000: 18.3
-}
 
 BASE_RANKS = [
     (300, "G"), (600, "G+"), (900, "F"), (1300, "F+"), (1800, "E"),
@@ -152,7 +127,7 @@ class CarrotJuicer:
     open_event_window = False
     event_browser = None
     last_events_rect = None
-    selected_cm_definition = 17
+    selected_cm_definition = 18
     open_schedule_window = False
     schedule_browser = None
     last_schedule_rect = None
@@ -221,7 +196,7 @@ class CarrotJuicer:
         self.skill_data = {}
         self.skills_list = []
         self.style = ''
-        self.selected_cm_definition = 17
+        self.selected_cm_definition = 18
 
 
         self.runtime_extensions = runtime_extensions.create(self)
@@ -473,15 +448,7 @@ class CarrotJuicer:
         )
 
     def get_stat_score(self, val):
-        if val <= 0: return 0
-        if val <= 1200:
-            return STAT_SCORES[val]
-        if val <= 1209:
-            return round((val - 1200) * 7.888 + 3841)
-        
-        block_key = (val // 10) * 10
-        mult = STAT_MULTIPLIERS_10.get(block_key, STAT_MULTIPLIERS_10[min(STAT_MULTIPLIERS_10.keys(), key=lambda k: abs(k-block_key))]) # Fallback to nearest
-        return round((val - 1209) * mult + 3912)
+        return uma_rating.stat_rating(val)
 
     def get_aptitude_multiplier(self, apt_val):
         if apt_val >= 7: return 1.1     # S or A
@@ -811,8 +778,11 @@ class CarrotJuicer:
         with open(out_path, 'w', encoding='utf-8') as f:
             f.write(data)
 
+    def _is_stopping(self):
+        return self.should_stop or getattr(self.threader, "should_stop", False)
+
     def open_helper(self):
-        if self.should_stop:
+        if self._is_stopping():
             return
         self.close_browser()
 
@@ -2229,6 +2199,9 @@ class CarrotJuicer:
 
 
     def handle_response(self, message, is_json=False):
+        if self._is_stopping():
+            return
+
         data = message
         pending_selection = getattr(self, "_pending_event_selection", None)
         response_has_data = False
@@ -2595,6 +2568,9 @@ class CarrotJuicer:
                 self.finish_event_selection_response(pending_selection)
 
     def handle_request(self, message, is_json=False):
+        if self._is_stopping():
+            return
+
         data = self.load_request(message, is_json=is_json)
 
         if not data:
@@ -2658,6 +2634,9 @@ class CarrotJuicer:
             # self.close_browser()
 
     def update_helper_table(self, data):
+        if self._is_stopping():
+            return
+
         overlay_html = self.helper_table.create_helper_elements(
             data, self.last_helper_data
         )
@@ -2770,12 +2749,6 @@ class CarrotJuicer:
         }
 
         CM_CONFIGS = {
-            12: {"name": "Aries Cup", "location": 10005, "course": 10504, "season": 1, "weather": 1, "ground_condition": "GOOD"},
-            13: {"name": "Taurus Cup", "location": 10006, "course": 10606, "season": 1, "weather": 1, "ground_condition": "GOOD"},
-            14: {"name": "Gemini Cup", "location": 10006, "course": 10602, "season": 1, "weather": 1, "ground_condition": "GOOD"},
-            15: {"name": "Cancer Cup", "location": 10009, "course": 10906, "season": 2, "weather": 2, "ground_condition": "YAYAOMO"}, # Cloudy/Good
-            16: {"name": "Leo Cup", "location": 10005, "course": 10501, "season": 2, "weather": 1, "ground_condition": "GOOD"},
-            17: {"name": "Virgo Cup", "location": 10101, "course": 11103, "season": 3, "weather": 1, "ground_condition": "YAYAOMO"},
             18: {"name": "Libra Cup", "location": 10009, "course": 10903, "season": 3, "weather": 2, "ground_condition": "GOOD"}, # Cloudy/Firm
             19: {"name": "Scorpio Cup", "location": 10008, "course": 10808, "season": 3, "weather": 1, "ground_condition": "GOOD"},
             20: {"name": "Sagittarius Cup", "location": 10005, "course": 10506, "season": 4, "weather": 2, "ground_condition": "YAYAOMO"}, # Cloudy/Good
@@ -2784,15 +2757,15 @@ class CarrotJuicer:
             23: {"name": "Pisces Cup", "location": 10005, "course": 10504, "season": 1, "weather": 1, "ground_condition": "GOOD"},
             24: {"name": "Aries Cup", "location": 10008, "course": 10811, "season": 1, "weather": 1, "ground_condition": "GOOD"},
         }
-        available_cm_definitions = (17,)
-        cm_pref = self.skill_browser.execute_script("return window.localStorage.getItem('UL_CM_DEF') || '17';")
+        available_cm_definitions = (18, 19)
+        cm_pref = self.skill_browser.execute_script("return window.localStorage.getItem('UL_CM_DEF') || '18';")
         try:
             selected_cm_definition = int(cm_pref)
         except (TypeError, ValueError):
             selected_cm_definition = self.selected_cm_definition
 
         if selected_cm_definition not in available_cm_definitions:
-            selected_cm_definition = 17
+            selected_cm_definition = 18
 
         self.selected_cm_definition = selected_cm_definition
         cm_options = [
@@ -2810,11 +2783,11 @@ class CarrotJuicer:
             u_wisdom = chara_info.get('wiz', 0)
             u_condition = "GOOD"
         else:
-            u_speed = 1600
-            u_stamina = 1300
-            u_power = 1200
+            u_speed = 1500
+            u_stamina = 1200
+            u_power = 1155
             u_guts = 600
-            u_wisdom = 1200
+            u_wisdom = 1000
             u_condition = "BEST"
 
         cm_data = CM_CONFIGS[selected_cm_definition]

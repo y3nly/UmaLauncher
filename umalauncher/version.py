@@ -12,7 +12,7 @@ import gui
 import glob
 import runtime_extensions
 
-VERSION = "1.19.4"
+VERSION = "1.19.5"
 UPDATES_ENABLED, UPDATE_ASSET_NAMES = runtime_extensions.get_release_config()
 
 def parse_version(version_string: str):
