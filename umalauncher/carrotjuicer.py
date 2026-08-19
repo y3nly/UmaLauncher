@@ -19,6 +19,7 @@ import util
 import constants
 import mdb
 import helper_table
+import uma_rating
 import training_tracker
 import helper_theme
 import horsium
@@ -57,32 +58,6 @@ def normalize_choice_array(value):
         return []
     return [choice for choice in value if isinstance(choice, dict)]
 
-
-STAT_BLOCK_MULTIPLIERS = [
-    0.5, 0.8, 1.0, 1.3, 1.6, 1.8, 2.1, 2.4, 2.6, 2.8, 
-    2.9, 3.0, 3.1, 3.3, 3.4, 3.5, 3.9, 4.1, 4.2, 4.3, 
-    5.2, 5.5, 6.6, 6.8
-]
-
-STAT_SCORES = [0] * 1202
-_score_scaled = 0
-for _i in range(1, 1201):
-    _block = (_i - 1) // 50
-    _score_scaled += int(STAT_BLOCK_MULTIPLIERS[_block] * 10)
-    STAT_SCORES[_i - 1] = _score_scaled // 10
-STAT_SCORES[1200] = 3841
-
-STAT_MULTIPLIERS_10 = {
-    1210: 8.0, 1220: 8.1, 1230: 8.3, 1240: 8.4, 1250: 8.5, 1260: 8.6, 1270: 8.8, 1280: 8.9, 1290: 9.0,
-    1300: 9.2, 1310: 9.3, 1320: 9.4, 1330: 9.6, 1340: 9.7, 1350: 9.8, 1360: 10.0, 1370: 10.1, 1380: 10.2, 1390: 10.3,
-    1400: 10.5, 1410: 10.6, 1420: 10.7, 1430: 10.9, 1440: 11.0, 1450: 11.1, 1460: 11.3, 1470: 11.4, 1480: 11.5, 1490: 11.7,
-    1500: 11.8, 1510: 11.9, 1520: 12.1, 1530: 12.2, 1540: 12.3, 1550: 12.4, 1560: 12.6, 1570: 12.7, 1580: 12.8, 1590: 13.0,
-    1600: 13.1, 1610: 13.2, 1620: 13.4, 1630: 13.5, 1640: 13.6, 1650: 13.8, 1660: 13.9, 1670: 14.0, 1680: 14.1, 1690: 14.3,
-    1700: 14.4, 1710: 14.5, 1720: 14.7, 1730: 14.8, 1740: 14.9, 1750: 15.1, 1760: 15.2, 1770: 15.3, 1780: 15.5, 1790: 15.6,
-    1800: 15.7, 1810: 15.9, 1820: 16.0, 1830: 16.1, 1840: 16.2, 1850: 16.4, 1860: 16.5, 1870: 16.6, 1880: 16.8, 1890: 16.9,
-    1900: 17.0, 1910: 17.2, 1920: 17.3, 1930: 17.4, 1940: 17.6, 1950: 17.7, 1960: 17.8, 1970: 17.9, 1980: 18.1, 1990: 18.2,
-    2000: 18.3
-}
 
 BASE_RANKS = [
     (300, "G"), (600, "G+"), (900, "F"), (1300, "F+"), (1800, "E"),
@@ -473,15 +448,7 @@ class CarrotJuicer:
         )
 
     def get_stat_score(self, val):
-        if val <= 0: return 0
-        if val <= 1200:
-            return STAT_SCORES[val]
-        if val <= 1209:
-            return round((val - 1200) * 7.888 + 3841)
-        
-        block_key = (val // 10) * 10
-        mult = STAT_MULTIPLIERS_10.get(block_key, STAT_MULTIPLIERS_10[min(STAT_MULTIPLIERS_10.keys(), key=lambda k: abs(k-block_key))]) # Fallback to nearest
-        return round((val - 1209) * mult + 3912)
+        return uma_rating.stat_rating(val)
 
     def get_aptitude_multiplier(self, apt_val):
         if apt_val >= 7: return 1.1     # S or A
