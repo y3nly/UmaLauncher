@@ -351,6 +351,67 @@
       line-height: 1.4;
     }
 
+    .gametora-outcome.is-gl-recommended {
+      border-color: rgba(105, 211, 145, 0.8);
+      box-shadow: inset 3px 0 0 #69d391;
+    }
+
+    .gametora-outcome.is-gl-highest {
+      background: color-mix(in srgb, #d5a92f 13%, var(--helper-panel));
+    }
+
+    .gametora-outcome.is-unaffordable {
+      opacity: 0.58;
+    }
+
+    .gl-choice-name {
+      font-weight: 700;
+    }
+
+    .gl-choice-cost,
+    .gl-choice-meta {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .gl-choice-tier {
+      margin-top: 3px;
+      color: #ffd66e;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .gl-performance-points {
+      display: flex;
+      justify-content: center;
+      gap: 4px;
+      margin: 0 0 6px;
+    }
+
+    .gl-performance-point {
+      position: relative;
+      width: 34px;
+      height: 34px;
+      flex: 0 0 34px;
+    }
+
+    .gl-performance-point img {
+      display: block;
+      width: 34px;
+      height: 34px;
+    }
+
+    .gl-performance-point strong {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-size: 12px;
+      text-shadow: 0 1px 2px #000, 0 0 3px #000;
+    }
+
     .gametora-choice-label {
       margin-bottom: 4px;
       color: var(--muted);
@@ -506,7 +567,8 @@
     .modern-facility{padding-top:0;padding-bottom:4px}.modern-facility .facility-icon-shell{margin-top:-2px}.modern-facility-stat>.modern-stat-value{padding:0 3px;border-radius:3px;background:rgba(20,22,29,.82);background:color-mix(in srgb,var(--mth-card) 88%,transparent);box-shadow:0 1px 2px rgba(0,0,0,.5);transform:translateY(1px)}.modern-row-label,.modern-row-value{min-height:22px;padding-top:2px;padding-bottom:2px}.bond-indicator-both{position:relative}.bond-number-overlay{display:flex;align-items:center;justify-content:center;text-shadow:0 0 2px #000,0 0 1px #000;transform:none}
     .modern-stat-value{position:relative;display:inline-block;overflow:visible}.modern-facility-stat>.modern-stat-value{position:static}.modern-vital>.modern-stat-value{display:inline-block;overflow:visible}.modern-stat-delta{position:absolute;z-index:20;left:50%;top:-9px;color:#7cff91;font-size:11px;font-weight:800;line-height:1;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 3px #000;pointer-events:none;animation-name:modern-stat-delta-pop;animation-duration:3s;animation-timing-function:ease-out;animation-fill-mode:both}.modern-stat-delta.is-negative{color:#ff626d}.modern-energy-value .modern-stat-delta{left:calc(100% + 3px);top:50%;height:auto;margin-top:calc(-.5em - 1px);animation-name:modern-energy-delta-pop}
     @keyframes modern-stat-delta-pop{0%{opacity:0;transform:translate(-50%,4px) scale(.72)}12%{opacity:1;transform:translate(-50%,0) scale(1.08)}22%{transform:translate(-50%,0) scale(1)}70%{opacity:1;transform:translate(-50%,-2px) scale(1)}100%{opacity:0;transform:translate(-50%,-10px) scale(.96)}}@keyframes modern-energy-delta-pop{0%{opacity:0;transform:translateY(0) scale(.72)}12%{opacity:1;transform:translateY(0) scale(1.08)}22%{transform:translateY(0) scale(1)}70%{opacity:1;transform:translateY(-2px) scale(1)}100%{opacity:0;transform:translateY(-10px) scale(.96)}}
-    .modern-lower-stage{position:relative;isolation:isolate;display:grid;grid-template-areas:"modern-lower-stack";width:var(--mth-grid-width);max-width:100%;margin:5px auto 0;align-items:stretch}.modern-lower-stage>.modern-lower-side,.modern-lower-stage>.modern-partner-strip{grid-area:modern-lower-stack}.modern-lower-stage>.modern-partner-strip{position:relative;z-index:2;margin:0}.modern-lower-side{position:relative;z-index:1;align-self:start;justify-self:start;display:flex;width:var(--mth-label-column);min-width:0;flex-direction:column;gap:4px;pointer-events:none}.modern-g1-panel,.modern-gl-panel{display:flex;width:100%;min-width:0;flex-direction:column;gap:2px;overflow:hidden;padding:3px 4px 4px;border:1px solid var(--mth-grid-line);border-radius:5px;background:var(--mth-card);box-shadow:none}.modern-g1-label{overflow:hidden;color:var(--mth-text);font-size:9px;font-weight:700;letter-spacing:.025em;line-height:1.1;text-align:center;white-space:nowrap}.modern-g1-races{display:flex;width:100%;min-width:0;flex-direction:column;align-items:center;gap:2px;opacity:.9}.modern-g1-race{display:flex;width:100%;min-width:0;align-items:center;justify-content:center;overflow:hidden}.modern-g1-race img{display:block;width:100%;max-width:68px;height:auto;max-height:34px;object-fit:contain}.modern-gl-tokens{display:flex;width:100%;min-width:0;flex-direction:column;gap:1px}.modern-gl-token{display:flex;width:100%;min-width:0;height:23px;align-items:center;justify-content:center;gap:3px}.modern-gl-token img{display:block;flex:0 0 22px;width:22px;height:22px;object-fit:contain}.modern-gl-token strong{min-width:0;color:var(--mth-text);font-size:11px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}.modern-gl-token-fallback{display:flex;flex:0 0 22px;width:22px;height:22px;align-items:center;justify-content:center;border-radius:4px;background:var(--mth-grid-line);font-size:10px;font-weight:700}
+    .modern-lower-stage{position:relative;isolation:isolate;display:grid;grid-template-areas:"modern-lower-stack";width:var(--mth-grid-width);max-width:100%;margin:5px auto 0;align-items:stretch}.modern-lower-stage>.modern-lower-side,.modern-lower-stage>.modern-partner-strip{grid-area:modern-lower-stack}.modern-lower-stage>.modern-partner-strip{position:relative;z-index:2;margin:0}.modern-lower-side{position:relative;z-index:1;align-self:start;justify-self:start;display:flex;width:var(--mth-label-column);min-width:0;flex-direction:column;gap:4px;pointer-events:none}.modern-g1-panel,.modern-gl-panel,.modern-unique-skill-warning{display:flex;width:100%;min-width:0;flex-direction:column;gap:2px;overflow:hidden;padding:3px 4px 4px;border:1px solid var(--mth-grid-line);border-radius:5px;background:var(--mth-card);box-shadow:none}.modern-unique-skill-warning{align-items:center;border-color:#d69a38;background:color-mix(in srgb,var(--mth-card) 82%,#d69a38);color:#ffd78b;font-size:9px;line-height:1.1;text-align:center}.modern-unique-skill-warning strong{font-size:10px}.modern-g1-label{overflow:hidden;color:var(--mth-text);font-size:9px;font-weight:700;letter-spacing:.025em;line-height:1.1;text-align:center;white-space:nowrap}.modern-g1-races{display:flex;width:100%;min-width:0;flex-direction:column;align-items:center;gap:2px;opacity:.9}.modern-g1-race{display:flex;width:100%;min-width:0;align-items:center;justify-content:center;overflow:hidden}.modern-g1-race img{display:block;width:100%;max-width:68px;height:auto;max-height:34px;object-fit:contain}.modern-gl-tokens{display:flex;width:100%;min-width:0;flex-direction:column;gap:1px}.modern-gl-token{display:flex;width:100%;min-width:0;height:23px;align-items:center;justify-content:flex-start;gap:3px}.modern-gl-token img{display:block;flex:0 0 22px;width:22px;height:22px;object-fit:contain}.modern-gl-token strong{min-width:0;color:var(--mth-text);font-size:11px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}.modern-gl-token-fallback{display:flex;flex:0 0 22px;width:22px;height:22px;align-items:center;justify-content:center;border-radius:4px;background:var(--mth-grid-line);font-size:10px;font-weight:700}
+    .modern-gl-token{display:grid;grid-template-columns:22px minmax(0,1fr);column-gap:0}.modern-gl-token strong{grid-column:2;text-align:center}
     .modern-gl-panel{overflow:visible}
     .modern-context-panels{width:calc(var(--mth-grid-width) + 2px);max-width:100%;margin:0 auto 5px;padding:5px;overflow-x:auto;border:1px solid var(--mth-grid-line);border-radius:5px;background:var(--mth-card);font-size:11px;scrollbar-width:thin}.modern-context-after{margin-top:5px;margin-bottom:0}.modern-context-panels table{width:100%;border-collapse:collapse;font-size:11px}.modern-context-panels th,.modern-context-panels td{padding:3px;border:1px solid var(--mth-grid-line);text-align:center}.modern-context-panels p{margin:2px 0}.modern-context-panels img{max-width:none}
     @media(max-width:360px){#modern-training-helper{padding:4px 2px;font-size:12px}.modern-header{padding:3px 5px 4px}.modern-header-main{gap:3px}.modern-run-scenario{font-size:11px}.modern-run-turn{font-size:9px}.modern-vital{gap:2px;padding:0 3px}.modern-energy-row{grid-template-columns:minmax(0,1fr) 44px;gap:4px}.modern-vital-mood{height:17px}.modern-vital>strong{font-size:11px}.modern-vitals small{font-size:8px}.modern-facility-stat{font-size:12px}}
@@ -517,6 +579,7 @@
     <header id="helper-toolbar" aria-label="Helper controls">
       <button id="open-skills" type="button">Skills</button>
       <button id="open-events" type="button">Events</button>
+      <button id="open-grand-live" type="button" disabled>Lessons</button>
       <button id="open-schedule" type="button" hidden>Schedule</button>
       <span class="toolbar-spacer" aria-hidden="true"></span>
       <label class="toggle-control" for="topmost-toggle">
@@ -585,6 +648,7 @@
       const scheduleButton = document.getElementById("open-schedule");
       const skillsButton = document.getElementById("open-skills");
       const eventsButton = document.getElementById("open-events");
+      const grandLiveButton = document.getElementById("open-grand-live");
       const topmostToggle = document.getElementById("topmost-toggle");
       const pairToggle = document.getElementById("pair-toggle");
       const eventRegion = document.getElementById("event-region");
@@ -609,6 +673,10 @@
         configured: false,
         drawerExpanded: false,
         eventActive: false,
+        drawerMode: null,
+        grandLiveSection: null,
+        grandLiveAutoOpened: false,
+        grandLivePayload: null,
         eventSourceAvailable: false,
         generation: -1,
         payload: null,
@@ -1051,9 +1119,83 @@
         parent.appendChild(list);
       }
 
+      function appendGrandLiveSuggestions(parent, payload) {
+        const points = Object.entries(payload.points || {});
+        if (points.length) {
+          const pointRow = document.createElement("div");
+          pointRow.className = "gl-performance-points";
+          points.forEach(([token, value]) => {
+            const point = document.createElement("span");
+            point.className = "gl-performance-point";
+            point.setAttribute("aria-label", `${token} ${value}`);
+            const source = payload.point_icons && payload.point_icons[token];
+            if (source) {
+              const icon = document.createElement("img");
+              icon.src = source;
+              icon.alt = "";
+              point.appendChild(icon);
+            }
+            appendTextElement(point, "strong", "", value);
+            pointRow.appendChild(point);
+          });
+          parent.appendChild(pointRow);
+        }
+        if (payload.message) {
+          appendTextElement(parent, "h2", "", payload.message);
+        }
+        const list = document.createElement("div");
+        list.className = "gametora-outcomes";
+        (Array.isArray(payload.choices) ? payload.choices : []).forEach(choice => {
+          const card = document.createElement("section");
+          card.className = "gametora-outcome";
+          if (choice.slot === payload.recommended_slot) {
+            card.classList.add("is-gl-recommended");
+          }
+          if (!choice.affordable) {
+            card.classList.add("is-unaffordable");
+          }
+          if (choice.highest) {
+            card.classList.add("is-gl-highest");
+          }
+          appendTextElement(
+            card,
+            "div",
+            "gametora-choice-label",
+            `Choice ${choice.slot} · Rank #${choice.rank} · ${choice.kind}`
+          );
+          appendTextElement(card, "div", "gl-choice-name", choice.name);
+          const costs = Object.entries(choice.cost || {})
+            .map(([token, value]) => `${token[0].toUpperCase()}${token.slice(1)} ${value}`);
+          appendTextElement(
+            card,
+            "div",
+            "gl-choice-cost",
+            costs.length ? `Cost: ${costs.join(" · ")}` : "Cost: none"
+          );
+          if (choice.effect) {
+            appendTextElement(card, "div", "gametora-reward-line", choice.effect);
+          }
+          const meta = !choice.affordable
+            ? "Unaffordable"
+            : payload.mode === "expose"
+              ? "Expose only"
+              : `Reachable songs: ${choice.reachable_songs}`;
+          appendTextElement(card, "div", "gl-choice-meta", meta);
+          if (choice.highest) {
+            appendTextElement(card, "div", "gl-choice-tier", "Highest tier");
+          }
+          list.appendChild(card);
+        });
+        parent.appendChild(list);
+      }
+
       function renderFallback() {
         fallback.replaceChildren();
         const payload = state.payload && typeof state.payload === "object" ? state.payload : {};
+        if (payload.grandLive && typeof payload.grandLive === "object") {
+          appendGrandLiveSuggestions(fallback, payload.grandLive);
+          return;
+        }
         if (payload.gametoraEvent && Array.isArray(payload.gametoraEvent.outcomes)) {
           appendGametoraEvent(fallback, payload.gametoraEvent);
           return;
@@ -1268,7 +1410,9 @@
         const isNewGeneration = generation !== state.generation;
         state.generation = generation;
         state.eventActive = true;
+        state.drawerMode = "event";
         state.payload = payload && typeof payload === "object" ? payload : {};
+        reopenButton.textContent = "Event";
         if (isNewGeneration) {
           state.eventSourceAvailable = false;
         }
@@ -1286,10 +1430,14 @@
         if (!generationMatches(generation)) {
           return false;
         }
+        if (state.drawerMode !== "event") {
+          return false;
+        }
         if (!state.eventActive) {
           return true;
         }
         state.eventActive = false;
+        state.drawerMode = null;
         state.payload = null;
         state.eventChain = null;
         state.chainNavigationPending = false;
@@ -1298,12 +1446,75 @@
         return true;
       };
 
+      function openGrandLiveDrawer(forceOpen = false) {
+        const payload = state.grandLivePayload;
+        if (!payload) {
+          return false;
+        }
+        const autoOpen = payload.auto_open && !state.grandLiveAutoOpened;
+        if (autoOpen) {
+          state.grandLiveAutoOpened = true;
+        }
+        state.eventActive = true;
+        state.drawerMode = "grand-live";
+        state.eventSourceAvailable = false;
+        state.payload = {grandLive: payload};
+        reopenButton.textContent = "Lessons";
+        const lessonProgress = Number.isInteger(payload.lesson_step)
+          && Number.isInteger(payload.lesson_total)
+          ? `${payload.lesson_step}/${payload.lesson_total}`
+          : null;
+        const songCount = Number(payload.songs_acquired || 0);
+        syncEventChain(
+          null,
+          ["Lessons", lessonProgress, `Songs ${songCount}`].filter(Boolean).join(" · ")
+        );
+        renderFallback();
+        if (forceOpen || autoOpen) {
+          setDrawerExpanded(true);
+          resetEventContentScroll();
+        } else {
+          setDrawerExpanded(state.drawerExpanded);
+        }
+        return true;
+      }
+
+      window.UL_SET_GL_SUGGESTIONS = function UL_SET_GL_SUGGESTIONS(payload) {
+        if (!payload || typeof payload !== "object") {
+          state.grandLiveSection = null;
+          state.grandLiveAutoOpened = false;
+          state.grandLivePayload = null;
+          grandLiveButton.disabled = true;
+          if (state.drawerMode === "grand-live") {
+            state.eventActive = false;
+            state.drawerMode = null;
+            state.payload = null;
+            setDrawerExpanded(false);
+          }
+          return true;
+        }
+        if (state.grandLiveSection !== payload.section) {
+          state.grandLiveSection = payload.section;
+          state.grandLiveAutoOpened = false;
+        }
+        state.grandLivePayload = payload;
+        grandLiveButton.disabled = false;
+        if (state.drawerMode === "event") {
+          return false;
+        }
+        return openGrandLiveDrawer();
+      };
+
       window.UL_SET_GAMETORA_EVENT = function UL_SET_GAMETORA_EVENT(
         event,
         chain,
         generation
       ) {
-        if (!state.eventActive || !generationMatches(generation)) {
+        if (
+          !state.eventActive
+          || state.drawerMode !== "event"
+          || !generationMatches(generation)
+        ) {
           return false;
         }
         state.payload = {
@@ -1355,6 +1566,7 @@
 
       skillsButton.addEventListener("click", () => postLocal("/open-skill-window"));
       eventsButton.addEventListener("click", openEventWindow);
+      grandLiveButton.addEventListener("click", () => openGrandLiveDrawer(true));
       scheduleButton.addEventListener("click", () => postLocal("/open-schedule-window"));
       topmostToggle.addEventListener("change", () => {
         postLocal("/topmost", String(topmostToggle.checked));

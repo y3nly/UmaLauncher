@@ -760,6 +760,57 @@ def get_gl_lesson_dict(force=False):
     
     return GL_LESSON_DICT
 
+
+GL_SQUARE_DICT = {}
+def get_gl_square_dict(force=False):
+    global GL_SQUARE_DICT
+    if force or not GL_SQUARE_DICT:
+        with Connection() as (_, cursor):
+            try:
+                cursor.execute(
+                    """
+                    SELECT
+                        s.id,
+                        title.text,
+                        effect.text,
+                        s.square_type,
+                        s.perf_type_1, s.perf_value_1,
+                        s.perf_type_2, s.perf_value_2,
+                        s.perf_type_3, s.perf_value_3,
+                        s.perf_type_4, s.perf_value_4,
+                        s.perf_type_5, s.perf_value_5,
+                        bonus.master_bonus_type_value
+                    FROM single_mode_live_square s
+                    LEFT JOIN text_data title
+                        ON title."index" = s.square_title_text_id
+                        AND title.category = 209
+                    LEFT JOIN text_data effect
+                        ON effect."index" = s.master_bonus_id
+                        AND effect.category = 207
+                    LEFT JOIN single_mode_live_master_bonus bonus
+                        ON bonus.id = s.master_bonus_id
+                    """
+                )
+                squares = {}
+                for row in cursor.fetchall():
+                    cost = {token: 0 for token in constants.GL_TOKEN_LIST}
+                    for offset in range(4, 14, 2):
+                        performance_type = row[offset]
+                        if 1 <= performance_type <= len(constants.GL_TOKEN_LIST):
+                            cost[constants.GL_TOKEN_LIST[performance_type - 1]] = row[offset + 1]
+                    squares[row[0]] = {
+                        "name": row[1] or f"Square {row[0]}",
+                        "effect": row[2] or "",
+                        "type": row[3],
+                        "cost": cost,
+                        "song_id": row[14] if row[3] == 4 else None,
+                    }
+                GL_SQUARE_DICT.update(squares)
+            except sqlite3.OperationalError as e:
+                logger.error(f"get_gl_square_dict failed: {e}\n{traceback.format_exc()}")
+
+    return GL_SQUARE_DICT
+
 GROUP_CARD_EFFECT_IDS = []
 def get_group_card_effect_ids(force=False):
     global GROUP_CARD_EFFECT_IDS
@@ -1204,6 +1255,7 @@ def _clear_update_caches():
         SUPPORT_CARD_STRING_DICT,
         MANT_ITEM_STRING_DICT,
         GL_LESSON_DICT,
+        GL_SQUARE_DICT,
         GROUP_CARD_EFFECT_IDS,
         SKILL_ID_DICT,
         DOUBLE_CIRCLE_UPGRADE_DICT,
@@ -1240,6 +1292,7 @@ UPDATE_FUNCS = [
     get_support_card_string_dict,
     get_mant_item_string_dict,
     get_gl_lesson_dict,
+    get_gl_square_dict,
     get_group_card_effect_ids,
     get_skill_id_dict,
     get_double_circle_upgrade_dict,

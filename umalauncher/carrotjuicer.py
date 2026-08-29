@@ -19,6 +19,7 @@ import util
 import constants
 import mdb
 import helper_table
+import grand_live
 import uma_rating
 import training_tracker
 import helper_theme
@@ -200,6 +201,7 @@ class CarrotJuicer:
 
 
         self.runtime_extensions = runtime_extensions.create(self)
+        self.grand_live_suggester = grand_live.GrandLiveSuggester()
         self.helper_table = helper_table.HelperTable(self)
         self._event_generation = 0
         self._active_event_generation = None
@@ -1079,6 +1081,9 @@ class CarrotJuicer:
     def end_training(self):
         if self.training_tracker:
             self.training_tracker = None
+        suggester = getattr(self, "grand_live_suggester", None)
+        if suggester:
+            suggester.reset()
         self.open_event_window = False
         self.close_active_event_drawer()
         self._close_transients_requested = False
@@ -2273,6 +2278,10 @@ class CarrotJuicer:
                 for key, value in data['single_mode_load_common'].items():
                     data[key] = value
 
+            self.grand_live_suggester.record_response(
+                data, mdb.get_gl_square_dict()
+            )
+
             self._prepare_transient_cleanup(data)
 
             # Run ended
@@ -2546,9 +2555,14 @@ class CarrotJuicer:
             )
 
             if 'chara_info' not in data and self.last_helper_data:
-                if 'reserved_race_array' in data:
-                    self.last_helper_data['reserved_race_array'] = data['reserved_race_array']
-                    data = self.last_helper_data
+                helper_updates = {
+                    key: data[key]
+                    for key in ('reserved_race_array', 'live_data_set')
+                    if key in data
+                }
+                if helper_updates:
+                    data = dict(self.last_helper_data)
+                    data.update(helper_updates)
                     self.update_helper_table(data)
 
             self.last_data = data
@@ -2582,6 +2596,9 @@ class CarrotJuicer:
             self.to_json(data, str(datetime.now()).replace(":", "-") + "_packet_out.json")
 
         self.previous_request = data
+        self.grand_live_suggester.record_request(
+            data, mdb.get_gl_square_dict()
+        )
         choice_number = None
         if isinstance(data, dict) and "choice_number" in data:
             try:
@@ -2673,6 +2690,10 @@ class CarrotJuicer:
                 "return window.UL_UPDATE_DASHBOARD(arguments[0], arguments[1]);",
                 dashboard_html,
                 self.helper_table.show_schedule_optimizer_button,
+            )
+            browser.execute_script(
+                "return window.UL_SET_GL_SUGGESTIONS(arguments[0]);",
+                self.helper_table.grand_live_suggestion,
             )
             fit_signature = None
             if isinstance(dashboard_metrics, dict):

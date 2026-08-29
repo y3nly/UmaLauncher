@@ -246,6 +246,7 @@ class HelperTable():
         self.preset_dict = {}
         self.selected_preset = None
         self.show_schedule_optimizer_button = False
+        self.grand_live_suggestion = None
         self.preset_dict, self.selected_preset = self.carrotjuicer.threader.settings.get_helper_table_data()
 
     def update_presets(self, preset_dict, selected_preset):
@@ -258,6 +259,7 @@ class HelperTable():
         """Creates the helper elements for the given response packet.
         """
         self.show_schedule_optimizer_button = False
+        self.grand_live_suggestion = None
         modern = (
             self.carrotjuicer.get_helper_ui_mode()
             == self.carrotjuicer.HELPER_UI_MODERN
@@ -288,6 +290,12 @@ class HelperTable():
         max_energy = data['chara_info']['max_vital']
         fans = data['chara_info']['fans']
         skillpt = data['chara_info']['skill_point']
+
+        self.grand_live_suggestion = self.carrotjuicer.grand_live_suggester.rank(
+            data, mdb.get_gl_square_dict()
+        )
+        if self.grand_live_suggestion:
+            self.grand_live_suggestion["point_icons"] = util.get_gl_token_dict()
 
         arc_aptitude_points = 0
         arc_expectation_gauge = 0
