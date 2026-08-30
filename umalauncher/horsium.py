@@ -50,7 +50,8 @@ _DRIVER_CLEANUP_THREADS = set()
 _DRIVER_CLEANUP_LOCK = threading.Lock()
 ADBLOCK_RULES_CACHE = None
 ADBLOCK_MINIMUM_DOMAIN_COUNT = 1_000
-WEBDRIVER_COMMAND_TIMEOUT = 5.0
+WEBDRIVER_COMMAND_TIMEOUT = 10.0
+MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 1
 PAGE_NAVIGATION_TIMEOUT = 5.0
 PAGE_NAVIGATION_POLL_INTERVAL = 0.1
 
@@ -376,6 +377,10 @@ class BrowserWindow:
         self.browser_name = "Auto"
         self.latest_error = ""
         self.last_foreground_hwnd = None
+        self._opening_tab = False
+        self._started_session = False
+        self._automatic_recovery_attempts = 0
+        self._recovery_stop_logged = False
         
         self.ensure_tab_open()
 
@@ -429,9 +434,19 @@ class BrowserWindow:
                 pass
             return False
 
+    def _is_stopping(self):
+        return bool(getattr(self.threader, "should_stop", False))
+
+    def should_preserve_recovery_state(self):
+        with self._driver_lock:
+            return self._started_session and self.driver is None
+
 
     def ensure_tab_open(self):
         with self._driver_lock:
+            if self._is_stopping():
+                return False
+
             if self.driver:
                 try:
                     window_handles = self.driver.window_handles
@@ -490,9 +505,28 @@ class BrowserWindow:
                     )
                     self._retire_driver()
 
+            if self._started_session:
+                if (
+                    self._automatic_recovery_attempts
+                    >= MAX_AUTOMATIC_RECOVERY_ATTEMPTS
+                ):
+                    if not self._recovery_stop_logged:
+                        logger.error(
+                            "Automatic browser recovery stopped after one "
+                            "replacement session"
+                        )
+                        self._recovery_stop_logged = True
+                    return False
+                self._automatic_recovery_attempts += 1
+                logger.warning("Starting one automatic browser recovery session")
+
+            self._started_session = True
             self.driver = self.init_browser()
 
             try:
+                if self._is_stopping():
+                    self._retire_driver()
+                    return
                 if not self.driver:
                     return
                 if not self.driver.window_handles:
@@ -506,8 +540,18 @@ class BrowserWindow:
 
             self.active_tab_handle = self.driver.window_handles[0]
             self.driver.switch_to.window(self.active_tab_handle)
-            self.run_script_at_launch()
-            self.last_window_rect = self.driver.get_window_rect()
+            self._opening_tab = True
+            try:
+                self.run_script_at_launch()
+                self.last_window_rect = self.driver.get_window_rect()
+            except Exception:
+                logger.error(
+                    "Failed to initialize browser session:\n"
+                    f"{traceback.format_exc()}"
+                )
+                self._retire_driver()
+            finally:
+                self._opening_tab = False
 
     def run_script_at_launch(self):
         with self._driver_lock:
@@ -537,6 +581,15 @@ class BrowserWindow:
         @wraps(func)
         def wrapper(self, *args, **kwargs):
             with self._driver_lock:
+                if self._is_stopping():
+                    return None
+
+                # Startup callbacks use decorated browser methods. Let their
+                # errors return to ensure_tab_open instead of recursively
+                # starting another browser session.
+                if self._opening_tab:
+                    return func(self, *args, **kwargs)
+
                 def run_action_once():
                     try:
                         return func(self, *args, **kwargs)
@@ -580,7 +633,8 @@ class BrowserWindow:
                             # actions click or mutate state and are not idempotent.
                             return run_action_once()
 
-                    self.ensure_tab_open()
+                    if self.ensure_tab_open() is False:
+                        return None
                     if self.driver:
                         return run_action_once()
 

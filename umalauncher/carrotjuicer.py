@@ -4651,7 +4651,12 @@ class CarrotJuicer:
                     )
                 else:
                     self._close_transients_requested = False
-        elif browser and not alive["helper"] and self.browser is browser:
+        elif (
+            browser
+            and not alive["helper"]
+            and self.browser is browser
+            and not browser.should_preserve_recovery_state()
+        ):
             rect_callback = self._prepare_async_rect_capture("helper", browser)
             self.browser = None
             self.active_helper_mode = None
