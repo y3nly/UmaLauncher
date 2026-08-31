@@ -127,7 +127,7 @@ class CarrotJuicer:
     open_event_window = False
     event_browser = None
     last_events_rect = None
-    selected_cm_definition = 18
+    selected_cm_definition = None
     open_schedule_window = False
     schedule_browser = None
     last_schedule_rect = None
@@ -196,7 +196,7 @@ class CarrotJuicer:
         self.skill_data = {}
         self.skills_list = []
         self.style = ''
-        self.selected_cm_definition = 18
+        self.selected_cm_definition = None
 
 
         self.runtime_extensions = runtime_extensions.create(self)
@@ -2748,24 +2748,25 @@ class CarrotJuicer:
             4: "OI"
         }
 
-        CM_CONFIGS = {
-            18: {"name": "Libra Cup", "location": 10009, "course": 10903, "season": 3, "weather": 2, "ground_condition": "GOOD"}, # Cloudy/Firm
-            19: {"name": "Scorpio Cup", "location": 10008, "course": 10808, "season": 3, "weather": 1, "ground_condition": "GOOD"},
-            20: {"name": "Sagittarius Cup", "location": 10005, "course": 10506, "season": 4, "weather": 2, "ground_condition": "YAYAOMO"}, # Cloudy/Good
-            21: {"name": "Capricorn Cup", "location": 10007, "course": 10701, "season": 4, "weather": 1, "ground_condition": "GOOD"},
-            22: {"name": "Aquarius Cup", "location": 10006, "course": 10611, "season": 4, "weather": 4, "ground_condition": "OMO"}, # Snowy/Soft
-            23: {"name": "Pisces Cup", "location": 10005, "course": 10504, "season": 1, "weather": 1, "ground_condition": "GOOD"},
-            24: {"name": "Aries Cup", "location": 10008, "course": 10811, "season": 1, "weather": 1, "ground_condition": "GOOD"},
-        }
-        available_cm_definitions = (18, 19)
-        cm_pref = self.skill_browser.execute_script("return window.localStorage.getItem('UL_CM_DEF') || '18';")
+        CM_CONFIGS = mdb.get_champions_meeting_configs(limit=2)
+        available_cm_definitions = tuple(CM_CONFIGS)
+        if not available_cm_definitions:
+            logger.error("No complete Champions Meeting definitions found in master.mdb")
+            self.set_skill_window_sim_status("error", "CM data unavailable")
+            return
+
+        default_cm_definition = available_cm_definitions[0]
+        cm_pref = self.skill_browser.execute_script(
+            "return window.localStorage.getItem('UL_CM_DEF') || arguments[0];",
+            str(default_cm_definition),
+        )
         try:
             selected_cm_definition = int(cm_pref)
         except (TypeError, ValueError):
             selected_cm_definition = self.selected_cm_definition
 
         if selected_cm_definition not in available_cm_definitions:
-            selected_cm_definition = 18
+            selected_cm_definition = default_cm_definition
 
         self.selected_cm_definition = selected_cm_definition
         cm_options = [
