@@ -11,7 +11,6 @@ from .data import (
     MemberState,
     SpecialUniqueCondition,
     SupportCard,
-    TRAINING_TYPES,
     TrainingBase,
 )
 from .model import Status, StatusType
@@ -161,26 +160,53 @@ def calc_training_success_status(info: CalcInfo) -> Status:
 
 def calc_training_success_status_separated(info: CalcInfo) -> tuple[Status, Status, bool]:
     friend_training = any(member.is_friend_training(info.training.type) for member in info.support)
-    hp = calc_training_hp(info, friend_training)
-    raw = ExpectedStatus(
-        speed=calc_training_status(info, StatusType.SPEED, friend_training),
-        stamina=calc_training_status(info, StatusType.STAMINA, friend_training),
-        power=calc_training_status(info, StatusType.POWER, friend_training),
-        guts=calc_training_status(info, StatusType.GUTS, friend_training),
-        wisdom=calc_training_status(info, StatusType.WISDOM, friend_training),
-        skill_pt=calc_training_status(info, StatusType.SKILL, friend_training),
-        hp=float(hp),
-    )
+    conditions = _member_conditions(info, friend_training)
+    factors = _training_factors(info, conditions)
     base = Status(
-        speed=int(raw.speed),
-        stamina=int(raw.stamina),
-        power=int(raw.power),
-        guts=int(raw.guts),
-        wisdom=int(raw.wisdom),
-        skill_pt=int(raw.skill_pt),
-        hp=hp,
+        speed=int(_calc_training_status(info, StatusType.SPEED, factors)),
+        stamina=int(_calc_training_status(info, StatusType.STAMINA, factors)),
+        power=int(_calc_training_status(info, StatusType.POWER, factors)),
+        guts=int(_calc_training_status(info, StatusType.GUTS, factors)),
+        wisdom=int(_calc_training_status(info, StatusType.WISDOM, factors)),
+        skill_pt=int(_calc_training_status(info, StatusType.SKILL, factors)),
+        hp=_calc_training_hp(info, conditions),
     )
     return base, Status(), friend_training
+
+
+@dataclass(frozen=True)
+class _TrainingFactors:
+    conditions: tuple[tuple[MemberState, SpecialUniqueCondition], ...]
+    friend: float
+    motivation: float
+    training: float
+
+
+def _member_conditions(
+    info: CalcInfo,
+    friend_training: bool,
+) -> tuple[tuple[MemberState, SpecialUniqueCondition], ...]:
+    base_condition = info.base_special_unique_condition(
+        training_support_count=len(info.support),
+        friend_training=friend_training,
+    )
+    return tuple((member, base_condition.apply_member(member)) for member in info.support)
+
+
+def _training_factors(
+    info: CalcInfo,
+    conditions: tuple[tuple[MemberState, SpecialUniqueCondition], ...],
+) -> _TrainingFactors:
+    # These bonuses depend on the joined members, not the stat being calculated.
+    friend = 1.0
+    for member, condition in conditions:
+        if member.is_friend_training(info.training.type):
+            friend *= member.card.friend_factor(condition)
+    motivation_base = 0.55 if info.motivation == 3 else info.motivation / 10.0
+    motivation_support = sum(member.card.motivation_factor(condition) for member, condition in conditions)
+    motivation_bonus = 1 + motivation_base * (1 + motivation_support / 100.0)
+    training_bonus = 1 + sum(member.card.training_factor(condition) for member, condition in conditions) / 100.0
+    return _TrainingFactors(conditions, friend, motivation_bonus, training_bonus)
 
 
 def calc_training_status(
@@ -191,46 +217,52 @@ def calc_training_status(
     ignore_base_bonus: bool = False,
     max_value: float = 100.0,
 ) -> float:
+    if info.training.status.get(target_type) == 0:
+        return 0.0
+    factors = _training_factors(info, _member_conditions(info, friend_training))
+    return _calc_training_status(
+        info, target_type, factors, ignore_base_bonus=ignore_base_bonus, max_value=max_value,
+    )
+
+
+def _calc_training_status(
+    info: CalcInfo,
+    target_type: StatusType,
+    factors: _TrainingFactors,
+    *,
+    ignore_base_bonus: bool = False,
+    max_value: float = 100.0,
+) -> float:
     base_status = info.training.status.get(target_type)
     if base_status == 0:
         return 0.0
-    support = info.support
-    base_condition = info.base_special_unique_condition(
-        training_support_count=len(support),
-        friend_training=friend_training,
-    )
     base = base_status
     if not ignore_base_bonus:
-        base += sum(member.card.get_base_bonus(target_type, base_condition.apply_member(member)) for member in support)
+        base += sum(member.card.get_base_bonus(target_type, condition) for member, condition in factors.conditions)
     chara_bonus = 1.0 if ignore_base_bonus else info.chara.get_bonus(target_type) / 100.0
-    friend = 1.0
-    for member in support:
-        if member.is_friend_training(info.training.type):
-            friend *= member.card.friend_factor(base_condition.apply_member(member))
-    motivation_base = 0.55 if info.motivation == 3 else info.motivation / 10.0
-    motivation_support = sum(member.card.motivation_factor(base_condition.apply_member(member)) for member in support)
-    motivation_bonus = 1 + motivation_base * (1 + motivation_support / 100.0)
-    training_bonus = 1 + sum(member.card.training_factor(base_condition.apply_member(member)) for member in support) / 100.0
     count = 1 + len(info.member) * 0.05
-    raw = base * chara_bonus * friend * motivation_bonus * training_bonus * count
+    raw = base * chara_bonus * factors.friend * factors.motivation * factors.training * count
     return min(max_value, raw + 0.0002)
 
 
 def calc_training_hp(info: CalcInfo, friend_training: bool) -> int:
+    return _calc_training_hp(info, _member_conditions(info, friend_training))
+
+
+def _calc_training_hp(
+    info: CalcInfo,
+    conditions: tuple[tuple[MemberState, SpecialUniqueCondition], ...],
+) -> int:
     base_hp = info.training.status.hp
-    base_condition = info.base_special_unique_condition(
-        training_support_count=len(info.support),
-        friend_training=friend_training,
-    )
     if base_hp == 0:
         return 0
     if info.training.type == StatusType.WISDOM:
         return base_hp + sum(
-            member.card.wisdom_friend_recovery(base_condition.apply_member(member))
-            for member in info.support
+            member.card.wisdom_friend_recovery(condition)
+            for member, condition in conditions
             if member.is_friend_training(StatusType.WISDOM)
         )
-    support_hp_cost = sum(member.card.hp_cost(base_condition.apply_member(member)) for member in info.support)
+    support_hp_cost = sum(member.card.hp_cost(condition) for member, condition in conditions)
     return base_hp - int(base_hp * support_hp_cost / 100.0)
 
 

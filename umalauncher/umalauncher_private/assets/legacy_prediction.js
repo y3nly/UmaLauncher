@@ -60,11 +60,11 @@
         document.head.appendChild(style);
     }
 
-    function isVisible(el) {
+    function isVisible(el, rect = el?.getBoundingClientRect()) {
         if (!el) return false;
-        const rect = el.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return false;
         const style = window.getComputedStyle(el);
-        return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+        return style.display !== "none" && style.visibility !== "hidden";
     }
 
     function ownText(el) {
@@ -180,16 +180,14 @@
 
     function findTooltipRoot() {
         const scope = anchor?.parentElement || document;
-        const roots = Array.from(scope.querySelectorAll("div[data-tippy-root]")).filter(isVisible);
-        if (roots.length) {
-            return roots[roots.length - 1];
+        const roots = scope.querySelectorAll("div[data-tippy-root]");
+        for (let index = roots.length - 1; index >= 0; index--) {
+            if (isVisible(roots[index])) return roots[index];
         }
 
-        const globalRoots = Array.from(
-            document.querySelectorAll("div[data-tippy-root]")
-        ).filter(isVisible);
-        if (globalRoots.length) {
-            return globalRoots[globalRoots.length - 1];
+        const globalRoots = document.querySelectorAll("div[data-tippy-root]");
+        for (let index = globalRoots.length - 1; index >= 0; index--) {
+            if (isVisible(globalRoots[index])) return globalRoots[index];
         }
 
         return anchor?.closest("div[id^='event-viewer-'], div[class^='compatibility_result_box_']")
@@ -203,10 +201,8 @@
             const parent = current.parentElement;
             if (!parent) return null;
 
-            const siblings = Array.from(parent.children);
-            const index = siblings.indexOf(current);
-            if (index >= 0 && siblings[index + 1]) {
-                return { container: siblings[index + 1] };
+            if (current.nextElementSibling) {
+                return { container: current.nextElementSibling };
             }
 
             current = parent;
@@ -222,43 +218,44 @@
             if (!target?.container) continue;
             if (seen.has(target.container)) continue;
             seen.add(target.container);
-            unique.push(target);
+            unique.push({ target, rect: target.container.getBoundingClientRect() });
         }
         unique.sort((a, b) => {
-            const ar = a.container.getBoundingClientRect();
-            const br = b.container.getBoundingClientRect();
-            return (ar.top - br.top) || (ar.left - br.left);
+            return (a.rect.top - b.rect.top) || (a.rect.left - b.rect.left);
         });
-        return unique;
+        return unique.map(entry => entry.target);
     }
 
-    function findStructuralChoiceTargets(root) {
+    function findStructuralChoiceTargets(nodes) {
         const labelWords = new Set([
             "top", "mid", "bot",
             "1.", "2.", "3.", "4.", "5.", "6."
         ]);
 
-        const labelTargets = Array.from(root.querySelectorAll("div, span"))
-            .filter(isVisible)
-            .filter(node => {
-                const text = normalizedText(node);
+        const labelTargets = nodes
+            .filter(({ node, text }) => {
                 if (!labelWords.has(text)) return false;
                 const rect = node.getBoundingClientRect();
-                return rect.width <= 120 && rect.height <= 80;
+                return rect.width <= 120 && rect.height <= 80 && isVisible(node, rect);
             })
-            .map(labelTarget);
+            .map(({ node }) => labelTarget(node));
 
         return uniqueTargets(labelTargets);
     }
 
     function findChoiceTargets(root, count) {
-        const nodes = Array.from(root.querySelectorAll("div, span"));
+        const nodes = Array.from(root.querySelectorAll("div, span"), node => ({
+            node,
+            text: normalizedText(node)
+        }));
         const used = new Set();
         const targets = [];
 
         for (let index = 1; index <= count; index++) {
             const expected = choiceLabels(index, count);
-            const labelNode = nodes.find(node => !used.has(node) && expected.includes(normalizedText(node)));
+            const labelNode = nodes.find(({ node, text }) => (
+                !used.has(node) && expected.includes(text)
+            ))?.node;
             if (!labelNode) {
                 targets.push(null);
                 continue;
@@ -272,7 +269,7 @@
             return targets;
         }
 
-        const structuralTargets = findStructuralChoiceTargets(root);
+        const structuralTargets = findStructuralChoiceTargets(nodes);
         if (structuralTargets.length >= count) {
             return structuralTargets.slice(0, count);
         }

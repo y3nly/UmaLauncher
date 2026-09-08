@@ -14,6 +14,7 @@
     chain: null
   };
   window[STATE_KEY] = state;
+  let lastRender = null;
 
   function safeText(value, limit = 500) {
     return String(value ?? "").replace(/\0/g, "").slice(0, limit);
@@ -89,9 +90,14 @@
   }
 
   function removeRenderedPredictions() {
-    document.querySelectorAll(".packet-prediction[data-ul-private='true']")
+    lastRender = null;
+    const fallback = document.getElementById("event-fallback");
+    if (!fallback) {
+      return;
+    }
+    fallback.querySelectorAll(".packet-prediction[data-ul-private='true']")
       .forEach(element => element.remove());
-    document.querySelectorAll(".gametora-outcomes.has-packet-predictions")
+    fallback.querySelectorAll(".gametora-outcomes.has-packet-predictions")
       .forEach(element => element.classList.remove("has-packet-predictions"));
   }
 
@@ -254,14 +260,27 @@
   }
 
   function render() {
-    removeRenderedPredictions();
     if (!state.active || !state.prediction || !viewingPacketEvent()) {
+      removeRenderedPredictions();
       return false;
     }
 
     const cards = Array.from(
       document.querySelectorAll("#event-fallback .gametora-outcome")
     );
+    const predictionKey = JSON.stringify(state.prediction);
+    // Chain navigation can resend rewards immediately after rebuilding the
+    // event. Reuse annotations only while both their data and DOM are current.
+    if (
+      lastRender?.predictionKey === predictionKey
+      && cards.length === lastRender.cards.length
+      && cards.every((card, index) => card === lastRender.cards[index])
+      && lastRender.elements.every(element => element.isConnected)
+    ) {
+      return true;
+    }
+
+    removeRenderedPredictions();
     if (!cards.length) {
       return false;
     }
@@ -270,7 +289,7 @@
     const choices = new Map(
       state.prediction.choices.map(choice => [choice.choiceNumber, choice])
     );
-    let rendered = false;
+    const renderedElements = [];
     cards.forEach((card, index) => {
       const choice = choices.get(index + 1);
       if (!choice) {
@@ -317,9 +336,13 @@
       if (outcomes) {
         outcomes.classList.add("has-packet-predictions");
       }
-      rendered = true;
+      renderedElements.push(prediction);
     });
-    return rendered;
+    if (renderedElements.length) {
+      lastRender = { predictionKey, cards, elements: renderedElements };
+      return true;
+    }
+    return false;
   }
 
   const originalOpen = window.UL_OPEN_EVENT_DRAWER;

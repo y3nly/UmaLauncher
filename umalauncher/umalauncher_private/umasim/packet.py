@@ -124,7 +124,7 @@ def _parse_deck(chara: Mapping[str, Any]) -> list[SupportCardState]:
             SupportCardState(
                 position=position,
                 support_card_id=support_id,
-                limit_break_count=_int(raw_support, "limit_break_count", "limitBreak", "talent", default=4) or 4,
+                limit_break_count=_int(raw_support, "limit_break_count", "limitBreak", "talent", default=4),
                 raw=raw_support,
             )
         )

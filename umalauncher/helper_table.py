@@ -879,12 +879,6 @@ class HelperTable():
             if command_id in constants.COMMAND_ID_TO_KEY
         }
 
-        self.carrotjuicer.runtime_extensions.enrich_training_commands(
-            data,
-            command_info,
-        )
-
-
         # Process scheduled races
         scheduled_races = []
         if 'reserved_race_array' in data:
@@ -1134,6 +1128,12 @@ class HelperTable():
             general_preset = self.carrotjuicer.threader.settings['training_helper_table_preset']
             if self.selected_preset.name != general_preset:
                 self.selected_preset = self.carrotjuicer.threader.settings.get_preset_with_name(general_preset)
+
+        # Optional rows need the preset selected for this packet's scenario.
+        self.carrotjuicer.runtime_extensions.enrich_training_commands(
+            data,
+            command_info,
+        )
 
         self.show_schedule_optimizer_button = self.selected_preset.show_schedule_optimizer_button(main_info)
         if modern:

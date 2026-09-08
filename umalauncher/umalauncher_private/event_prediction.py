@@ -588,8 +588,6 @@ class EventPredictionExtension:
         self._pending_event_id = None
         self._active_generation = None
         self._active_context = None
-        self._active_prediction = None
-        self._active_chain = None
 
     def on_event_detected(self, event_data, event_titles):
         context = self.parser.create_event_context(event_data, event_titles)
@@ -604,37 +602,13 @@ class EventPredictionExtension:
         with self._lock:
             self._active_generation = generation
             self._active_context = self._staged_context or self._last_context
-            self._active_prediction = None
-            self._active_chain = None
 
     def on_event_chain_changed(self, chain, generation):
+        # UL_SET_GAMETORA_EVENT already updates chain visibility and renders the
+        # browser's cached prediction. Repeating that work here adds Selenium
+        # round trips for every navigation without changing the displayed event.
         with self._lock:
-            if generation != self._active_generation:
-                return False
-            self._active_chain = dict(chain) if isinstance(chain, dict) else None
-            prediction = self._active_prediction
-            at_packet_event = (
-                not self._active_chain
-                or self._active_chain.get("index")
-                == self._active_chain.get(
-                    "packetIndex",
-                    self._active_chain.get("packet_index"),
-                )
-            )
-
-        browser = self._live_browser()
-        if not browser:
-            return False
-        if prediction and at_packet_event:
-            return browser.execute_script(
-                "return window.UL_UPDATE_EVENT_REWARDS(arguments[0], arguments[1]);",
-                generation,
-                prediction,
-            )
-        return browser.execute_script(
-            "return window.UL_CLEAR_EVENT_REWARDS(arguments[0]);",
-            generation,
-        )
+            return generation == self._active_generation
 
     def on_event_closed(self, generation):
         with self._lock:
@@ -642,8 +616,6 @@ class EventPredictionExtension:
                 return
             self._active_generation = None
             self._active_context = None
-            self._active_prediction = None
-            self._active_chain = None
 
     def on_response(self, data, generation):
         if not isinstance(data, dict):
@@ -678,31 +650,21 @@ class EventPredictionExtension:
             if not prediction:
                 return None
 
-            modern = self._is_modern()
-            with self._lock:
-                if modern and generation == self._active_generation:
-                    self._active_prediction = prediction
-                    chain = self._active_chain
-                else:
-                    chain = None
-
-            if modern:
-                if generation != self._active_generation:
-                    return prediction
+            if self._is_modern():
+                with self._lock:
+                    if generation != self._active_generation:
+                        return prediction
                 if not getattr(
                     self.owner,
                     "_active_event_source_available",
                     False,
                 ):
                     return prediction
-                if (
-                    isinstance(chain, dict)
-                    and chain.get("index")
-                    != chain.get("packetIndex", chain.get("packet_index"))
-                ):
-                    return prediction
                 browser = self._live_browser()
                 if browser:
+                    # Keep the browser's cache current even while a different
+                    # chain card is visible; its generation and chain guards
+                    # decide when the prediction can be displayed.
                     browser.execute_script(
                         "return window.UL_UPDATE_EVENT_REWARDS(arguments[0], arguments[1]);",
                         generation,
@@ -735,8 +697,6 @@ class EventPredictionExtension:
             self._pending_event_id = None
             self._active_generation = None
             self._active_context = None
-            self._active_prediction = None
-            self._active_chain = None
 
     def _is_modern(self):
         try:
