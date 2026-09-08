@@ -1,6 +1,7 @@
 """Private runtime features composed behind the public extension interface."""
 
 from .event_prediction import EventPredictionExtension
+from .training_rows import TrainingSimValueRow
 from .training_sim import TrainingSimWorker
 
 
@@ -26,6 +27,12 @@ class PrivateRuntimeExtensions:
         return self.event_prediction.on_response(data, generation)
 
     def enrich_training_commands(self, packet, command_info):
+        preset = self.owner.helper_table.selected_preset
+        if not command_info or not any(
+            isinstance(row, TrainingSimValueRow) and not row.disabled
+            for row in preset
+        ):
+            return None
         return self.training_sim.enrich_commands(packet, command_info)
 
     def configure_modern_page(self, browser):

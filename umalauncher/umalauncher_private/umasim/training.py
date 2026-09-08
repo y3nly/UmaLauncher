@@ -148,6 +148,7 @@ def evaluate_training_packet(
     heal_skill_count = _int_option(packet, "healSkillCount", "heal_skill_count") or 0
     accel_skill_count = _int_option(packet, "accelSkillCount", "accel_skill_count") or 0
     weight, weight_types = _weight_options(packet, state.weight_type_order)
+    weight_type_set = frozenset(weight_types)
     deck: list[tuple[int, SupportCard, MemberState]] = []
     for index, support_state in enumerate(sorted(state.deck, key=lambda item: item.position)):
         card = store.get_support(support_state.support_card_id, support_state.limit_break_count)
@@ -188,7 +189,7 @@ def evaluate_training_packet(
             base_result,
             megaphone=effective_megaphone,
             weight=weight,
-            weight_types=set(weight_types),
+            weight_types=weight_type_set,
         )
         final_result = base_result + item_bonus
         effective_base = cap_status(base_result, state.current_status, effective_stat_cap)
@@ -218,18 +219,19 @@ def evaluate_training_packet(
                     status,
                     megaphone=effective_megaphone,
                     weight=weight,
-                    weight_types=set(weight_types),
+                    weight_types=weight_type_set,
                 ),
                 state.current_status,
                 effective_stat_cap,
             )
             expected_with_items = expected_with_items.add(rate_share, expected_final)
-            expected_score += rate_share * score_status(
+            outcome_score = score_status(
                 expected_final,
                 skill_pt_weight=skill_pt_weight,
                 hp_weight=hp_weight,
             )
-            if score_status(expected_final, skill_pt_weight=skill_pt_weight, hp_weight=hp_weight) < final_score:
+            expected_score += rate_share * outcome_score
+            if outcome_score < final_score:
                 percentile += rate
             if expected_final.status_total < effective_final.status_total:
                 status_percentile += rate
