@@ -60,6 +60,8 @@ class PrivateTrainingPresetTests(unittest.TestCase):
         settings.__getitem__.side_effect = values.__getitem__
         settings.get_preset_with_name.return_value = scenario_preset
         self.owner.threader = SimpleNamespace(settings=settings)
+        self.owner.grand_live_suggester = mock.Mock()
+        self.owner.grand_live_suggester.rank.return_value = None
         self.owner.HELPER_UI_MODERN = 1
         self.owner.get_helper_ui_mode = lambda: 0
         table = HelperTable.__new__(HelperTable)
@@ -81,7 +83,10 @@ class PrivateTrainingPresetTests(unittest.TestCase):
             },
             "home_info": {"command_info_array": [{"command_id": 101}]},
         }
-        with mock.patch.object(Preset, "generate_overlay", return_value="rendered"):
+        with (
+            mock.patch("helper_table.mdb.get_gl_square_dict", return_value={}),
+            mock.patch.object(Preset, "generate_overlay", return_value="rendered"),
+        ):
             self.assertEqual(table.create_helper_elements(packet, None), "rendered")
             self.assertIs(table.selected_preset, scenario_preset)
             self.extension.training_sim.enrich_commands.assert_called_once()
