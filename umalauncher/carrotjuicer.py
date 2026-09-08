@@ -7,7 +7,7 @@ import time
 import traceback
 import json
 import threading
-from collections import OrderedDict
+from collections import Counter
 from datetime import datetime
 
 import msgpack
@@ -20,6 +20,7 @@ import constants
 import mdb
 import helper_table
 import grand_live
+import skill_simulation
 import uma_rating
 import training_tracker
 import helper_theme
@@ -163,24 +164,7 @@ class CarrotJuicer:
         self._force_next_skill_simulation = False
         self.active_helper_mode = None
 
-        # The simulator is CPU-heavy and runs as a subprocess. Keep exactly one
-        # worker so CarrotBlender packet handling remains responsive, coalescing
-        # queued requests down to the newest payload.
-        self._skill_sim_condition = threading.Condition()
-        self._skill_sim_pending = None
-        self._skill_sim_active_key = None
-        self._skill_sim_completion = None
-        self._skill_sim_cache = OrderedDict()
-        self._skill_sim_cache_limit = 12
-        self._skill_sim_generation = 0
-        self._skill_sim_latest_generation = 0
-        self._skill_sim_stop = False
-        self._skill_sim_process = None
-        self._skill_sim_thread = threading.Thread(
-            target=self._skill_simulation_worker,
-            name="skill-simulation-worker",
-            daemon=True,
-        )
+        self._initialize_skill_simulation()
 
         # Establish the master.mdb fingerprint before binding the cached dict
         # references below. Later attestation/training refreshes can then use
@@ -213,34 +197,84 @@ class CarrotJuicer:
         self._event_drawer_close_pending = None
         self._skill_sim_thread.start()
 
+    def _initialize_skill_simulation(self):
+        # The simulator is CPU-heavy and runs as a subprocess. Keep exactly one
+        # worker so CarrotBlender packet handling remains responsive, coalescing
+        # queued requests down to the newest payload.
+        self._skill_sim_condition = threading.Condition()
+        self._skill_sim_pending = None
+        self._skill_sim_active_key = None
+        self._skill_sim_completion = None
+        self._skill_sim_cache = skill_simulation.CandidateCache(limit=12)
+        self._skill_sim_data = skill_simulation.SkillDataSnapshot(
+            util.get_asset("_assets/skill_data.txt"),
+            util.get_appdata("skill-simulator"),
+        )
+        self._skill_sim_exe_stamp = None
+        self._skill_sim_exe_digest = None
+        self._skill_sim_active_generation = None
+        self._skill_window_last_state_key = None
+        self._skill_sim_generation = 0
+        self._skill_sim_latest_generation = 0
+        self._skill_sim_stop = False
+        self._skill_sim_process = None
+        self._skill_sim_thread = threading.Thread(
+            target=self._skill_simulation_worker,
+            name="skill-simulation-worker",
+            daemon=True,
+        )
+
     @staticmethod
     def _skill_simulation_key(payload):
-        canonical_payload = json.dumps(
-            payload,
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-        ).encode("utf-8")
-        return hashlib.sha256(canonical_payload).hexdigest()
+        return skill_simulation.fingerprint(skill_simulation.canonical_payload(payload))
+
+    def _skill_sim_engine_identity(self):
+        exe_path = util.get_asset("_assets/umasim-cli.exe")
+        stat = os.stat(exe_path)
+        stamp = (exe_path, stat.st_size, stat.st_mtime_ns)
+        if stamp != self._skill_sim_exe_stamp:
+            with open(exe_path, "rb") as executable:
+                self._skill_sim_exe_digest = hashlib.file_digest(executable, "sha256").hexdigest()
+            self._skill_sim_exe_stamp = stamp
+        return self._skill_sim_exe_digest, self._skill_sim_data.digest
+
+    def _invalidate_skill_simulation_locked(self):
+        self._skill_sim_generation += 1
+        self._skill_sim_latest_generation = self._skill_sim_generation
+        self._skill_sim_pending = None
+        self._skill_sim_completion = None
+        process = self._skill_sim_process
+        if process is not None and process.poll() is None:
+            try:
+                process.terminate()
+            except OSError:
+                pass
+        return self._skill_sim_generation
 
     def _queue_skill_simulation(self, payload, force=False):
-        """Return a cached result, or queue the newest simulation request."""
+        """Reuse completed candidates, or cancel obsolete work and queue the latest input."""
+        payload = skill_simulation.canonical_payload(payload)
         cache_key = self._skill_simulation_key(payload)
         with self._skill_sim_condition:
-            if not force and cache_key in self._skill_sim_cache:
-                cached_result = self._skill_sim_cache[cache_key]
-                self._skill_sim_cache.move_to_end(cache_key)
-                return cache_key, cached_result, False
+            engine = self._skill_sim_engine_identity()
+            if force:
+                self._skill_sim_cache.discard(payload, engine)
+            elif not self._skill_sim_data.refresh_due():
+                cached_result = self._skill_sim_cache.get(payload, engine)
+                if cached_result is not None:
+                    self._invalidate_skill_simulation_locked()
+                    return cache_key, cached_result, False
 
             pending_key = self._skill_sim_pending[1] if self._skill_sim_pending else None
-            if not force and cache_key in (self._skill_sim_active_key, pending_key):
+            active_matches = (
+                cache_key == self._skill_sim_active_key
+                and self._skill_sim_active_generation == self._skill_sim_latest_generation
+            )
+            if not force and (active_matches or cache_key == pending_key):
                 return cache_key, None, True
 
-            self._skill_sim_generation += 1
-            generation = self._skill_sim_generation
-            self._skill_sim_latest_generation = generation
-            self._skill_sim_completion = None
-            self._skill_sim_pending = (generation, cache_key, payload)
+            generation = self._invalidate_skill_simulation_locked()
+            self._skill_sim_pending = (generation, cache_key, payload, force)
             self._skill_sim_condition.notify()
         return cache_key, None, True
 
@@ -252,30 +286,65 @@ class CarrotJuicer:
                 )
                 if self._skill_sim_stop:
                     return
-                generation, cache_key, payload = self._skill_sim_pending
+                generation, cache_key, payload, force = self._skill_sim_pending
                 self._skill_sim_pending = None
                 self._skill_sim_active_key = cache_key
+                self._skill_sim_active_generation = generation
 
+            result = {}
+            context_key = None
+            request = None
             try:
-                result = self.run_simulation(
-                    util.get_asset("_assets/umasim-cli.exe"),
-                    payload,
-                    expected_generation=generation,
-                )
+                if force or self._skill_sim_data.refresh_due():
+                    self._skill_sim_data.refresh()
+                with self._skill_sim_condition:
+                    if self._skill_sim_stop or generation != self._skill_sim_latest_generation:
+                        continue
+                    engine = self._skill_sim_engine_identity()
+                    if force:
+                        self._skill_sim_cache.discard(payload, engine)
+                    result = self._skill_sim_cache.get(payload, engine)
+                    if result is None:
+                        context_key, request = self._skill_sim_cache.missing_request(payload, engine)
+                    snapshot_path = str(self._skill_sim_data.path)
+
+                if request is not None:
+                    start = time.monotonic()
+                    result = self.run_simulation(
+                        util.get_asset("_assets/umasim-cli.exe"), request,
+                        expected_generation=generation, skill_data_path=snapshot_path,
+                    )
+                    logger.debug(
+                        f"Skill simulation: {len(request['unacquiredSkillIds'])}/"
+                        f"{len(payload['unacquiredSkillIds'])} candidates, "
+                        f"{time.monotonic() - start:.3f}s, seed {request['seedBase']}"
+                    )
+                with self._skill_sim_condition:
+                    if self._skill_sim_stop or generation != self._skill_sim_latest_generation:
+                        continue
+                    if result and context_key is not None:
+                        self._skill_sim_cache.merge(context_key, request, result)
+                        result = self._skill_sim_cache.get(payload, engine)
             except Exception:
                 logger.error(f"Unexpected skill simulation failure:\n{traceback.format_exc()}")
                 result = {}
             finally:
                 with self._skill_sim_condition:
                     self._skill_sim_active_key = None
-                    if result:
-                        self._skill_sim_cache[cache_key] = result
-                        self._skill_sim_cache.move_to_end(cache_key)
-                        while len(self._skill_sim_cache) > self._skill_sim_cache_limit:
-                            self._skill_sim_cache.popitem(last=False)
-                    # A slower, older request must never repaint newer skill data.
-                    if generation == self._skill_sim_latest_generation:
+                    self._skill_sim_active_generation = None
+                    if not self._skill_sim_stop and generation == self._skill_sim_latest_generation:
                         self._skill_sim_completion = (generation, cache_key, result)
+
+    def _skill_window_state_key(self):
+        chara_info = (self.last_data or {}).get("chara_info", {})
+        # Include learned state and display costs as well as IDs. Hash locally;
+        # only a changed value causes browser work or a simulation cache lookup.
+        return skill_simulation.fingerprint({
+            "chara": chara_info,
+            "skills": self.skill_data,
+            "engine": self._skill_sim_engine_identity(),
+            "data_refresh_due": self._skill_sim_data.refresh_due(),
+        })
 
     def _take_skill_simulation_completion(self):
         with self._skill_sim_condition:
@@ -2755,6 +2824,7 @@ class CarrotJuicer:
             self.set_skill_window_sim_status("waiting", "for character data")
             return
 
+        self._skill_window_last_state_key = self._skill_window_state_key()
         mode_pref = self.skill_browser.execute_script("return window.localStorage.getItem('UL_MODE_PREF') || 'parent';")
         is_ace_mode = (mode_pref == 'ace')
         is_rating_mode = (mode_pref == 'rating')
@@ -2835,7 +2905,9 @@ class CarrotJuicer:
                 "weather": cm_data["weather"],
                 "positionKeepMode": "NONE"
             },
-            "acquiredSkillIds": acquired_skills_list,
+            # UI-acquired prerequisites prevent duplicate purchases, but they
+            # are not extra learned effects in the simulator baseline.
+            "acquiredSkillIds": sorted({skill["skill_id"] for skill in chara_info["skill_array"]}),
             "unacquiredSkillIds": unacquired_skills_list,
             "iterations": total_iterations
         }
@@ -4386,12 +4458,16 @@ class CarrotJuicer:
             projected_rank, projected_choices, uma_next, proj_next, cm_options, selected_cm_definition,
             projected_rank_min, projected_rank_max, available_sp, planner_candidates, sim_status, sim_status_message)
 
-    def run_simulation(self, exe_path, payload, timeout=90, expected_generation=None):
+    def run_simulation(self, exe_path, payload, timeout=90, expected_generation=None, skill_data_path=None):
         json_payload = json.dumps(payload)
         process = None
 
         try:
             command = [exe_path, json_payload]
+            environment = os.environ.copy()
+            if skill_data_path is not None:
+                environment["UMASIM_SKILL_DATA_PATH"] = skill_data_path
+            startup_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
             if hasattr(self, "_skill_sim_condition"):
                 # Atomically gate process creation against shutdown.  Holding
@@ -4411,7 +4487,7 @@ class CarrotJuicer:
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         text=True,
-                        encoding='utf-8',
+                        encoding='utf-8', env=environment, creationflags=startup_flags,
                     )
                     self._skill_sim_process = process
             else:
@@ -4420,18 +4496,31 @@ class CarrotJuicer:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
-                    encoding='utf-8',
+                    encoding='utf-8', env=environment, creationflags=startup_flags,
                 )
 
             stdout, stderr = process.communicate(timeout=timeout)
 
+            if expected_generation is not None:
+                with self._skill_sim_condition:
+                    if self._skill_sim_stop or expected_generation != self._skill_sim_latest_generation:
+                        return {}  # Expected cancellation, not a simulator failure.
             if stderr:
-                logger.debug(f"Sim Output: {stderr}")
+                diagnostics = Counter(stderr.splitlines())
+                summary = "\n".join(
+                    f"{line} ({count} occurrences)" if count > 1 else line
+                    for line, count in diagnostics.items()
+                )
+                logger.debug(f"Sim Output: {summary}")
             if process.returncode:
                 logger.error(f"Sim crashed with exit code {process.returncode}: {stderr}")
                 return {}
 
-            return json.loads(stdout)
+            result = json.loads(stdout)
+            if "baselineStats" not in result or "candidates" not in result:
+                logger.error(f"Simulator returned an invalid result: {result}")
+                return {}
+            return result
 
         except subprocess.TimeoutExpired:
             logger.error(f"Simulation timed out after {timeout} seconds")
@@ -4736,7 +4825,7 @@ class CarrotJuicer:
             self.update_skill_window()
         elif simulation_completion is not None and self.skill_browser:
             self.update_skill_window(simulation_completion=simulation_completion)
-        elif self.skill_browser and self.previous_skills_list != self.skills_list:
+        elif self.skill_browser and self._skill_window_last_state_key != self._skill_window_state_key():
             self.previous_skills_list = list(self.skills_list)
             self.update_skill_window()
 
