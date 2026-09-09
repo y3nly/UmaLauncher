@@ -33,29 +33,26 @@ class SkillDataSnapshot:
     REFRESH_SECONDS = 3600
     URL = "https://bashin.app/data/skill_data.txt"
 
-    def __init__(self, bundled_path, cache_dir):
+    def __init__(self, cache_dir):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.metadata_path = self.cache_dir / "current.json"
-        bundled = Path(bundled_path).read_bytes()
-        self.bundle_digest = hashlib.sha256(bundled).hexdigest()
-        self.path = Path(bundled_path)
-        self.digest = self.bundle_digest
+        self.path = None
+        self.digest = None
         self.checked_at = 0
         self.etag = None
         self.modified = None
         try:
             metadata = json.loads(self.metadata_path.read_text(encoding="utf-8"))
-            if metadata["bundle"] == self.bundle_digest:
-                cached = self.cache_dir / (metadata["digest"] + ".json")
-                if hashlib.sha256(cached.read_bytes()).hexdigest() == metadata["digest"]:
-                    self.path = cached
-                    self.digest = metadata["digest"]
-                    self.checked_at = metadata["checked_at"]
-                    self.etag = metadata.get("etag")
-                    self.modified = metadata.get("modified")
+            cached = self.cache_dir / (metadata["digest"] + ".json")
+            if hashlib.sha256(cached.read_bytes()).hexdigest() == metadata["digest"]:
+                self.path = cached
+                self.digest = metadata["digest"]
+                self.checked_at = metadata["checked_at"]
+                self.etag = metadata.get("etag")
+                self.modified = metadata.get("modified")
         except (OSError, ValueError, KeyError):
-            pass  # The bundled snapshot is valid without a prior download.
+            pass  # The worker downloads data when no valid cache exists.
 
     def refresh_due(self):
         return time.time() - self.checked_at >= self.REFRESH_SECONDS
@@ -87,15 +84,13 @@ class SkillDataSnapshot:
                 self.modified = response.headers.get("Last-Modified")
         except urllib.error.HTTPError as error:
             if error.code != 304:
-                logger.warning(f"Skill-data refresh failed; retaining local snapshot: {error}")
+                logger.warning(f"Skill-data refresh failed: {error}")
         except (OSError, ValueError) as error:
-            logger.warning(f"Skill-data refresh failed; retaining local snapshot: {error}")
+            logger.warning(f"Skill-data refresh failed: {error}")
         self.checked_at = time.time()
-        # Keep the digest-named file even when the server revalidates the bundle.
-        cached = self.cache_dir / (self.digest + ".json")
-        if not cached.exists():
-            cached.write_bytes(self.path.read_bytes())
-        metadata = dict(bundle=self.bundle_digest, digest=self.digest,
+        if self.path is None:
+            raise RuntimeError("Skill data is unavailable. Check the connection and click Rerun.")
+        metadata = dict(digest=self.digest,
                         checked_at=self.checked_at, etag=self.etag, modified=self.modified)
         temporary = self.metadata_path.with_suffix(f".{os.getpid()}.tmp")
         temporary.write_text(json.dumps(metadata), encoding="utf-8")

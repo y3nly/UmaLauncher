@@ -205,7 +205,6 @@ class CarrotJuicer:
         self._skill_sim_completion = None
         self._skill_sim_cache = skill_simulation.CandidateCache(limit=12)
         self._skill_sim_data = skill_simulation.SkillDataSnapshot(
-            util.get_asset("_assets/skill_data.txt"),
             util.get_appdata("skill-simulator"),
         )
         self._skill_sim_exe_stamp = None
@@ -295,6 +294,8 @@ class CarrotJuicer:
             try:
                 if force or self._skill_sim_data.refresh_due():
                     self._skill_sim_data.refresh()
+                if self._skill_sim_data.path is None:
+                    raise RuntimeError("Skill data is unavailable. Check the connection and click Rerun.")
                 with self._skill_sim_condition:
                     if self._skill_sim_stop or generation != self._skill_sim_latest_generation:
                         continue
