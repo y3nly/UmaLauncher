@@ -435,6 +435,93 @@ def get_race_program_name_dict(force=False):
         RACE_PROGRAM_NAME_DICT.update({row[0]: row[1] for row in rows})
     return RACE_PROGRAM_NAME_DICT
 
+
+CHAMPIONS_MEETING_GROUND_CONDITIONS = {
+    1: "GOOD",
+    2: "YAYAOMO",
+    3: "OMO",
+    4: "BAD",
+}
+CHAMPIONS_MEETING_CONFIGS = {}
+
+
+def get_champions_meeting_configs(force=False, limit=2):
+    """Return the latest complete CM race definitions from master.mdb."""
+    if limit <= 0:
+        return {}
+
+    if force or not CHAMPIONS_MEETING_CONFIGS:
+        with Connection() as (_, cursor):
+            try:
+                cursor.execute(
+                    """
+                    SELECT schedule.id,
+                           COALESCE(name.text, 'CM ' || schedule.id),
+                           course.race_track_id,
+                           race.course_set,
+                           condition.season,
+                           condition.weather,
+                           condition.ground
+                    FROM champions_schedule schedule
+                    JOIN champions_race_condition champions_race
+                      ON champions_race.champions_id = schedule.id
+                     AND champions_race.round_id = 0
+                    JOIN race_instance instance
+                      ON instance.id = champions_race.race_instance_id
+                    JOIN race
+                      ON race.id = instance.race_id
+                    JOIN race_course_set course
+                      ON course.id = race.course_set
+                    JOIN race_condition condition
+                      ON condition.id = champions_race.race_condition_id
+                    LEFT JOIN text_data name
+                      ON name.category = 206
+                     AND name."index" = schedule.id
+                    ORDER BY schedule.id
+                    """
+                )
+                rows = cursor.fetchall()
+            except sqlite3.OperationalError as error:
+                logger.error(
+                    "get_champions_meeting_configs failed: "
+                    f"{error}\n{traceback.format_exc()}"
+                )
+                rows = []
+
+        CHAMPIONS_MEETING_CONFIGS.clear()
+        for (
+            cm_id,
+            name,
+            location,
+            course,
+            season,
+            weather,
+            ground_condition_id,
+        ) in rows:
+            ground_condition = CHAMPIONS_MEETING_GROUND_CONDITIONS.get(
+                ground_condition_id
+            )
+            if ground_condition is None:
+                logger.error(
+                    f"CM{cm_id} has unsupported ground condition "
+                    f"{ground_condition_id}"
+                )
+                continue
+            CHAMPIONS_MEETING_CONFIGS[cm_id] = {
+                "name": name,
+                "location": location,
+                "course": course,
+                "season": season,
+                "weather": weather,
+                "ground_condition": ground_condition,
+            }
+
+    selected_ids = sorted(CHAMPIONS_MEETING_CONFIGS)[-limit:]
+    return {
+        cm_id: CHAMPIONS_MEETING_CONFIGS[cm_id]
+        for cm_id in selected_ids
+    }
+
 SKILL_NAME_DICT = {}
 def get_skill_name_dict(force=False):
     global SKILL_NAME_DICT
@@ -1247,6 +1334,7 @@ def _clear_update_caches():
         CHARA_NAME_DICT,
         EVENT_TITLE_DICT,
         RACE_PROGRAM_NAME_DICT,
+        CHAMPIONS_MEETING_CONFIGS,
         SKILL_NAME_DICT,
         SKILL_HINT_NAME_DICT,
         STATUS_NAME_DICT,
@@ -1284,6 +1372,7 @@ UPDATE_FUNCS = [
     get_chara_name_dict,
     get_event_title_dict,
     get_race_program_name_dict,
+    get_champions_meeting_configs,
     get_skill_name_dict,
     get_skill_hint_name_dict,
     get_status_name_dict,
