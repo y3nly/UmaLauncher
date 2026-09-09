@@ -119,7 +119,6 @@ class CarrotJuicer:
     last_helper_data = None
     active_helper_mode = None
     skills_list = []
-    previous_skills_list = []
     previous_race_program_id = None
     last_data = None
     open_skill_window = False
@@ -150,7 +149,6 @@ class CarrotJuicer:
         self.open_skill_window = False
         self.open_event_window = False
         self.open_schedule_window = False
-        self.previous_skills_list = []
         self.last_browser_rect = None
         self.last_skills_rect = None
         self.last_events_rect = None
@@ -214,7 +212,6 @@ class CarrotJuicer:
         self._skill_sim_active_generation = None
         self._skill_window_last_state_key = None
         self._skill_sim_generation = 0
-        self._skill_sim_latest_generation = 0
         self._skill_sim_stop = False
         self._skill_sim_process = None
         self._skill_sim_thread = threading.Thread(
@@ -239,7 +236,6 @@ class CarrotJuicer:
 
     def _invalidate_skill_simulation_locked(self):
         self._skill_sim_generation += 1
-        self._skill_sim_latest_generation = self._skill_sim_generation
         self._skill_sim_pending = None
         self._skill_sim_completion = None
         self._skill_data_completion = None
@@ -255,7 +251,7 @@ class CarrotJuicer:
         with self._skill_sim_condition:
             generation = self._invalidate_skill_simulation_locked()
             self._skill_sim_cm_configs = None
-            self._skill_sim_pending = (generation, None, None, False)
+            self._skill_sim_pending = (generation, None, None)
             self._skill_sim_condition.notify()
 
     def _take_skill_data_completion(self):
@@ -283,13 +279,13 @@ class CarrotJuicer:
             pending_key = self._skill_sim_pending[1] if self._skill_sim_pending else None
             active_matches = (
                 cache_key == self._skill_sim_active_key
-                and self._skill_sim_active_generation == self._skill_sim_latest_generation
+                and self._skill_sim_active_generation == self._skill_sim_generation
             )
             if not force and (active_matches or cache_key == pending_key):
                 return cache_key, None, True
 
             generation = self._invalidate_skill_simulation_locked()
-            self._skill_sim_pending = (generation, cache_key, payload, force)
+            self._skill_sim_pending = (generation, cache_key, payload)
             self._skill_sim_condition.notify()
         return cache_key, None, True
 
@@ -301,7 +297,7 @@ class CarrotJuicer:
                 )
                 if self._skill_sim_stop:
                     return
-                generation, cache_key, payload, force = self._skill_sim_pending
+                generation, cache_key, payload = self._skill_sim_pending
                 self._skill_sim_pending = None
                 self._skill_sim_active_key = cache_key
                 self._skill_sim_active_generation = generation
@@ -318,7 +314,7 @@ class CarrotJuicer:
                 with self._skill_sim_condition:
                     self._skill_sim_active_key = None
                     self._skill_sim_active_generation = None
-                    if not self._skill_sim_stop and generation == self._skill_sim_latest_generation:
+                    if not self._skill_sim_stop and generation == self._skill_sim_generation:
                         self._skill_sim_cm_configs = configs if error is None else None
                         self._skill_data_completion = (generation, error)
                 continue
@@ -330,11 +326,9 @@ class CarrotJuicer:
                 if self._skill_sim_data.path is None:
                     raise RuntimeError("Skill data is unavailable. Check the connection and click Rerun.")
                 with self._skill_sim_condition:
-                    if self._skill_sim_stop or generation != self._skill_sim_latest_generation:
+                    if self._skill_sim_stop or generation != self._skill_sim_generation:
                         continue
                     engine = self._skill_sim_engine_identity()
-                    if force:
-                        self._skill_sim_cache.discard(payload, engine)
                     result = self._skill_sim_cache.get(payload, engine)
                     if result is None:
                         context_key, request = self._skill_sim_cache.missing_request(payload, engine)
@@ -352,7 +346,7 @@ class CarrotJuicer:
                         f"{time.monotonic() - start:.3f}s, seed {request['seedBase']}"
                     )
                 with self._skill_sim_condition:
-                    if self._skill_sim_stop or generation != self._skill_sim_latest_generation:
+                    if self._skill_sim_stop or generation != self._skill_sim_generation:
                         continue
                     if result and context_key is not None:
                         self._skill_sim_cache.merge(context_key, request, result)
@@ -364,7 +358,7 @@ class CarrotJuicer:
                 with self._skill_sim_condition:
                     self._skill_sim_active_key = None
                     self._skill_sim_active_generation = None
-                    if not self._skill_sim_stop and generation == self._skill_sim_latest_generation:
+                    if not self._skill_sim_stop and generation == self._skill_sim_generation:
                         self._skill_sim_completion = (generation, cache_key, result)
 
     def _skill_window_state_key(self):
@@ -387,7 +381,6 @@ class CarrotJuicer:
         """Request an explicit rerun, bypassing a deterministic cached result."""
         with self._skill_sim_condition:
             self._force_next_skill_simulation = True
-        self.previous_skills_list = None
         self.open_skill_window = True
 
     def _stop_skill_simulation_worker(self):
@@ -1186,16 +1179,8 @@ class CarrotJuicer:
         self._close_transients_requested = False
 
         with self._skill_sim_condition:
-            self._skill_sim_generation += 1
-            self._skill_sim_latest_generation = self._skill_sim_generation
-            self._skill_sim_pending = None
-            self._skill_sim_completion = None
-            process = self._skill_sim_process
-        if process is not None and process.poll() is None:
-            try:
-                process.terminate()
-            except OSError:
-                pass
+            self._invalidate_skill_simulation_locked()
+            self._skill_sim_cm_configs = None
 
         skill_browser = self.skill_browser
         self.skill_browser = None
@@ -2832,7 +2817,6 @@ class CarrotJuicer:
 
         if not chara_info:
             logger.debug("Skill window opened before character info was available; skipping skill data update.")
-            self.previous_skills_list = None
             self.set_skill_window_sim_status("waiting", "for character data")
             return
 
@@ -2842,7 +2826,7 @@ class CarrotJuicer:
                 self._queue_skill_data_refresh()
                 self.set_skill_window_sim_status("running", "loading Bashin data")
                 return
-            if data_completion[0] != self._skill_sim_latest_generation:
+            if data_completion[0] != self._skill_sim_generation:
                 return
             if data_completion[1]:
                 self.set_skill_window_sim_status("error", data_completion[1])
@@ -2861,13 +2845,13 @@ class CarrotJuicer:
             4: "OI"
         }
 
-        CM_CONFIGS = self._skill_sim_cm_configs or {}
-        available_cm_definitions = tuple(CM_CONFIGS)
-        if not available_cm_definitions:
+        cm_configs = self._skill_sim_cm_configs
+        if not cm_configs:
             logger.error("No Champions Meeting definitions loaded from Bashin")
             self.set_skill_window_sim_status("error", "CM data unavailable")
             return
 
+        available_cm_definitions = tuple(cm_configs)
         default_cm_definition = available_cm_definitions[0]
         cm_pref = self.skill_browser.execute_script(
             "return window.localStorage.getItem('UL_CM_DEF') || arguments[0];",
@@ -2883,7 +2867,7 @@ class CarrotJuicer:
 
         self.selected_cm_definition = selected_cm_definition
         cm_options = [
-            {"id": cm_id, "label": f"{cm_id} {CM_CONFIGS[cm_id]['name'].replace(' Cup', '')}"}
+            {"id": cm_id, "label": f"{cm_id} {cm_configs[cm_id]['name'].replace(' Cup', '')}"}
             for cm_id in available_cm_definitions
         ]
 
@@ -2904,8 +2888,8 @@ class CarrotJuicer:
             u_wisdom = 1000
             u_condition = "BEST"
 
-        cm_data = CM_CONFIGS[selected_cm_definition]
-        mock_payload = {
+        cm_data = cm_configs[selected_cm_definition]
+        simulation_payload = {
             "baseSetting": {
                 "umaStatus": {
                     "charaName": "Place Holder",
@@ -2939,10 +2923,10 @@ class CarrotJuicer:
         if is_rating_mode:
             results = {"candidates": {}}
         else:
-            cache_key = self._skill_simulation_key(mock_payload)
+            cache_key = self._skill_simulation_key(simulation_payload)
             completion_matches = (
                 simulation_completion is not None
-                and simulation_completion[0] == self._skill_sim_latest_generation
+                and simulation_completion[0] == self._skill_sim_generation
                 and simulation_completion[1] == cache_key
             )
             if completion_matches:
@@ -2952,7 +2936,7 @@ class CarrotJuicer:
                     force_simulation = self._force_next_skill_simulation
                     self._force_next_skill_simulation = False
                 _, results, is_pending = self._queue_skill_simulation(
-                    mock_payload,
+                    simulation_payload,
                     force=force_simulation,
                 )
                 if is_pending:
@@ -4501,7 +4485,7 @@ class CarrotJuicer:
                         self._skill_sim_stop
                         or (
                             expected_generation is not None
-                            and expected_generation != self._skill_sim_latest_generation
+                            and expected_generation != self._skill_sim_generation
                         )
                     ):
                         return {}
@@ -4526,7 +4510,7 @@ class CarrotJuicer:
 
             if expected_generation is not None:
                 with self._skill_sim_condition:
-                    if self._skill_sim_stop or expected_generation != self._skill_sim_latest_generation:
+                    if self._skill_sim_stop or expected_generation != self._skill_sim_generation:
                         return {}  # Expected cancellation, not a simulator failure.
             if stderr:
                 diagnostics = Counter(stderr.splitlines())
@@ -4850,14 +4834,12 @@ class CarrotJuicer:
         data_completion = self._take_skill_data_completion()
         if self.open_skill_window:
             self.open_skill_window = False
-            self.previous_skills_list = list(self.skills_list)
             self.update_skill_window()
         elif simulation_completion is not None and self.skill_browser:
             self.update_skill_window(simulation_completion=simulation_completion)
         elif data_completion is not None and self.skill_browser:
             self.update_skill_window(data_completion=data_completion)
         elif self.skill_browser and self._skill_window_last_state_key != self._skill_window_state_key():
-            self.previous_skills_list = list(self.skills_list)
             self.update_skill_window()
 
         if self.open_schedule_window:
