@@ -4,13 +4,10 @@ import hashlib
 import json
 import os
 import secrets
-import time
 import urllib.error
 import urllib.request
 from collections import OrderedDict
 from pathlib import Path
-
-from loguru import logger
 
 
 def canonical_payload(payload):
@@ -27,10 +24,40 @@ def fingerprint(value):
     ).encode("utf-8")).hexdigest()
 
 
-class SkillDataSnapshot:
-    """Revalidate at most hourly; subprocesses use immutable local snapshots."""
+CM_INDEX_URL = "https://bashin.app/cm/cm_index.json"
 
-    REFRESH_SECONDS = 3600
+
+def load_cm_configs():
+    """Load the complete published selector/config from Bashin, without a fallback."""
+    request = urllib.request.Request(CM_INDEX_URL, headers={"User-Agent": "UmaLauncher skill helper"})
+    with urllib.request.urlopen(request, timeout=5) as response:
+        data = json.load(response)
+    entries = data.get("cms") if isinstance(data, dict) else None
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("Bashin CM index is empty or invalid")
+    configs = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError("Invalid Bashin CM definition")
+        for field in ("cmId", "courseId", "location", "season", "weather"):
+            if type(entry.get(field)) is not int or entry[field] <= 0:
+                raise ValueError(f"Invalid Bashin CM field: {field}")
+        if not isinstance(entry.get("name"), str) or not entry["name"].strip():
+            raise ValueError("Bashin CM name is missing")
+        if entry.get("groundCondition") not in ("GOOD", "YAYAOMO", "OMO", "BAD"):
+            raise ValueError("Invalid Bashin CM ground condition")
+        cm_id = entry["cmId"]
+        if cm_id in configs:
+            raise ValueError(f"Duplicate Bashin CM definition: {cm_id}")
+        configs[cm_id] = dict(name=entry["name"], course=entry["courseId"],
+                              location=entry["location"], season=entry["season"],
+                              weather=entry["weather"], ground_condition=entry["groundCondition"])
+    return configs
+
+
+class SkillDataSnapshot:
+    """Revalidate downloaded data before use; failed requests never use stale data."""
+
     URL = "https://bashin.app/data/skill_data.txt"
 
     def __init__(self, cache_dir):
@@ -39,7 +66,6 @@ class SkillDataSnapshot:
         self.metadata_path = self.cache_dir / "current.json"
         self.path = None
         self.digest = None
-        self.checked_at = 0
         self.etag = None
         self.modified = None
         try:
@@ -48,14 +74,10 @@ class SkillDataSnapshot:
             if hashlib.sha256(cached.read_bytes()).hexdigest() == metadata["digest"]:
                 self.path = cached
                 self.digest = metadata["digest"]
-                self.checked_at = metadata["checked_at"]
                 self.etag = metadata.get("etag")
                 self.modified = metadata.get("modified")
         except (OSError, ValueError, KeyError):
-            pass  # The worker downloads data when no valid cache exists.
-
-    def refresh_due(self):
-        return time.time() - self.checked_at >= self.REFRESH_SECONDS
+            pass  # No usable HTTP cache; the next request must download data.
 
     def refresh(self):
         headers = {"User-Agent": "UmaLauncher skill helper"}
@@ -65,7 +87,15 @@ class SkillDataSnapshot:
             headers["If-Modified-Since"] = self.modified
         try:
             request = urllib.request.Request(self.URL, headers=headers)
-            with urllib.request.urlopen(request, timeout=5) as response:
+            try:
+                response = urllib.request.urlopen(request, timeout=5)
+            except urllib.error.HTTPError as error:
+                if error.code != 304:
+                    raise
+                if self.path is None or hashlib.sha256(self.path.read_bytes()).hexdigest() != self.digest:
+                    raise ValueError("Revalidated skill-data cache is missing or invalid")
+                return
+            with response:
                 content = response.read()
                 skills = json.loads(content)
                 if not isinstance(skills, list) or not skills or not all(
@@ -75,26 +105,22 @@ class SkillDataSnapshot:
                     raise ValueError("Invalid simulator skill-data response")
                 digest = hashlib.sha256(content).hexdigest()
                 path = self.cache_dir / (digest + ".json")
-                if not path.exists():
-                    temporary = path.with_suffix(f".{os.getpid()}.tmp")
-                    temporary.write_bytes(content)
-                    os.replace(temporary, path)
+                temporary = path.with_suffix(f".{os.getpid()}.tmp")
+                temporary.write_bytes(content)
+                os.replace(temporary, path)
                 self.path, self.digest = path, digest
                 self.etag = response.headers.get("ETag")
                 self.modified = response.headers.get("Last-Modified")
-        except urllib.error.HTTPError as error:
-            if error.code != 304:
-                logger.warning(f"Skill-data refresh failed: {error}")
-        except (OSError, ValueError) as error:
-            logger.warning(f"Skill-data refresh failed: {error}")
-        self.checked_at = time.time()
-        if self.path is None:
-            raise RuntimeError("Skill data is unavailable. Check the connection and click Rerun.")
-        metadata = dict(digest=self.digest,
-                        checked_at=self.checked_at, etag=self.etag, modified=self.modified)
-        temporary = self.metadata_path.with_suffix(f".{os.getpid()}.tmp")
-        temporary.write_text(json.dumps(metadata), encoding="utf-8")
-        os.replace(temporary, self.metadata_path)
+            metadata = dict(digest=self.digest, etag=self.etag, modified=self.modified)
+            temporary = self.metadata_path.with_suffix(f".{os.getpid()}.tmp")
+            temporary.write_text(json.dumps(metadata), encoding="utf-8")
+            os.replace(temporary, self.metadata_path)
+        except Exception:
+            self.path = None
+            self.digest = None
+            self.etag = None
+            self.modified = None
+            raise
 
 
 class CandidateCache:

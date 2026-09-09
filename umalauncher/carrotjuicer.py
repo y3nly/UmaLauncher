@@ -203,6 +203,8 @@ class CarrotJuicer:
         self._skill_sim_pending = None
         self._skill_sim_active_key = None
         self._skill_sim_completion = None
+        self._skill_data_completion = None
+        self._skill_sim_cm_configs = None
         self._skill_sim_cache = skill_simulation.CandidateCache(limit=12)
         self._skill_sim_data = skill_simulation.SkillDataSnapshot(
             util.get_appdata("skill-simulator"),
@@ -240,6 +242,7 @@ class CarrotJuicer:
         self._skill_sim_latest_generation = self._skill_sim_generation
         self._skill_sim_pending = None
         self._skill_sim_completion = None
+        self._skill_data_completion = None
         process = self._skill_sim_process
         if process is not None and process.poll() is None:
             try:
@@ -248,15 +251,30 @@ class CarrotJuicer:
                 pass
         return self._skill_sim_generation
 
+    def _queue_skill_data_refresh(self):
+        with self._skill_sim_condition:
+            generation = self._invalidate_skill_simulation_locked()
+            self._skill_sim_cm_configs = None
+            self._skill_sim_pending = (generation, None, None, False)
+            self._skill_sim_condition.notify()
+
+    def _take_skill_data_completion(self):
+        with self._skill_sim_condition:
+            completion = self._skill_data_completion
+            self._skill_data_completion = None
+            return completion
+
     def _queue_skill_simulation(self, payload, force=False):
         """Reuse completed candidates, or cancel obsolete work and queue the latest input."""
         payload = skill_simulation.canonical_payload(payload)
         cache_key = self._skill_simulation_key(payload)
         with self._skill_sim_condition:
+            if self._skill_sim_cm_configs is None or self._skill_sim_data.path is None:
+                raise RuntimeError("Bashin data must be loaded before running the simulator")
             engine = self._skill_sim_engine_identity()
             if force:
                 self._skill_sim_cache.discard(payload, engine)
-            elif not self._skill_sim_data.refresh_due():
+            else:
                 cached_result = self._skill_sim_cache.get(payload, engine)
                 if cached_result is not None:
                     self._invalidate_skill_simulation_locked()
@@ -288,12 +306,27 @@ class CarrotJuicer:
                 self._skill_sim_active_key = cache_key
                 self._skill_sim_active_generation = generation
 
+            if payload is None:
+                error = None
+                configs = None
+                try:
+                    configs = skill_simulation.load_cm_configs()
+                    self._skill_sim_data.refresh()
+                except Exception:
+                    logger.error(f"Could not load Bashin simulator data:\n{traceback.format_exc()}")
+                    error = "Bashin data unavailable; click Rerun to retry"
+                with self._skill_sim_condition:
+                    self._skill_sim_active_key = None
+                    self._skill_sim_active_generation = None
+                    if not self._skill_sim_stop and generation == self._skill_sim_latest_generation:
+                        self._skill_sim_cm_configs = configs if error is None else None
+                        self._skill_data_completion = (generation, error)
+                continue
+
             result = {}
             context_key = None
             request = None
             try:
-                if force or self._skill_sim_data.refresh_due():
-                    self._skill_sim_data.refresh()
                 if self._skill_sim_data.path is None:
                     raise RuntimeError("Skill data is unavailable. Check the connection and click Rerun.")
                 with self._skill_sim_condition:
@@ -342,7 +375,6 @@ class CarrotJuicer:
             "chara": chara_info,
             "skills": self.skill_data,
             "engine": self._skill_sim_engine_identity(),
-            "data_refresh_due": self._skill_sim_data.refresh_due(),
         })
 
     def _take_skill_simulation_completion(self):
@@ -2773,7 +2805,7 @@ class CarrotJuicer:
                         f"{traceback.format_exc()}"
                     )
 
-    def update_skill_window(self, simulation_completion=None):
+    def update_skill_window(self, simulation_completion=None, data_completion=None):
         if self.should_stop:
             return
 
@@ -2805,6 +2837,16 @@ class CarrotJuicer:
             return
 
         self._skill_window_last_state_key = self._skill_window_state_key()
+        if simulation_completion is None:
+            if data_completion is None:
+                self._queue_skill_data_refresh()
+                self.set_skill_window_sim_status("running", "loading Bashin data")
+                return
+            if data_completion[0] != self._skill_sim_latest_generation:
+                return
+            if data_completion[1]:
+                self.set_skill_window_sim_status("error", data_completion[1])
+                return
         mode_pref = self.skill_browser.execute_script("return window.localStorage.getItem('UL_MODE_PREF') || 'parent';")
         is_ace_mode = (mode_pref == 'ace')
         is_rating_mode = (mode_pref == 'rating')
@@ -2819,10 +2861,10 @@ class CarrotJuicer:
             4: "OI"
         }
 
-        CM_CONFIGS = mdb.get_champions_meeting_configs(limit=2)
+        CM_CONFIGS = self._skill_sim_cm_configs or {}
         available_cm_definitions = tuple(CM_CONFIGS)
         if not available_cm_definitions:
-            logger.error("No complete Champions Meeting definitions found in master.mdb")
+            logger.error("No Champions Meeting definitions loaded from Bashin")
             self.set_skill_window_sim_status("error", "CM data unavailable")
             return
 
@@ -4805,12 +4847,15 @@ class CarrotJuicer:
             self.update_event_window()
 
         simulation_completion = self._take_skill_simulation_completion()
+        data_completion = self._take_skill_data_completion()
         if self.open_skill_window:
             self.open_skill_window = False
             self.previous_skills_list = list(self.skills_list)
             self.update_skill_window()
         elif simulation_completion is not None and self.skill_browser:
             self.update_skill_window(simulation_completion=simulation_completion)
+        elif data_completion is not None and self.skill_browser:
+            self.update_skill_window(data_completion=data_completion)
         elif self.skill_browser and self._skill_window_last_state_key != self._skill_window_state_key():
             self.previous_skills_list = list(self.skills_list)
             self.update_skill_window()
