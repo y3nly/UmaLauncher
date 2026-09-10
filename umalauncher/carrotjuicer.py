@@ -2344,13 +2344,16 @@ class CarrotJuicer:
         if not chara:
             self.set_skill_window_sim_status("waiting", "Waiting for trainee data")
             return
-        WebDriverWait(self.skill_browser, 5).until(lambda browser: browser.execute_script(
-            "return typeof window.updateLauncherRating === 'function';"
-        ))
-        selection = self.skill_browser.execute_script(
-            "return window.getLauncherSelection(arguments[0], arguments[1]);",
+        # Check readiness and read the selection in the same page context:
+        # a refresh between separate commands can discard the initialized bridge.
+        selection = WebDriverWait(self.skill_browser, 5).until(lambda browser: browser.execute_script(
+            """
+            if (!['getLauncherSelection', 'updateLauncherRating', 'loadLauncherData']
+                .every(name => typeof window[name] === 'function')) return null;
+            return window.getLauncherSelection(arguments[0], arguments[1]);
+            """,
             skill_simulation.career_id(chara), skill_simulation.STYLES[chara['race_running_style']-1],
-        )
+        ))
         mode = selection['mode']
         if mode not in ('ace', 'rating') or selection['style'] not in skill_simulation.STYLES:
             raise ValueError('Invalid skill window selection')
