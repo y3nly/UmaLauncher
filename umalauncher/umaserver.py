@@ -54,30 +54,27 @@ def open_event_window():
 
     return '', 200
 
-@app.route('/skill-window-cm-definition', methods=['POST'])
-def skill_window_cm_definition():
-    global threader
-    cm_definition = request.data.decode('utf-8').strip()
-    if threader.carrotjuicer:
-        try:
-            selected_cm_definition = int(cm_definition)
-        except ValueError:
-            selected_cm_definition = 18
-
-        if selected_cm_definition not in (18, 19):
-            selected_cm_definition = 18
-
-        threader.carrotjuicer.selected_cm_definition = selected_cm_definition
-        threader.carrotjuicer.open_skill_window = True
-
-    return '', 200
-
 @app.route('/rerun-skill-simulation', methods=['POST'])
 def rerun_skill_simulation():
     global threader
     if threader.carrotjuicer:
         threader.carrotjuicer.request_skill_simulation_rerun()
 
+    return '', 200
+
+@app.route('/stop-skill-simulation', methods=['POST'])
+def stop_skill_simulation():
+    global threader
+    if threader.carrotjuicer:
+        threader.carrotjuicer.request_skill_simulation_stop()
+
+    return '', 200
+
+@app.route('/skill-window-plan', methods=['POST'])
+def update_skill_window_plan():
+    # The browser owns mode/choices; read them on its owning thread.
+    if threader.carrotjuicer:
+        threader.carrotjuicer.request_skill_window_update()
     return '', 200
 
 @app.route('/open-schedule-window', methods=['POST'])

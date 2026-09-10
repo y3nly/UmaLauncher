@@ -159,7 +159,7 @@ class DefaultSettings(se.NewSettings):
         "training_helper_ui": se.Setting(
             "Training helper interface",
             "Choose the original helper or the modern training dashboard.",
-            0,
+            1,
             se.SettingType.COMBOBOX,
             choices=["Legacy", "Modern"],
             tab="Event Helper"
