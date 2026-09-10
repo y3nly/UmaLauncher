@@ -111,7 +111,6 @@ _SKILL_GROUP_ID = 0
 _SKILL_RARITY = 1
 _SKILL_GROUP_RATE = 2
 _SKILL_CATEGORY = 3
-_SKILL_DISPLAY_ORDER = 4
 
 
 def _refresh_query_catalogs(force=False, fingerprint=None):
@@ -436,20 +435,6 @@ def get_race_program_name_dict(force=False):
     return RACE_PROGRAM_NAME_DICT
 
 
-SKILL_NAME_DICT = {}
-def get_skill_name_dict(force=False):
-    global SKILL_NAME_DICT
-    if force or not SKILL_NAME_DICT:
-        with Connection() as (_, cursor):
-            cursor.execute(
-                """SELECT sd.id, td.text FROM skill_data sd INNER JOIN text_data td ON sd.id = td."index" AND td.category = 47"""
-            )
-            rows = cursor.fetchall()
-
-        SKILL_NAME_DICT.update({row[0]: row[1] for row in rows})
-
-    return SKILL_NAME_DICT
-
 SKILL_COSTS_DICT = {}
 def get_skill_costs_dict(force=False):
     global SKILL_COSTS_DICT
@@ -463,138 +448,6 @@ def get_skill_costs_dict(force=False):
 
     return SKILL_COSTS_DICT
 
-SKILL_SCORE_DICT = {}
-def get_skill_score_dict(force=False):
-    global SKILL_SCORE_DICT
-    if force or not SKILL_SCORE_DICT:
-        with Connection() as (_, cursor):
-            try:
-                cursor.execute("SELECT id, grade_value FROM skill_data WHERE grade_value > 0")
-                rows = cursor.fetchall()
-                SKILL_SCORE_DICT.update({row[0]: row[1] for row in rows})
-            except Exception as e:
-                logger.error(f"Error fetching skill scores: {e}")
-    return SKILL_SCORE_DICT
-
-
-
-
-SKILL_CONDITIONS_DICT = {}
-def get_skill_conditions_dict(force=False):
-    global SKILL_CONDITIONS_DICT
-    if force or not SKILL_CONDITIONS_DICT:
-        with Connection() as (_, cursor):
-            # Fetch condition_1 from your local DB
-            cursor.execute("SELECT id, condition_1 FROM skill_data;")
-            rows = cursor.fetchall()
-
-        if rows:
-            tmp = {}
-            for row in rows:
-                skill_id = row[0]
-                logic_str = row[1]
-
-                if logic_str:
-                    # Apply logic from generate_skill_data.py: split by @, wrap in [], join with OR
-                    blocks = str(logic_str).split('@')
-                    formatted_blocks = [f"{b.strip().replace('&', ' & ')}" for b in blocks if b.strip()]
-                    tmp[skill_id] = " OR ".join(formatted_blocks)
-                else:
-                    tmp[skill_id] = "Guaranteed"
-
-            SKILL_CONDITIONS_DICT.update(tmp)
-
-    return SKILL_CONDITIONS_DICT
-
-SKILL_EFFECTS_DICT = {}
-def get_skill_effects_dict(force=False):
-    global SKILL_EFFECTS_DICT
-    if force or not SKILL_EFFECTS_DICT:
-        EFFECT_NAMES = {
-            0: "Noop",
-            1: "SpeedUp",
-            2: "StaminaUp",
-            3: "PowerUp",
-            4: "GutsUp",
-            5: "WisdomUp",
-            8: "Vision",
-            9: "Recovery",
-            10: "MultiplyStartDelay",
-            13: "ExtendKakari",
-            14: "SetStartDelay",
-            21: "CurrentSpeed",
-            22: "CurrentSpeedWithNaturalDeceleration",
-            27: "TargetSpeed",
-            29: "ModifyKakariChance",
-            31: "Accel",
-            37: "ActivateRandomGold",
-            42: "ExtendEvolvedDuration"
-        }
-
-        SKILL_EFFECTS_DICT = {}
-
-        with Connection() as (_, cursor):
-            try:
-                cursor.execute(
-                    """SELECT id, 
-                    ability_type_1_1, float_ability_value_1_1,
-                    ability_type_1_2, float_ability_value_1_2,
-                    ability_type_1_3, float_ability_value_1_3,
-                    float_ability_time_1,
-                    ability_type_2_1, float_ability_value_2_1,
-                    ability_type_2_2, float_ability_value_2_2,
-                    ability_type_2_2, float_ability_value_2_2,
-                    ability_type_2_3, float_ability_value_2_3,
-                    float_ability_time_2
-                    FROM skill_data"""
-                )
-                rows = cursor.fetchall()
-
-                for r in rows:
-                    sid = str(r[0])
-                    eff_strs = []
-                    max_duration = 0.0
-
-                    # Phase 1
-                    for i in range(1, 7, 2):
-                        a_type = r[i]
-                        a_val = r[i+1]
-                        if a_type != 0:
-                            eff_name = EFFECT_NAMES.get(a_type, f"Type {a_type}")
-                            eff_strs.append(f"{eff_name} {a_val}")
-                    if r[7] > max_duration:
-                        max_duration = r[7]
-
-                    # Phase 2
-                    for i in range(8, 14, 2):
-                        a_type = r[i]
-                        a_val = r[i+1]
-                        if a_type != 0:
-                            eff_name = EFFECT_NAMES.get(a_type, f"Type {a_type}")
-                            eff_strs.append(f"{eff_name} {a_val}")
-                    if r[14] > max_duration:
-                        max_duration = r[14]
-
-                    if not eff_strs:
-                        SKILL_EFFECTS_DICT[sid] = {"effects": "No Effects", "conditions": ""}
-                        continue
-
-                    eff_text = ", ".join(eff_strs)
-                    if max_duration > 0:
-                        dur_text = f"Duration {max_duration / 10000.0}s"
-                        summary = f"{eff_text}, {dur_text}"
-                    else:
-                        summary = eff_text
-
-                    SKILL_EFFECTS_DICT[sid] = {
-                        "effects": summary,
-                        "conditions": ""
-                    }
-            except sqlite3.OperationalError as e:
-                logger.error(f"Failed to parse skill_data logic from DB: {e}")
-                return {}
-
-    return SKILL_EFFECTS_DICT
 
 SKILL_HINT_NAME_DICT = {}
 def get_skill_hint_name_dict(force=False):
@@ -724,7 +577,6 @@ def get_race_surface_dict(force=False):
         RACE_SURFACE_DICT.update({row[0]: row[1] for row in rows})
 
     return RACE_SURFACE_DICT
-
 
 
 MANT_ITEM_STRING_DICT = {}
@@ -908,28 +760,6 @@ def get_card_inherent_skills(card_id, level=99):
             if need_rank is not None and need_rank <= level
         ]
 
-def sort_skills_by_display_order(skill_id_list):
-    with _MDB_CACHE_LOCK:
-        _refresh_query_catalogs()
-        requested_ids = set(skill_id_list)
-        rows = [
-            (skill_id, skill_data)
-            for skill_id, skill_data in _SKILL_CATALOG.items()
-            if skill_id in requested_ids
-        ]
-
-    if not rows:
-        return None
-
-    rows.sort(
-        key=lambda row: (
-            row[1][_SKILL_DISPLAY_ORDER] is not None,
-            row[1][_SKILL_DISPLAY_ORDER] or 0,
-            row[0],
-        )
-    )
-    return [row[0] for row in rows]
-
 
 def determine_skill_id_from_group_id(group_id, rarity, skills_id_list):
     with _MDB_CACHE_LOCK:
@@ -1021,57 +851,6 @@ def get_next_skill_id_in_chain(skill_id):
         next_id += 800000
     return next_id
 
-DOUBLE_CIRCLE_UPGRADE_DICT = {}
-def get_double_circle_upgrade_dict(force=False):
-    global DOUBLE_CIRCLE_UPGRADE_DICT
-    if force or not DOUBLE_CIRCLE_UPGRADE_DICT:
-        with Connection() as (_, cursor):
-            try:
-                cursor.execute(
-                    """
-                    SELECT base.id, upgrade.id
-                    FROM skill_data base
-                    JOIN skill_data upgrade
-                        ON base.group_id = upgrade.group_id
-                    JOIN single_mode_skill_need_point upgrade_cost
-                        ON upgrade_cost.id = upgrade.id
-                    WHERE base.group_rate = 1
-                        AND upgrade.group_rate = 2
-                        AND base.rarity = 1
-                        AND upgrade.rarity = 1
-                        AND base.skill_category != 5
-                        AND upgrade.skill_category != 5
-                        AND base.grade_value > 0
-                        AND upgrade.grade_value > 0
-                    """
-                )
-                rows = cursor.fetchall()
-            except sqlite3.OperationalError as e:
-                logger.error(f"get_double_circle_upgrade_dict failed: {e}\\n{traceback.format_exc()}")
-                rows = []
-
-        if rows:
-            DOUBLE_CIRCLE_UPGRADE_DICT.clear()
-            DOUBLE_CIRCLE_UPGRADE_DICT.update({row[0]: row[1] for row in rows})
-    return DOUBLE_CIRCLE_UPGRADE_DICT
-
-GROUP_ID_DICT = {}
-def get_group_id_dict(force=False):
-    global GROUP_ID_DICT
-    if force or not GROUP_ID_DICT:
-        with Connection() as (_, cursor):
-            try:
-                cursor.execute("SELECT id, group_id FROM skill_data")
-                rows = cursor.fetchall()
-            except sqlite3.OperationalError as e:
-                logger.error(f"get_group_id_dict failed: {e}\\n{traceback.format_exc()}")
-                rows = []
-        if rows:
-            tmp = {}
-            for row in rows:
-                tmp[str(row[0])] = row[1]
-            GROUP_ID_DICT.update(tmp)
-    return GROUP_ID_DICT
 
 def get_total_minigame_plushies(force=False):
     with Connection() as (_, cursor):
@@ -1197,7 +976,6 @@ def _clear_update_caches():
         CHARA_NAME_DICT,
         EVENT_TITLE_DICT,
         RACE_PROGRAM_NAME_DICT,
-        SKILL_NAME_DICT,
         SKILL_HINT_NAME_DICT,
         STATUS_NAME_DICT,
         OUTFIT_NAME_DICT,
@@ -1207,17 +985,12 @@ def _clear_update_caches():
         GL_LESSON_DICT,
         GROUP_CARD_EFFECT_IDS,
         SKILL_ID_DICT,
-        DOUBLE_CIRCLE_UPGRADE_DICT,
-        GROUP_ID_DICT,
-        SKILL_EFFECTS_DICT,
-        SKILL_SCORE_DICT,
         SINGLE_MODE_UNIQUE_CHARA_DICT,
         PROGRAM_ID_DICT,
         RACE_NAME_DICT,
         RACE_DISTANCE_DICT,
         RACE_SURFACE_DICT,
         SKILL_COSTS_DICT,
-        SKILL_CONDITIONS_DICT,
     ):
         cache.clear()
 
@@ -1233,7 +1006,6 @@ UPDATE_FUNCS = [
     get_chara_name_dict,
     get_event_title_dict,
     get_race_program_name_dict,
-    get_skill_name_dict,
     get_skill_hint_name_dict,
     get_status_name_dict,
     get_outfit_name_dict,
@@ -1243,17 +1015,12 @@ UPDATE_FUNCS = [
     get_gl_lesson_dict,
     get_group_card_effect_ids,
     get_skill_id_dict,
-    get_double_circle_upgrade_dict,
-    get_group_id_dict,
-    get_skill_effects_dict,
-    get_skill_score_dict,
     get_single_mode_unique_chara_dict,
     get_program_id_dict,
     get_race_name_dict,
     get_race_distance_dict,
     get_race_surface_dict,
     get_skill_costs_dict,
-    get_skill_conditions_dict
 ]
 
 def has_carotene_table():
