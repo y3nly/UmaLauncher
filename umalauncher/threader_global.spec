@@ -10,7 +10,6 @@ datas = [
     ("./_assets/icon/global/connecting.ico", "_assets/icon/global"),
     ("./_assets/icon/global/connected.ico", "_assets/icon/global"),
     ("./_assets/umasim-cli.exe", "_assets"),
-    ("./_assets/skill_data.txt", "_assets"),
     ("./_assets/branch.txt", "_assets"),
     ("./_assets/commit_hash.txt", "_assets"),
     ("./_assets/build_date.txt", "_assets"),

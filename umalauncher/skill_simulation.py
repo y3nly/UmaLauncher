@@ -1,24 +1,8 @@
-"""Local simulator inputs and seed-aware reuse between skill-helper requests."""
+"""Local simulator inputs for the skill helper."""
 
 import hashlib
 import json
-import os
-import secrets
-import time
-import urllib.error
-import urllib.request
-from collections import OrderedDict
-from pathlib import Path
-
-from loguru import logger
-
-
-def canonical_payload(payload):
-    result = dict(payload)
-    for key in ("acquiredSkillIds", "unacquiredSkillIds", "forceActivateSkillIds"):
-        if key in result:
-            result[key] = sorted(set(result[key]))
-    return result
+from skill_simulator_data import SkillDataSnapshot
 
 
 def fingerprint(value):
@@ -27,137 +11,127 @@ def fingerprint(value):
     ).encode("utf-8")).hexdigest()
 
 
-class SkillDataSnapshot:
-    """Revalidate at most hourly; subprocesses use immutable local snapshots."""
-
-    REFRESH_SECONDS = 3600
-    URL = "https://bashin.app/data/skill_data.txt"
-
-    def __init__(self, bundled_path, cache_dir):
-        self.cache_dir = Path(cache_dir)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.metadata_path = self.cache_dir / "current.json"
-        bundled = Path(bundled_path).read_bytes()
-        self.bundle_digest = hashlib.sha256(bundled).hexdigest()
-        self.path = Path(bundled_path)
-        self.digest = self.bundle_digest
-        self.checked_at = 0
-        self.etag = None
-        self.modified = None
-        try:
-            metadata = json.loads(self.metadata_path.read_text(encoding="utf-8"))
-            if metadata["bundle"] == self.bundle_digest:
-                cached = self.cache_dir / (metadata["digest"] + ".json")
-                if hashlib.sha256(cached.read_bytes()).hexdigest() == metadata["digest"]:
-                    self.path = cached
-                    self.digest = metadata["digest"]
-                    self.checked_at = metadata["checked_at"]
-                    self.etag = metadata.get("etag")
-                    self.modified = metadata.get("modified")
-        except (OSError, ValueError, KeyError):
-            pass  # The bundled snapshot is valid without a prior download.
-
-    def refresh_due(self):
-        return time.time() - self.checked_at >= self.REFRESH_SECONDS
-
-    def refresh(self):
-        headers = {"User-Agent": "UmaLauncher skill helper"}
-        if self.etag:
-            headers["If-None-Match"] = self.etag
-        if self.modified:
-            headers["If-Modified-Since"] = self.modified
-        try:
-            request = urllib.request.Request(self.URL, headers=headers)
-            with urllib.request.urlopen(request, timeout=5) as response:
-                content = response.read()
-                skills = json.loads(content)
-                if not isinstance(skills, list) or not skills or not all(
-                    isinstance(skill, dict) and "id" in skill and "invokes" in skill
-                    for skill in skills
-                ):
-                    raise ValueError("Invalid simulator skill-data response")
-                digest = hashlib.sha256(content).hexdigest()
-                path = self.cache_dir / (digest + ".json")
-                if not path.exists():
-                    temporary = path.with_suffix(f".{os.getpid()}.tmp")
-                    temporary.write_bytes(content)
-                    os.replace(temporary, path)
-                self.path, self.digest = path, digest
-                self.etag = response.headers.get("ETag")
-                self.modified = response.headers.get("Last-Modified")
-        except urllib.error.HTTPError as error:
-            if error.code != 304:
-                logger.warning(f"Skill-data refresh failed; retaining local snapshot: {error}")
-        except (OSError, ValueError) as error:
-            logger.warning(f"Skill-data refresh failed; retaining local snapshot: {error}")
-        self.checked_at = time.time()
-        # Keep the digest-named file even when the server revalidates the bundle.
-        cached = self.cache_dir / (self.digest + ".json")
-        if not cached.exists():
-            cached.write_bytes(self.path.read_bytes())
-        metadata = dict(bundle=self.bundle_digest, digest=self.digest,
-                        checked_at=self.checked_at, etag=self.etag, modified=self.modified)
-        temporary = self.metadata_path.with_suffix(f".{os.getpid()}.tmp")
-        temporary.write_text(json.dumps(metadata), encoding="utf-8")
-        os.replace(temporary, self.metadata_path)
+CM_INDEX_URL = "https://bashin.app/cm/cm_index.json"
 
 
-class CandidateCache:
-    """Access under the worker condition; mutable race state never enters this cache."""
+def load_cm_configs(load_json):
+    """Load the complete published selector/config from Bashin, without a fallback."""
+    data = load_json(CM_INDEX_URL)
+    entries = data.get("cms") if isinstance(data, dict) else None
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("Bashin CM index is empty or invalid")
+    configs = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError("Invalid Bashin CM definition")
+        for field in ("cmId", "courseId", "location", "season", "weather"):
+            if type(entry.get(field)) is not int or entry[field] <= 0:
+                raise ValueError(f"Invalid Bashin CM field: {field}")
+        if not isinstance(entry.get("name"), str) or not entry["name"].strip():
+            raise ValueError("Bashin CM name is missing")
+        if entry.get("groundCondition") not in ("GOOD", "YAYAOMO", "OMO", "BAD"):
+            raise ValueError("Invalid Bashin CM ground condition")
+        cm_id = entry["cmId"]
+        if cm_id in configs:
+            raise ValueError(f"Duplicate Bashin CM definition: {cm_id}")
+        configs[cm_id] = dict(name=entry["name"], course=entry["courseId"],
+                              location=entry["location"], season=entry["season"],
+                              weather=entry["weather"], ground_condition=entry["groundCondition"])
+    return configs
 
-    def __init__(self, limit=12):
-        self.limit = limit
-        self.contexts = OrderedDict()
 
-    @staticmethod
-    def context_key(payload, engine):
-        baseline = canonical_payload(payload)
-        baseline.pop("unacquiredSkillIds", None)
-        return fingerprint([engine, baseline])
+STYLE_APTITUDES = {
+    "NIGE": "proper_running_style_nige", "SEN": "proper_running_style_senko",
+    "SASI": "proper_running_style_sashi", "OI": "proper_running_style_oikomi",
+}
+STYLES = tuple(STYLE_APTITUDES)
+GRADES = "GFEDCBAS"
+DISCOUNTS = (0, 10, 20, 30, 35, 40)
 
-    def discard(self, payload, engine):
-        self.contexts.pop(self.context_key(payload, engine), None)
 
-    def get(self, payload, engine):
-        key = self.context_key(payload, engine)
-        entry = self.contexts.get(key)
-        requested = set(payload["unacquiredSkillIds"])
-        if entry is None or entry["result"] is None or not requested <= entry["evaluated"]:
-            return None
-        self.contexts.move_to_end(key)
-        result = dict(entry["result"])
-        result["candidates"] = {
-            key: value for key, value in result["candidates"].items()
-            if int(key) in requested
-        }
-        return result
+def load_course_data(load_json):
+    data = load_json("https://bashin.app/cm/course_data.json")
+    if not isinstance(data, dict) or not isinstance(data.get("courses"), dict) or not data["courses"]:
+        raise ValueError("Bashin course geometry is empty or invalid")
+    return data
 
-    def missing_request(self, payload, engine):
-        key = self.context_key(payload, engine)
-        if key not in self.contexts:
-            self.contexts[key] = dict(seed=payload.get("seedBase", secrets.randbits(63)),
-                                      evaluated=set(), result=None)
-        entry = self.contexts[key]
-        self.contexts.move_to_end(key)
-        while len(self.contexts) > self.limit:
-            self.contexts.popitem(last=False)
-        request = canonical_payload(payload)
-        request["seedBase"] = entry["seed"]
-        request["unacquiredSkillIds"] = sorted(
-            set(request["unacquiredSkillIds"]) - entry["evaluated"]
-        )
-        return key, request
 
-    def merge(self, key, request, result):
-        entry = self.contexts[key]
-        if result.get("seedBase") != entry["seed"]:
-            raise ValueError("Simulator returned a different comparison seed")
-        previous = entry["result"]
-        metadata = {key: value for key, value in result.items() if key != "candidates"}
-        if previous is not None:
-            if metadata != {key: value for key, value in previous.items() if key != "candidates"}:
-                raise ValueError("Simulator baseline changed during incremental evaluation")
-            result = dict(result, candidates={**previous["candidates"], **result["candidates"]})
-        entry["result"] = result
-        # The CLI can omit unknown candidates. Remember that they were evaluated.
-        entry["evaluated"].update(request["unacquiredSkillIds"])
+def career_id(chara):
+    return f"{chara['start_time']}:{chara['card_id']}"
+
+
+def skill_change_key(chara):
+    # Only skill/hint identities trigger evaluations, not levels or array order.
+    learned = sorted({entry["skill_id"] for entry in chara["skill_array"]})
+    hints = sorted({(entry["group_id"], entry["rarity"])
+                    for entry in chara["skill_tips_array"]})
+    return fingerprint([career_id(chara), learned, hints])
+
+
+def build_evaluation(chara, available, cm, course, style, metadata, prerequisites):
+    """Actual Ace inputs and display rows; prerequisite effects never enter the baseline."""
+    if style not in STYLES:
+        raise ValueError("Invalid running style")
+    def aptitude(field):
+        value = chara[field]
+        if type(value) is not int or not 1 <= value <= 8:
+            raise ValueError(f"Invalid trainee aptitude: {field}")
+        return GRADES[value - 1]
+
+    distance_field = {1: "short", 2: "mile", 3: "middle", 4: "long"}[course["distanceType"]]
+    surface_field = {1: "turf", 2: "dirt"}[course["surface"]]
+    learned = {entry["skill_id"] for entry in chara["skill_array"]}
+    missing = (learned | set(available)) - metadata.keys()
+    if missing:
+        raise ValueError(f"Skills missing from the installed Global database: {sorted(missing)}")
+    unique_levels = [entry["level"] for entry in chara["skill_array"]
+                     if metadata[entry["skill_id"]]["skillKind"] == "unique"]
+    status = {
+        "speed": chara["speed"], "stamina": chara["stamina"], "power": chara["power"],
+        "guts": chara["guts"], "wisdom": chara["wiz"], "condition": "BEST", "style": style,
+        "distanceFit": aptitude("proper_distance_" + distance_field),
+        "surfaceFit": aptitude("proper_ground_" + surface_field),
+        "styleFit": aptitude(STYLE_APTITUDES[style]),
+        "uniqueLevel": max(unique_levels, default=1), "popularity": 1, "gateNumber": 0,
+    }
+    comparisons, definitions = [], []
+    for field, label in (("speed", "Speed"), ("power", "Power"), ("guts", "Guts"), ("wisdom", "Wit")):
+        key = field + "_100"
+        comparisons.append({"id": key, "candidate": {field + "Delta": 100}})
+        definitions.append({"id": key, "label": label + " +100",
+                            "description": f"Bashin gain from increasing {label} by 100."})
+    for field, label in (("distanceFit", "Distance"), ("surfaceFit", "Surface"), ("styleFit", "Style")):
+        grade = status[field]
+        if grade == "S":
+            continue
+        next_grade = GRADES[GRADES.index(grade) + 1]
+        key = f"{field[:-3]}_{grade.lower()}_to_{next_grade.lower()}"
+        comparisons.append({"id": key, "candidate": {field: next_grade}})
+        definitions.append({"id": key, "label": f"{label} {grade} > {next_grade}",
+                            "description": f"Bashin gain from improving {label} aptitude from {grade} to {next_grade}."})
+    rows = []
+    for sid, info in available.items():
+        if info["is_acquired"]:
+            continue
+        remaining_cost = 0
+        for rank in [sid, *prerequisites(sid)]:
+            rank_info = available.get(rank, {})
+            if rank_info.get("is_acquired") or rank in learned:
+                continue
+            hint = max(0, min(int(rank_info.get("hint_level", 0)), 5))
+            remaining_cost += int(metadata[rank]["baseCost"] * (100 - DISCOUNTS[hint]) / 100)
+        rows.append(dict(metadata[sid], baseCost=remaining_cost))
+    rows.sort(key=lambda row: (row["order"], row["id"]))
+    payload = {
+        "baseSetting": {
+            "umaStatus": status,
+            "track": {"location": cm["location"], "course": cm["course"],
+                      "condition": cm["ground_condition"], "gateCount": 9},
+            "season": cm["season"], "weather": cm["weather"], "positionKeepMode": "NONE",
+        },
+        "acquiredSkillIds": sorted(learned),
+        "unacquiredSkillIds": sorted(int(row["id"]) for row in rows),
+        "iterations": 2000, "collectLocationTelemetry": True,
+        "evaluationComparisons": comparisons,
+    }
+    return payload, rows, definitions

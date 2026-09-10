@@ -1,6 +1,6 @@
 import io
+import copy
 import functools
-import hashlib
 import math
 import os
 import time
@@ -15,12 +15,13 @@ import select
 from loguru import logger
 from msgpack import Unpacker
 from selenium.common.exceptions import NoSuchWindowException
+from selenium.webdriver.support.ui import WebDriverWait
 import util
 import constants
 import mdb
 import helper_table
 import skill_simulation
-import uma_rating
+import skill_planner
 import training_tracker
 import helper_theme
 import horsium
@@ -59,23 +60,6 @@ def normalize_choice_array(value):
         return []
     return [choice for choice in value if isinstance(choice, dict)]
 
-
-BASE_RANKS = [
-    (300, "G"), (600, "G+"), (900, "F"), (1300, "F+"), (1800, "E"),
-    (2300, "E+"), (2900, "D"), (3500, "D+"), (4900, "C"), (6500, "C+"),
-    (8200, "B"), (10000, "B+"), (12100, "A"), (14500, "A+"), (15900, "S"),
-    (17500, "S+"), (19200, "SS"), (19600, "SS+")
-]
-
-HIGH_RANKS = [
-    (19600, 400, 23900, "UG"),
-    (23900, 500, 28800, "UF"),
-    (28800, 560, 34400, "UE"),
-    (34400, 630, 40700, "UD"),
-    (40700, 700, 47600, "UC"),
-    (47600, 760, 55200, "UB"),
-    (55200, 800, float('inf'), "UA")
-]
 
 def unpack(data: bytes, key: bytes, iv: bytes) -> bytes:
     # logger.debug(f"Unpacking:\nData: {data.hex()}\nKey: {key.hex()}\nIV: {iv.hex()}")
@@ -118,8 +102,6 @@ class CarrotJuicer:
     previous_request = None
     last_helper_data = None
     active_helper_mode = None
-    skills_list = []
-    previous_skills_list = []
     previous_race_program_id = None
     last_data = None
     open_skill_window = False
@@ -128,7 +110,6 @@ class CarrotJuicer:
     open_event_window = False
     event_browser = None
     last_events_rect = None
-    selected_cm_definition = None
     open_schedule_window = False
     schedule_browser = None
     last_schedule_rect = None
@@ -150,7 +131,6 @@ class CarrotJuicer:
         self.open_skill_window = False
         self.open_event_window = False
         self.open_schedule_window = False
-        self.previous_skills_list = []
         self.last_browser_rect = None
         self.last_skills_rect = None
         self.last_events_rect = None
@@ -171,16 +151,10 @@ class CarrotJuicer:
         mdb.update_mdb_cache()
         self.skill_id_dict = mdb.get_skill_id_dict()
         self.status_name_dict = mdb.get_status_name_dict()
-        self.skill_name_dict = mdb.get_skill_name_dict()
         self.skill_costs_dict = mdb.get_skill_costs_dict()
-        self.skill_conditions_dict = mdb.get_skill_conditions_dict()
-        self.skill_score_dict = mdb.get_skill_score_dict()
-        self.group_id_dict = mdb.get_group_id_dict()
 
         self.skill_data = {}
-        self.skills_list = []
         self.style = ''
-        self.selected_cm_definition = None
 
 
         self.runtime_extensions = runtime_extensions.create(self)
@@ -201,20 +175,25 @@ class CarrotJuicer:
         # queued requests down to the newest payload.
         self._skill_sim_condition = threading.Condition()
         self._skill_sim_pending = None
-        self._skill_sim_active_key = None
         self._skill_sim_completion = None
-        self._skill_sim_cache = skill_simulation.CandidateCache(limit=12)
+        self._skill_window_selection = None
+        self._skill_window_data_key = None
+        self._skill_window_prepared = None
+        self._skill_window_data_revision = None
+        self._skill_window_last_skill_key = None
+        self._skill_window_requested_key = None
+        self._skill_window_requested_snapshot = None
+        self._skill_window_rerun_requested = False
         self._skill_sim_data = skill_simulation.SkillDataSnapshot(
-            util.get_asset("_assets/skill_data.txt"),
             util.get_appdata("skill-simulator"),
         )
-        self._skill_sim_exe_stamp = None
-        self._skill_sim_exe_digest = None
+        self._skill_window_data = skill_planner.SkillWindowData(self._skill_sim_data)
+        self._skill_data_worker = skill_planner.PreparationWorker(self._skill_window_data.prepare)
         self._skill_sim_active_generation = None
         self._skill_window_last_state_key = None
         self._skill_sim_generation = 0
-        self._skill_sim_latest_generation = 0
         self._skill_sim_stop = False
+        self._skill_sim_cancel_requested = False
         self._skill_sim_process = None
         self._skill_sim_thread = threading.Thread(
             target=self._skill_simulation_worker,
@@ -224,21 +203,10 @@ class CarrotJuicer:
 
     @staticmethod
     def _skill_simulation_key(payload):
-        return skill_simulation.fingerprint(skill_simulation.canonical_payload(payload))
-
-    def _skill_sim_engine_identity(self):
-        exe_path = util.get_asset("_assets/umasim-cli.exe")
-        stat = os.stat(exe_path)
-        stamp = (exe_path, stat.st_size, stat.st_mtime_ns)
-        if stamp != self._skill_sim_exe_stamp:
-            with open(exe_path, "rb") as executable:
-                self._skill_sim_exe_digest = hashlib.file_digest(executable, "sha256").hexdigest()
-            self._skill_sim_exe_stamp = stamp
-        return self._skill_sim_exe_digest, self._skill_sim_data.digest
+        return skill_simulation.fingerprint(payload)
 
     def _invalidate_skill_simulation_locked(self):
         self._skill_sim_generation += 1
-        self._skill_sim_latest_generation = self._skill_sim_generation
         self._skill_sim_pending = None
         self._skill_sim_completion = None
         process = self._skill_sim_process
@@ -249,32 +217,17 @@ class CarrotJuicer:
                 pass
         return self._skill_sim_generation
 
-    def _queue_skill_simulation(self, payload, force=False):
-        """Reuse completed candidates, or cancel obsolete work and queue the latest input."""
-        payload = skill_simulation.canonical_payload(payload)
-        cache_key = self._skill_simulation_key(payload)
+    def _take_skill_data_completion(self):
+        return self._skill_data_worker.take()
+
+    def _queue_skill_simulation(self, payload, skill_data_path):
+        """Queue a complete evaluation without interrupting an active run."""
+        request_key = self._skill_simulation_key(payload)
         with self._skill_sim_condition:
-            engine = self._skill_sim_engine_identity()
-            if force:
-                self._skill_sim_cache.discard(payload, engine)
-            elif not self._skill_sim_data.refresh_due():
-                cached_result = self._skill_sim_cache.get(payload, engine)
-                if cached_result is not None:
-                    self._invalidate_skill_simulation_locked()
-                    return cache_key, cached_result, False
-
-            pending_key = self._skill_sim_pending[1] if self._skill_sim_pending else None
-            active_matches = (
-                cache_key == self._skill_sim_active_key
-                and self._skill_sim_active_generation == self._skill_sim_latest_generation
-            )
-            if not force and (active_matches or cache_key == pending_key):
-                return cache_key, None, True
-
-            generation = self._invalidate_skill_simulation_locked()
-            self._skill_sim_pending = (generation, cache_key, payload, force)
+            generation = self._skill_sim_generation
+            self._skill_sim_pending = (generation, request_key, payload, skill_data_path)
             self._skill_sim_condition.notify()
-        return cache_key, None, True
+        return request_key
 
     def _skill_simulation_worker(self):
         while True:
@@ -284,65 +237,38 @@ class CarrotJuicer:
                 )
                 if self._skill_sim_stop:
                     return
-                generation, cache_key, payload, force = self._skill_sim_pending
+                generation, request_key, payload, snapshot_path = self._skill_sim_pending
                 self._skill_sim_pending = None
-                self._skill_sim_active_key = cache_key
                 self._skill_sim_active_generation = generation
 
             result = {}
-            context_key = None
-            request = None
             try:
-                if force or self._skill_sim_data.refresh_due():
-                    self._skill_sim_data.refresh()
                 with self._skill_sim_condition:
-                    if self._skill_sim_stop or generation != self._skill_sim_latest_generation:
+                    if self._skill_sim_stop or generation != self._skill_sim_generation:
                         continue
-                    engine = self._skill_sim_engine_identity()
-                    if force:
-                        self._skill_sim_cache.discard(payload, engine)
-                    result = self._skill_sim_cache.get(payload, engine)
-                    if result is None:
-                        context_key, request = self._skill_sim_cache.missing_request(payload, engine)
-                    snapshot_path = str(self._skill_sim_data.path)
 
-                if request is not None:
-                    start = time.monotonic()
-                    result = self.run_simulation(
-                        util.get_asset("_assets/umasim-cli.exe"), request,
-                        expected_generation=generation, skill_data_path=snapshot_path,
-                    )
-                    logger.debug(
-                        f"Skill simulation: {len(request['unacquiredSkillIds'])}/"
-                        f"{len(payload['unacquiredSkillIds'])} candidates, "
-                        f"{time.monotonic() - start:.3f}s, seed {request['seedBase']}"
-                    )
-                with self._skill_sim_condition:
-                    if self._skill_sim_stop or generation != self._skill_sim_latest_generation:
-                        continue
-                    if result and context_key is not None:
-                        self._skill_sim_cache.merge(context_key, request, result)
-                        result = self._skill_sim_cache.get(payload, engine)
+                start = time.monotonic()
+                result = self.run_simulation(
+                    util.get_asset("_assets/umasim-cli.exe"), payload,
+                    expected_generation=generation, skill_data_path=snapshot_path,
+                )
+                logger.debug(
+                    f"Skill simulation: {len(payload['unacquiredSkillIds'])} candidates, "
+                    f"{time.monotonic() - start:.3f}s, seed {result.get('seedBase')}"
+                )
             except Exception:
                 logger.error(f"Unexpected skill simulation failure:\n{traceback.format_exc()}")
                 result = {}
             finally:
                 with self._skill_sim_condition:
-                    self._skill_sim_active_key = None
                     self._skill_sim_active_generation = None
-                    if not self._skill_sim_stop and generation == self._skill_sim_latest_generation:
-                        self._skill_sim_completion = (generation, cache_key, result)
+                    if not self._skill_sim_stop and generation == self._skill_sim_generation:
+                        self._skill_sim_completion = (generation, request_key, result)
 
     def _skill_window_state_key(self):
-        chara_info = (self.last_data or {}).get("chara_info", {})
-        # Include learned state and display costs as well as IDs. Hash locally;
-        # only a changed value causes browser work or a simulation cache lookup.
-        return skill_simulation.fingerprint({
-            "chara": chara_info,
-            "skills": self.skill_data,
-            "engine": self._skill_sim_engine_identity(),
-            "data_refresh_due": self._skill_sim_data.refresh_due(),
-        })
+        chara_info = (self.last_helper_data or {}).get("chara_info")
+        # Ratings update cheaply; only new skill/hint identities trigger Ace.
+        return skill_planner.trainee_key(chara_info, self.skill_data) if chara_info else None
 
     def _take_skill_simulation_completion(self):
         with self._skill_sim_condition:
@@ -351,13 +277,40 @@ class CarrotJuicer:
             return completion
 
     def request_skill_simulation_rerun(self):
-        """Request an explicit rerun, bypassing a deterministic cached result."""
+        """Request an evaluation of the selected CM and running style."""
         with self._skill_sim_condition:
             self._force_next_skill_simulation = True
-        self.previous_skills_list = None
         self.open_skill_window = True
 
+    def request_skill_simulation_stop(self):
+        with self._skill_sim_condition:
+            self._skill_sim_cancel_requested = True
+
+    def request_skill_window_update(self):
+        """Read the new mode/selection/planner choices on the browser thread."""
+        self.open_skill_window = True
+
+    def _cancel_requested_skill_simulation(self):
+        """Cancel on the browser-owning thread, keeping the worker reusable."""
+        with self._skill_sim_condition:
+            if not self._skill_sim_cancel_requested:
+                return False
+            self._skill_sim_cancel_requested = False
+            self._invalidate_skill_simulation_locked()
+            self._force_next_skill_simulation = False
+            self._skill_window_requested_key = None
+            self._skill_window_requested_snapshot = None
+            self._skill_window_rerun_requested = False
+            self.open_skill_window = False
+        skill_key = self._skill_window_state_key()
+        self._skill_window_last_state_key = skill_key
+        chara = (self.last_helper_data or {}).get('chara_info')
+        self._skill_window_last_skill_key = skill_simulation.skill_change_key(chara) if chara else None
+        self.set_skill_window_sim_status("stopped", "Stopped")
+        return True
+
     def _stop_skill_simulation_worker(self):
+        self._skill_data_worker.stop()
         thread = getattr(self, "_skill_sim_thread", None)
         if not thread:
             return
@@ -385,431 +338,14 @@ class CarrotJuicer:
     def set_skill_window_sim_status(self, status, message=None):
         if not self.skill_browser or not self.skill_browser.alive():
             return
-
-        self.skill_browser.execute_script(
-            """
-            window.UL_SIM_STATUS = arguments[0];
-            window.UL_SIM_MESSAGE = arguments[1] || "";
-
-            window.rerunSkillSimulation = () => {
-                if (window.UL_SIM_STATUS === "running") return;
-                if (typeof window.resetSkillPlanner === "function") {
-                    window.resetSkillPlanner();
-                }
-                window.UL_SIM_STATUS = "running";
-                window.UL_SIM_MESSAGE = "";
-                window.updateSimStatus();
-                fetch('http://127.0.0.1:3150/rerun-skill-simulation', { method: 'POST' });
-            };
-
-            window.ensureSimControls = () => {
-                document.querySelectorAll('button[aria-label="Open Umamusume menu"]').forEach(button => {
-                    let wrapper = button.parentElement && button.parentElement.parentElement
-                        ? button.parentElement.parentElement
-                        : button;
-                    wrapper.remove();
-                });
-
-                let simControlDiv = document.getElementById("ul-sim-controls");
-                if (!simControlDiv) {
-                    simControlDiv = document.createElement("div");
-                    simControlDiv.id = "ul-sim-controls";
-                    simControlDiv.style.display = "inline-flex";
-                    simControlDiv.style.alignItems = "center";
-                    simControlDiv.style.gap = "4px";
-                    simControlDiv.style.marginRight = "0";
-                    simControlDiv.style.fontSize = "12px";
-                    simControlDiv.style.zIndex = "10000";
-
-                    let statusEl = document.createElement("button");
-                    statusEl.id = "ul-sim-status";
-                    statusEl.type = "button";
-                    statusEl.title = "Rerun simulation";
-                    statusEl.style.padding = "4px 5px";
-                    statusEl.style.border = "1px solid #6b7280";
-                    statusEl.style.borderRadius = "4px";
-                    statusEl.style.whiteSpace = "nowrap";
-                    statusEl.style.lineHeight = "1";
-                    statusEl.style.cursor = "pointer";
-                    statusEl.onclick = (event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        window.rerunSkillSimulation();
-                    };
-
-                    simControlDiv.appendChild(statusEl);
-                }
-
-                let staleRerunButton = document.getElementById("ul-sim-rerun");
-                if (staleRerunButton) staleRerunButton.remove();
-
-                let settingsButton = document.querySelector("div.styles_header_settings__hx4QQ[aria-expanded='false'], div.styles_header_settings__hx4QQ");
-                let header = settingsButton ? (settingsButton.closest("header") || settingsButton.parentElement) : null;
-                if (header) {
-                    simControlDiv.style.position = "";
-                    simControlDiv.style.top = "";
-                    simControlDiv.style.right = "";
-                    if (simControlDiv.parentElement !== header) {
-                        header.insertBefore(simControlDiv, settingsButton);
-                    }
-                    header.style.gridTemplateColumns = "1fr max-content 75px";
-                    header.style.alignItems = "center";
-                    simControlDiv.style.gridColumn = "2";
-                    simControlDiv.style.gridRow = "1";
-                    simControlDiv.style.justifySelf = "end";
-                    settingsButton.style.gridColumn = "3";
-                    settingsButton.style.gridRow = "1";
-                    settingsButton.style.justifySelf = "end";
-                }
-            };
-
-            window.updateSimStatus = () => {
-                window.ensureSimControls();
-                let statusEl = document.getElementById("ul-sim-status");
-                if (!statusEl) return;
-
-                let status = window.UL_SIM_STATUS || "idle";
-                let text = "Sim: Ready";
-                let color = "#9ca3af";
-                let border = "#6b7280";
-                let background = "rgba(107, 114, 128, 0.16)";
-
-                if (status === "running") {
-                    text = "Sim: Running...";
-                    color = "#fcd34d";
-                    border = "#f59e0b";
-                    background = "rgba(245, 158, 11, 0.18)";
-                } else if (status === "done") {
-                    text = "Sim: Done \\u21bb";
-                    color = "#86efac";
-                    border = "#22c55e";
-                    background = "rgba(34, 197, 94, 0.14)";
-                } else if (status === "rating") {
-                    text = "Sim: Rating mode \\u21bb";
-                    color = "#c084fc";
-                    border = "#a855f7";
-                    background = "rgba(168, 85, 247, 0.16)";
-                } else if (status === "waiting") {
-                    text = "Sim: Waiting";
-                    color = "#93c5fd";
-                    border = "#60a5fa";
-                    background = "rgba(96, 165, 250, 0.14)";
-                } else if (status === "error") {
-                    text = "Sim: Error";
-                    color = "#fca5a5";
-                    border = "#ef4444";
-                    background = "rgba(239, 68, 68, 0.14)";
-                }
-
-                statusEl.textContent = text;
-                statusEl.style.color = color;
-                statusEl.style.borderColor = border;
-                statusEl.style.background = background;
-                statusEl.disabled = false;
-                statusEl.style.cursor = status === "running" ? "default" : "pointer";
-                statusEl.style.opacity = status === "running" ? "0.75" : "1";
-            };
-
-            window.updateSimStatus();
-            """,
-            status,
-            message or ""
-        )
-
-    def get_stat_score(self, val):
-        return uma_rating.stat_rating(val)
-
-    def get_aptitude_multiplier(self, apt_val):
-        if apt_val >= 7: return 1.1     # S or A
-        if apt_val >= 5: return 0.9   # B or C
-        if apt_val >= 2: return 0.8   # D, E, F
-        return 0.7                    # G
-
-    def get_rank_str(self, score):
-        for threshold, rank in BASE_RANKS:
-            if score < threshold:
-                return rank
-        for base, step, bound, prefix in HIGH_RANKS:
-            if score < bound:
-                sub = (score - base) // step
-                return f"{prefix}{sub}" if sub > 0 else prefix
-        return "UA"
-
-    def get_next_rank_req(self, score):
-        for threshold, _ in BASE_RANKS:
-            if score < threshold:
-                return threshold - score
-        for base, step, bound, _ in HIGH_RANKS:
-            if score < bound:
-                return min(bound, base + ((score - base) // step + 1) * step) - score
-        return 0
-
-    def get_rank_score_range(self, score):
-        rank_min = 0
-        for threshold, _ in BASE_RANKS:
-            if score < threshold:
-                return rank_min, threshold - 1
-            rank_min = threshold
-
-        for base, step, bound, _ in HIGH_RANKS:
-            if score < bound:
-                sub_rank = (score - base) // step
-                rank_min = base + (sub_rank * step)
-                rank_max = rank_min + step - 1
-                if bound != float('inf'):
-                    rank_max = min(rank_max, bound - 1)
-                return rank_min, rank_max
-
-        return score, score
-
-    def get_skill_rating_score(self, chara_info, skill_id):
-        base_score = self.skill_score_dict.get(int(skill_id), 0)
-        cond = self.skill_conditions_dict.get(int(skill_id), "")
-
-        cond_map = {
-            "distance_type==1": 'proper_distance_short',
-            "distance_type==2": 'proper_distance_mile',
-            "distance_type==3": 'proper_distance_middle',
-            "distance_type==4": 'proper_distance_long',
-            "ground_type==1": 'proper_ground_turf',
-            "ground_type==2": 'proper_ground_dirt',
-            "running_style==1": 'proper_running_style_nige',
-            "running_style==2": 'proper_running_style_senko',
-            "running_style==3": 'proper_running_style_sashi',
-            "running_style==4": 'proper_running_style_oikomi',
-        }
-
-        multiplier = 1.0
-        for cond_str, apt_key in cond_map.items():
-            if cond_str in cond:
-                multiplier = self.get_aptitude_multiplier(chara_info.get(apt_key, 1))
-                break
-
-        return round(base_score * multiplier)
-
-    def get_discounted_skill_cost(self, skill_id, skill_data, discount_map, fallback_hint_level=0):
-        skill_id = int(skill_id)
-        skill_info = skill_data.get(skill_id, {})
-        base_cost = skill_info.get("base_cost", self.skill_costs_dict.get(str(skill_id), 0)) or 0
-        hint_level = skill_info.get("hint_level", fallback_hint_level) or 0
-        discount_percent = discount_map.get(min(hint_level, 5), 0)
-        return int(base_cost * (100 - discount_percent) / 100)
-
-    def calculate_max_rating_projection(self, chara_info, skill_data, rating_scores, rating_data, available_sp,
-                                        discount_map):
-        id_to_group = mdb.get_group_id_dict()
-        def get_group_id(skill_id):
-            return id_to_group.get(str(skill_id), str(skill_id))
-
-        def get_skill_name(skill_id):
-            return self.skill_name_dict.get(int(skill_id), str(skill_id))
-
-        def build_candidate(final_skill_id, hidden_upgrade=False, fallback_hint_level=0, source_skill_id=None):
-            final_skill_id = int(final_skill_id)
-            if skill_data.get(final_skill_id, {}).get("is_acquired", False):
-                return None
-
-            group_id = get_group_id(final_skill_id)
-            final_score = rating_scores.get(str(final_skill_id))
-            if final_score is None:
-                final_score = self.get_skill_rating_score(chara_info, final_skill_id)
-
-            chain_ids = [int(sid) for sid in mdb.get_prerequisite_skill_ids(final_skill_id)]
-            chain_ids.append(final_skill_id)
-
-            highest_acquired_score = 0
-            total_sp_cost = 0
-            full_chain = []
-            purchase_chain = []
-            for chain_skill_id in chain_ids:
-                chain_info = skill_data.get(chain_skill_id, {})
-                chain_score = rating_scores.get(str(chain_skill_id))
-                if chain_score is None:
-                    chain_score = self.get_skill_rating_score(chara_info, chain_skill_id)
-
-                chain_cost = self.get_discounted_skill_cost(
-                    chain_skill_id,
-                    skill_data,
-                    discount_map,
-                    fallback_hint_level
-                )
-                is_acquired = chain_info.get("is_acquired", False)
-
-                full_chain.append({
-                    "id": chain_skill_id,
-                    "name": get_skill_name(chain_skill_id),
-                    "sp_cost": 0 if is_acquired else chain_cost,
-                    "score": chain_score,
-                    "is_acquired": is_acquired
-                })
-
-                if is_acquired:
-                    highest_acquired_score = max(highest_acquired_score, chain_score)
-                    continue
-
-                total_sp_cost += chain_cost
-                purchase_chain.append({
-                    "id": chain_skill_id,
-                    "name": get_skill_name(chain_skill_id),
-                    "sp_cost": chain_cost,
-                    "score": chain_score
-                })
-
-            score_gain = final_score - highest_acquired_score
-            if total_sp_cost <= 0 or score_gain <= 0:
-                return None
-
-            return {
-                "skill_id": final_skill_id,
-                "name": get_skill_name(final_skill_id),
-                "group_id": group_id,
-                "sp_cost": total_sp_cost,
-                "score": score_gain,
-                "final_score": final_score,
-                "hidden_upgrade": hidden_upgrade,
-                "source_skill_id": source_skill_id,
-                "chain": purchase_chain,
-                "all_chain": full_chain
+        self.skill_browser.execute_script("""
+            if (typeof window.setLauncherStatus === 'function') {
+                window.setLauncherStatus(arguments[0], arguments[1] || '');
+            } else {
+                const summary = document.getElementById('summaryStrip');
+                if (summary) summary.textContent = arguments[1] || 'Bashin launcher integration unavailable';
             }
-
-        groups = {}
-        candidates = []
-        seen_final_skill_ids = set()
-
-        for skill_id_str, detail in rating_data.items():
-            skill_id = int(skill_id_str)
-            if skill_data.get(skill_id, {}).get("is_acquired", False):
-                continue
-            if detail.get("sp_cost", 0) <= 0 or detail.get("score", 0) <= 0:
-                continue
-
-            candidate = build_candidate(skill_id)
-            if not candidate:
-                continue
-
-            seen_final_skill_ids.add(skill_id)
-            candidates.append(candidate)
-            groups.setdefault(candidate["group_id"], []).append(candidate)
-
-        for single_circle_id, double_circle_id in mdb.get_double_circle_upgrade_dict().items():
-            if single_circle_id not in skill_data:
-                continue
-            if double_circle_id in seen_final_skill_ids:
-                continue
-            if skill_data.get(double_circle_id, {}).get("is_acquired", False):
-                continue
-
-            source_hint_level = skill_data.get(single_circle_id, {}).get("hint_level", 0)
-            candidate = build_candidate(
-                double_circle_id,
-                hidden_upgrade=True,
-                fallback_hint_level=source_hint_level,
-                source_skill_id=single_circle_id
-            )
-            if not candidate:
-                continue
-
-            seen_final_skill_ids.add(double_circle_id)
-            candidates.append(candidate)
-            groups.setdefault(candidate["group_id"], []).append(candidate)
-
-        if available_sp <= 0:
-            return {"score_gain": 0, "choices": [], "candidates": candidates}
-
-        dp = [0] * (available_sp + 1)
-        history = []
-        for _, items_in_group in groups.items():
-            new_dp = list(dp)
-            choices = [None] * (available_sp + 1)
-            for candidate in items_in_group:
-                cost = candidate["sp_cost"]
-                gain = candidate["score"]
-                for budget in range(cost, available_sp + 1):
-                    candidate_score = dp[budget - cost] + gain
-                    if candidate_score > new_dp[budget]:
-                        new_dp[budget] = candidate_score
-                        choices[budget] = (budget - cost, candidate)
-            dp = new_dp
-            history.append(choices)
-
-        selected_choices = []
-        budget = available_sp
-        for choices in reversed(history):
-            choice = choices[budget]
-            if not choice:
-                continue
-            budget, candidate = choice
-            selected_choices.append(candidate)
-
-        selected_choices.reverse()
-        selected_choices.sort(key=lambda item: item["score"], reverse=True)
-        return {"score_gain": dp[available_sp], "choices": selected_choices, "candidates": candidates}
-
-    def calculate_uma_rank_score(self, chara_info, skill_data):
-        skill_scores_map = {}
-        
-        stat_keys = ('speed', 'stamina', 'power', 'guts', 'wiz')
-        total_score = sum(self.get_stat_score(chara_info.get(k, 0)) for k in stat_keys)
-
-        skill_scores = self.skill_score_dict
-        skill_conditions = self.skill_conditions_dict
-        unique_skill_id = None
-        unique_skill_level = 1
-        stars = chara_info.get('talent_level', 1)
-        
-        for skill in chara_info.get('skill_array', []):
-            if str(skill.get('skill_id', '')).startswith('1'):
-                unique_skill_id = skill['skill_id']
-                unique_skill_level = skill.get('level', 1)
-                break
-
-        ignored_sids = set()
-        for sid, info in skill_data.items():
-            if info.get('is_acquired') and not str(sid).startswith('1'):
-                ignored_sids.update(mdb.get_prerequisite_skill_ids(int(sid)))
-
-        cond_map = {
-            "distance_type==1": 'proper_distance_short',
-            "distance_type==2": 'proper_distance_mile',
-            "distance_type==3": 'proper_distance_middle',
-            "distance_type==4": 'proper_distance_long',
-            "ground_type==1": 'proper_ground_turf',
-            "ground_type==2": 'proper_ground_dirt',
-            "running_style==1": 'proper_running_style_nige',
-            "running_style==2": 'proper_running_style_senko',
-            "running_style==3": 'proper_running_style_sashi',
-            "running_style==4": 'proper_running_style_oikomi',
-        }
-
-        for sid, info in skill_data.items():
-            if str(sid).startswith('1'):
-                continue
-                
-            base_score = skill_scores.get(sid, 0)
-            cond = skill_conditions.get(sid, "")
-            
-            multiplier = 1.0
-            for cond_str, apt_key in cond_map.items():
-                if cond_str in cond:
-                    multiplier = self.get_aptitude_multiplier(chara_info.get(apt_key, 1))
-                    break
-                    
-            final_s = round(base_score * multiplier)
-            skill_scores_map[str(sid)] = final_s
-            
-            if info.get('is_acquired') and int(sid) not in ignored_sids:
-                total_score += final_s
-                # print(f"UMA RANK CALC DEBUG -> Acquired Skill ID: {sid} | Base Score: {base_score} | Multiplier: {multiplier} | Score Added: {final_s}")
-
-        unique_mult = 170 if stars >= 3 else 120
-        u_score = unique_skill_level * unique_mult
-        total_score += u_score
-        # print(f"UMA RANK CALC DEBUG -> Unique Skill ID: {unique_skill_id} | Lvl: {unique_skill_level} | Stars: {stars} | Score Added: {u_score} | Base Mult: {unique_mult}")
-        
-        if unique_skill_id:
-            skill_scores_map[str(unique_skill_id)] = u_score
-            
-        return {"score": total_score, "rank": self.get_rank_str(total_score), "skill_scores": skill_scores_map}
+        """, status, message or "")
 
     def load_request(self, message, is_json=False):
         """Decode a request received from CarrotBlender."""
@@ -1153,16 +689,18 @@ class CarrotJuicer:
         self._close_transients_requested = False
 
         with self._skill_sim_condition:
-            self._skill_sim_generation += 1
-            self._skill_sim_latest_generation = self._skill_sim_generation
-            self._skill_sim_pending = None
-            self._skill_sim_completion = None
-            process = self._skill_sim_process
-        if process is not None and process.poll() is None:
-            try:
-                process.terminate()
-            except OSError:
-                pass
+            # Let the active evaluation finish when the career window closes.
+            # Only Stop or shutdown cancels it.
+            self._skill_window_selection = None
+            self._skill_window_data_key = None
+            self._skill_window_prepared = None
+            self._skill_window_data_revision = None
+            self._skill_window_last_skill_key = None
+            self._skill_window_requested_key = None
+            self._skill_window_requested_snapshot = None
+            self._skill_window_rerun_requested = False
+            self._force_next_skill_simulation = False
+            self._skill_sim_cancel_requested = False
 
         skill_browser = self.skill_browser
         self.skill_browser = None
@@ -2475,20 +2013,8 @@ class CarrotJuicer:
                         self.skill_data[skill_id]["hint_level"] = tip_level
                         self.skill_data[skill_id]["rarity"] = tip_rarity
 
-                self.skills_list = mdb.sort_skills_by_display_order(list(self.skill_data.keys()))
 
-                # # Fix certain skills for GameTora
-                # for i in range(len(self.skills_list)):
-                #     old_id = self.skills_list[i]
-                #     if 900000 <= old_id < 1000000:
-                #         new_id = old_id - 800000
-                #         self.skills_list[i] = new_id
-                #
-                #         # Keep the hint dictionary synced if the ID changes
-                #         if old_id in self.skill_hints:
-                #             self.skill_hints[new_id] = self.skill_hints.pop(old_id)
-
-                logger.debug(f"Skills list: {self.skills_list}")
+                logger.debug(f"Available skill IDs: {list(self.skill_data)}")
 
                 # Add request to tracker
                 if self.training_tracker:
@@ -2772,1673 +2298,113 @@ class CarrotJuicer:
                         f"{traceback.format_exc()}"
                     )
 
-    def update_skill_window(self, simulation_completion=None):
+    def update_skill_window(self, simulation_completion=None, data_completion=None):
+        try:
+            self._update_bashin_skill_window(simulation_completion, data_completion)
+        except Exception:
+            logger.error(f"Could not update the Bashin skill window:\n{traceback.format_exc()}")
+            self._skill_window_rerun_requested = False
+            self.set_skill_window_sim_status("error", "Skill data or Bashin visualizer unavailable; click Run to retry")
+
+    def _update_bashin_skill_window(self, simulation_completion, data_completion):
         if self.should_stop:
             return
-
-        if not self.last_data:
-            return
-        chara_info = self.last_data.get('chara_info') if isinstance(self.last_data, dict) else None
-
-        if not self.skill_browser:
+        chara = (self.last_helper_data or {}).get("chara_info")
+        opened = self.skill_browser is None
+        if opened:
             self.skill_browser = horsium.BrowserWindow(
-                "https://gametora.com/umamusume/skills",
-                self.threader,
-                rect=self.threader.settings['skills_position'],
-                run_at_launch=setup_skill_window
+                os.environ.get("UMALAUNCHER_SKILL_VISUALIZER_URL", "https://bashin.app/visualizer/?launcher=1"),
+                self.threader, rect=self.threader.settings["skills_position"], run_at_launch=setup_skill_window,
             )
         else:
             self.skill_browser.ensure_tab_open()
-
-        if (
-            self.active_helper_mode == self.HELPER_UI_LEGACY
-            and self.browser
-            and self.browser.alive()
-        ):
-            self.browser.execute_script("""window.skill_window_opened();""")
-
-        if not chara_info:
-            logger.debug("Skill window opened before character info was available; skipping skill data update.")
-            self.previous_skills_list = None
-            self.set_skill_window_sim_status("waiting", "for character data")
+        if self.active_helper_mode == self.HELPER_UI_LEGACY and self.browser and self.browser.alive():
+            self.browser.execute_script("window.skill_window_opened();")
+        if not chara:
+            self.set_skill_window_sim_status("waiting", "Waiting for trainee data")
             return
-
-        self._skill_window_last_state_key = self._skill_window_state_key()
-        mode_pref = self.skill_browser.execute_script("return window.localStorage.getItem('UL_MODE_PREF') || 'parent';")
-        is_ace_mode = (mode_pref == 'ace')
-        is_rating_mode = (mode_pref == 'rating')
-
-        acquired_skills_list = [sid for sid, data in self.skill_data.items() if data["is_acquired"]]
-        unacquired_skills_list = [sid for sid, data in self.skill_data.items() if not data["is_acquired"]]
-
-        STYLE_INTERNAL_MAP = {
-            1: "NIGE",
-            2: "SEN",
-            3: "SASI",
-            4: "OI"
-        }
-
-        CM_CONFIGS = mdb.get_champions_meeting_configs(limit=2)
-        available_cm_definitions = tuple(CM_CONFIGS)
-        if not available_cm_definitions:
-            logger.error("No complete Champions Meeting definitions found in master.mdb")
-            self.set_skill_window_sim_status("error", "CM data unavailable")
-            return
-
-        default_cm_definition = available_cm_definitions[0]
-        cm_pref = self.skill_browser.execute_script(
-            "return window.localStorage.getItem('UL_CM_DEF') || arguments[0];",
-            str(default_cm_definition),
+        WebDriverWait(self.skill_browser, 5).until(lambda browser: browser.execute_script(
+            "return typeof window.updateLauncherRating === 'function';"
+        ))
+        selection = self.skill_browser.execute_script(
+            "return window.getLauncherSelection(arguments[0], arguments[1]);",
+            skill_simulation.career_id(chara), skill_simulation.STYLES[chara['race_running_style']-1],
         )
-        try:
-            selected_cm_definition = int(cm_pref)
-        except (TypeError, ValueError):
-            selected_cm_definition = self.selected_cm_definition
+        mode = selection['mode']
+        if mode not in ('ace', 'rating') or selection['style'] not in skill_simulation.STYLES:
+            raise ValueError('Invalid skill window selection')
+        with self._skill_sim_condition:
+            force = self._force_next_skill_simulation
+            self._force_next_skill_simulation = False
+        skill_key = skill_simulation.skill_change_key(chara)
+        state_key = self._skill_window_state_key()
+        previous_selection = self._skill_window_selection or {}
+        entered_ace = mode == 'ace' and (previous_selection.get('mode') != 'ace'
+            or previous_selection.get('pageId') != selection['pageId'])
+        changed_skills = skill_key != self._skill_window_last_skill_key
+        self._skill_window_last_skill_key = skill_key
+        self._skill_window_last_state_key = state_key
+        self._skill_window_selection = selection
+        if mode != 'ace':
+            self._skill_window_rerun_requested = False
+        elif force or opened or entered_ace or (changed_skills and not selection['pending']):
+            self._skill_window_rerun_requested = True
+        elif selection['pending'] and selection['version'] != previous_selection.get('version'):
+            self._skill_window_rerun_requested = False
 
-        if selected_cm_definition not in available_cm_definitions:
-            selected_cm_definition = default_cm_definition
+        # A finished Ace result always belongs to its submitted trainee snapshot.
+        # The browser accepts it only for the matching source, career, CM and style.
+        if simulation_completion is not None:
+            generation, key, results = simulation_completion
+            if generation == self._skill_sim_generation and key == self._skill_window_requested_key:
+                if results:
+                    snapshot = dict(self._skill_window_requested_snapshot, results=results)
+                    self.skill_browser.execute_script('return window.loadLauncherData(arguments[0]);', snapshot)
+                elif not self._skill_window_rerun_requested:
+                    self.set_skill_window_sim_status('error', 'Simulation failed; click Run to retry')
 
-        self.selected_cm_definition = selected_cm_definition
-        cm_options = [
-            {"id": cm_id, "label": f"{cm_id} {CM_CONFIGS[cm_id]['name'].replace(' Cup', '')}"}
-            for cm_id in available_cm_definitions
-        ]
-
-        total_iterations = 2000
-
-        if is_ace_mode:
-            u_speed = chara_info.get('speed', 0)
-            u_stamina = chara_info.get('stamina', 0)
-            u_power = chara_info.get('power', 0)
-            u_guts = chara_info.get('guts', 0)
-            u_wisdom = chara_info.get('wiz', 0)
-            u_condition = "GOOD"
-        else:
-            u_speed = 1500
-            u_stamina = 1200
-            u_power = 1155
-            u_guts = 600
-            u_wisdom = 1000
-            u_condition = "BEST"
-
-        cm_data = CM_CONFIGS[selected_cm_definition]
-        mock_payload = {
-            "baseSetting": {
-                "umaStatus": {
-                    "charaName": "Place Holder",
-                    "speed": u_speed, "stamina": u_stamina, "power": u_power, "guts": u_guts, "wisdom": u_wisdom,
-                    "condition": u_condition, "style": STYLE_INTERNAL_MAP[self.style],
-                    "distanceFit": "S", "surfaceFit": "A", "styleFit": "A",
-                    "popularity": 1, "gateNumber": 0,
-                },
-                "track": {
-                    # GOOD(1, "良"),
-                    # YAYAOMO(2, "稍重"),
-                    # OMO(3, "重"),
-                    # BAD(4, "不良"),
-                    "location": cm_data["location"], 
-                    "course": cm_data["course"], 
-                    "condition": cm_data["ground_condition"], 
-                    "gateCount": 9
-                },
-                "season": cm_data["season"],
-                "weather": cm_data["weather"],
-                "positionKeepMode": "NONE"
-            },
-            # UI-acquired prerequisites prevent duplicate purchases, but they
-            # are not extra learned effects in the simulator baseline.
-            "acquiredSkillIds": sorted({skill["skill_id"] for skill in chara_info["skill_array"]}),
-            "unacquiredSkillIds": unacquired_skills_list,
-            "iterations": total_iterations
-        }
-
-        sim_failed = False
-        if is_rating_mode:
-            results = {"candidates": {}}
-        else:
-            cache_key = self._skill_simulation_key(mock_payload)
-            completion_matches = (
-                simulation_completion is not None
-                and simulation_completion[0] == self._skill_sim_latest_generation
-                and simulation_completion[1] == cache_key
-            )
-            if completion_matches:
-                results = simulation_completion[2]
+        # Costs/rating preparation can proceed while the independent race worker runs.
+        data_selection = {key: selection[key] for key in ('cmId', 'style', 'mode', 'pageId', 'version', 'choices')}
+        data_key = skill_simulation.fingerprint([state_key, data_selection])
+        if force or data_key != self._skill_window_data_key:
+            self._skill_window_data_key = data_key
+            self._skill_window_prepared = None
+            self._skill_window_data_revision = self._skill_data_worker.submit(dict(
+                chara=copy.deepcopy(chara), available=copy.deepcopy(self.skill_data),
+                selection=selection,
+            ))
+        if data_completion is not None and data_completion[0] == self._skill_window_data_revision:
+            _, prepared, error = data_completion
+            if error:
+                self._skill_window_rerun_requested = False
+                self.skill_browser.execute_script('window.setLauncherDataError(arguments[0]);', error)
             else:
-                with self._skill_sim_condition:
-                    force_simulation = self._force_next_skill_simulation
-                    self._force_next_skill_simulation = False
-                _, results, is_pending = self._queue_skill_simulation(
-                    mock_payload,
-                    force=force_simulation,
-                )
-                if is_pending:
-                    self.set_skill_window_sim_status("running")
-                    return
-            sim_failed = not results
-
-        discount_map = {0: 0, 1: 10, 2: 20, 3: 30, 4: 35, 5: 40}
-        rating_calc = self.calculate_uma_rank_score(chara_info, self.skill_data)
-        rating_scores = rating_calc.get("skill_scores", {})
-        uma_score = rating_calc.get("score", 0)
-        uma_rank = rating_calc.get("rank", "")
-        rating_data = {}
-        for skill_id in self.skills_list:
-            skill_id_int = int(skill_id)
-            skill_id_str = str(skill_id)
-            score = rating_scores.get(skill_id_str, 0)
-            skill_info = self.skill_data.get(skill_id_int, {})
-            skill_rarity = skill_info.get("rarity", 1)
-            # Calculate Delta Score from highest acquired prerequisite
-            prereq_ids = mdb.get_prerequisite_skill_ids(skill_id_int)
-            highest_acquired_score = 0
-            for pid in reversed(prereq_ids):
-                pinfo = self.skill_data.get(pid, {})
-                if pinfo.get("is_acquired", False):
-                    highest_acquired_score = rating_scores.get(str(pid), 0)
-                    break
-            score -= highest_acquired_score
-
-            # Calculate total SP cost including all unacquired prerequisites
-            base_cost = skill_info.get("base_cost", 0)
-            hint_level = skill_info.get("hint_level", 0)
-            effective_hint_level = min(hint_level, 5)
-            discount_percent = discount_map.get(effective_hint_level, 0)
-            total_sp_cost = int(base_cost * (100 - discount_percent) / 100)
-
-            for pid in prereq_ids:
-                pinfo = self.skill_data.get(pid, {})
-                if not pinfo.get("is_acquired", False):
-                    p_base_cost = pinfo.get("base_cost", 0)
-                    p_hint_level = pinfo.get("hint_level", 0)
-                    p_discount_percent = discount_map.get(min(p_hint_level, 5), 0)
-                    p_sp_cost = int(p_base_cost * (100 - p_discount_percent) / 100)
-                    total_sp_cost += p_sp_cost
-
-            eff = (score / total_sp_cost) if total_sp_cost > 0 else 0
-            rating_data[skill_id_str] = {
-                "score": score,
-                "sp_cost": total_sp_cost,
-                "efficiency": round(eff, 3),
-                "hint_level": hint_level
-            }
-
-        available_sp = chara_info.get('skill_point', 0)
-        projection = self.calculate_max_rating_projection(
-            chara_info,
-            self.skill_data,
-            rating_scores,
-            rating_data,
-            available_sp,
-            discount_map
-        )
-        max_score_gain = projection.get("score_gain", 0)
-        projected_choices = projection.get("choices", [])
-        planner_candidates = projection.get("candidates", [])
-        projected_score = uma_score + max_score_gain
-        projected_rank = self.get_rank_str(projected_score)
-        projected_rank_min, projected_rank_max = self.get_rank_score_range(projected_score)
-        
-        uma_next = self.get_next_rank_req(uma_score)
-        proj_next = self.get_next_rank_req(projected_score)
-
-        sim_summary = {}
-
-        # Dual Scales
-        global_hist_min = 0.0
-        global_hist_max = 0.0
-        global_box_min = float('inf')
-        global_box_max = float('-inf')
-        base_median_abs = 0.0
-
-        if results and "baselineStats" in results and "candidates" in results:
-            # Fetch Baseline Stats to anchor the boxplot scale (Using MEDIAN)
-            base_stats = results.get("baselineStats", {})
-            base_median_abs = base_stats.get("median", 0.0)
-
-            # Ensure the baseline min/max/outliers are included in the global boxplot scale
-            b_min_arr = [base_stats.get("min", base_median_abs), base_median_abs] + base_stats.get("outliers", [])
-            b_max_arr = [base_stats.get("max", base_median_abs), base_median_abs] + base_stats.get("outliers", [])
-            global_box_min = min(b_min_arr)
-            global_box_max = max(b_max_arr)
-
-            for skill_id_str, candidate_data in results["candidates"].items():
-                if not candidate_data:
-                    continue
-
-                skill_id_int = int(skill_id_str)
-
-                time_saved_stats = candidate_data.get("timeSavedStats", {})
-                race_time_stats = candidate_data.get("raceTimeStats", {})
-                eff_rate = candidate_data.get("effectiveRate", 0.0)
-                conn_rate = candidate_data.get("connectionRate", 0.0)
-                conn_time = candidate_data.get("avgConnectionTime", 0.0)
-
-                if not time_saved_stats or not race_time_stats:
-                    continue
-
-                skill_info = self.skill_data.get(skill_id_int, {})
-                base_cost = skill_info.get("base_cost", 0)
-                hint_level = skill_info.get("hint_level", 0)
-                skill_rarity = skill_info.get("rarity", 1)
-
-                effective_hint_level = min(hint_level, 5)
-                discount_percent = discount_map.get(effective_hint_level, 0)
-                total_sp_cost = int(base_cost * (100 - discount_percent) / 100)
-
-                if skill_rarity == 2:
-                    white_skill_id = skill_id_int + 1
-                    white_skill_info = self.skill_data.get(white_skill_id, {})
-
-                    # If the white skill exists in our dictionary AND is not acquired yet
-                    if white_skill_info and not white_skill_info.get("is_acquired", False):
-                        white_base_cost = white_skill_info.get("base_cost", 0)
-                        white_hint_level = white_skill_info.get("hint_level", 0)
-
-                        white_discount_percent = discount_map.get(min(white_hint_level, 5), 0)
-                        white_sp_cost = int(white_base_cost * (100 - white_discount_percent) / 100)
-
-                        total_sp_cost += white_sp_cost
-
-                # Absolute Boxplot Stats
-                k_min_val = race_time_stats.get("min", 0.0)
-                k_max_val = race_time_stats.get("max", 0.0)
-
-                # Extract explicitly calculated whiskers from Kotlin for drawing the lines
-                k_wMin = race_time_stats.get("whiskerMin", k_min_val)
-                k_wMax = race_time_stats.get("whiskerMax", k_max_val)
-
-                k_q1 = race_time_stats.get("q1", 0.0)
-                k_median = race_time_stats.get("median", 0.0)
-                k_q3 = race_time_stats.get("q3", 0.0)
-                k_outliers = [round(x, 3) for x in race_time_stats.get("outliers", [])]
-
-                # Histogram Stats (Negative means faster)
-                saved_mean_display = time_saved_stats.get("mean", 0.0)
-
-                # Efficiency calculation: Seconds Saved per 100 SP
-                efficiency = (-saved_mean_display / max(total_sp_cost, 1)) * 100
-
-                data_obj = {
-                    "saved": round(saved_mean_display, 4),
-                    "mean": saved_mean_display,
-                    "binMin": time_saved_stats.get("binMin", 0.0),
-                    "binWidth": time_saved_stats.get("binWidth", 1.0),
-                    "frequencies": time_saved_stats.get("frequencies", []),
-                    "maxFreq": max(time_saved_stats.get("frequencies", [0])) if time_saved_stats.get(
-                        "frequencies") else 1,
-                    "vMax": total_iterations,
-                    "wMin": round(k_wMin, 4),
-                    "q1": round(k_q1, 4),
-                    "median": round(k_median, 4),
-                    "q3": round(k_q3, 4),
-                    "wMax": round(k_wMax, 4),
-                    "outliers": k_outliers,
-                    "sp_cost": total_sp_cost,
-                    "hint_level": hint_level,
-                    "efficiency": round(efficiency, 4),
-                    "eff_rate": int(round(eff_rate * 100)),
-                    "conn_rate": int(round(conn_rate * 100)),
-                    "conn_time": conn_time
-                }
-
-                # Update Histogram Scale Bounds
-                bin_max = data_obj["binMin"] + (len(data_obj["frequencies"]) * data_obj["binWidth"]) if data_obj[
-                    "frequencies"] else 0
-                global_hist_min = min([global_hist_min, data_obj["binMin"], saved_mean_display, 0.0])
-                global_hist_max = max([global_hist_max, bin_max, saved_mean_display, 0.0])
-
-                # Update Boxplot Scale Bounds (using absolute min/max to keep outliers on screen)
-                global_box_min = min([global_box_min, k_min_val] + k_outliers)
-                global_box_max = max([global_box_max, k_max_val] + k_outliers)
-
-                sim_summary[skill_id_str] = data_obj
-
-        all_sk_data = {}
-        effects_dict = mdb.get_skill_effects_dict()
-        for skill_id in self.skills_list:
-            sk_id_str = str(skill_id)
-            cond_old = self.skill_conditions_dict.get(int(skill_id), "") or self.skill_conditions_dict.get(sk_id_str, "")
-            eff_info = effects_dict.get(sk_id_str, {})
-            eff_str = eff_info.get("effects", "")
-            cond_new = eff_info.get("conditions", "")
-            if not cond_new:
-                cond_new = cond_old
-                
-            all_sk_data[sk_id_str] = {
-                "effects": eff_str,
-                "conditions": cond_new
-            }
-
-        if global_box_min == float('inf'): global_box_min = 0.0
-        if global_box_max == float('-inf'): global_box_max = 0.0
-        sim_status = "rating" if is_rating_mode else ("error" if sim_failed else "done")
-        sim_status_message = ""
-
-        # The skill planner's renderer is still coupled to its changing data
-        # arguments. Keep this single update call intact until the renderer is
-        # split into a separately versioned browser asset; changing it here is
-        # substantially riskier than the other round-trip reductions.
-        self.skill_browser.execute_script(
-            """
-            let skills_list = arguments[0];
-            let sim_results = arguments[1] || {};
-            let globalHistMin = arguments[2];
-            let globalHistMax = arguments[3];
-            let globalBoxMin = arguments[4];
-            let globalBoxMax = arguments[5];
-            let acquired_list = arguments[6] || [];
-            let all_sk_data = arguments[7] || {};
-
-            let baseMedianAbs = arguments[8] || 0.0;
-            let rating_data = arguments[9] || {};
-            let uma_score = arguments[10] || 0;
-            let uma_rank = arguments[11] || "";
-            let proj_score = arguments[12] || 0;
-            let proj_rank = arguments[13] || "";
-            let proj_choices = arguments[14] || [];
-            let uma_next = arguments[15] || 0;
-            let proj_next = arguments[16] || 0;
-            let cmOptions = arguments[17] || [];
-            let selectedCmDefinition = String(arguments[18] || 17);
-            let projRankMin = arguments[19] || 0;
-            let projRankMax = arguments[20] || 0;
-            let availableSp = arguments[21] || 0;
-            let plannerCandidates = arguments[22] || [];
-            window.UL_SIM_STATUS = arguments[23] || "done";
-            window.UL_SIM_MESSAGE = arguments[24] || "";
-
-            const ownedSkillIds = new Set((acquired_list || []).map(id => String(id)));
-            const plannerRows = new Map();
-            const plannerSelectedByGroup = new Map();
-            const candidateBySkillId = new Map();
-
-            for (const candidate of plannerCandidates || []) {
-                candidate.skill_id = String(candidate.skill_id);
-                candidate.group_id = String(candidate.group_id);
-                candidate.source_skill_id = candidate.source_skill_id ? String(candidate.source_skill_id) : null;
-                candidate.chain = candidate.chain || [];
-                candidate.all_chain = candidate.all_chain || candidate.chain || [];
-                candidate.sp_cost = Number(candidate.sp_cost || 0);
-                candidate.score = Number(candidate.score || 0);
-                candidate.final_score = Number(candidate.final_score || 0);
-                for (const step of candidate.chain) {
-                    step.id = String(step.id);
-                    step.sp_cost = Number(step.sp_cost || 0);
-                    step.score = Number(step.score || 0);
-                }
-                for (const step of candidate.all_chain) {
-                    step.id = String(step.id);
-                    step.sp_cost = Number(step.sp_cost || 0);
-                    step.score = Number(step.score || 0);
-                }
-
-                candidateBySkillId.set(candidate.skill_id, candidate);
-            }
-
-            function collectChoiceSkillIds(choices) {
-                let picked = new Set();
-                for (const choice of choices || []) {
-                    if (choice.skill_id) picked.add(String(choice.skill_id));
-                    if (choice.source_skill_id) picked.add(String(choice.source_skill_id));
-                    for (const step of (choice.chain || [])) {
-                        if (step.id) picked.add(String(step.id));
-                    }
-                }
-                return picked;
-            }
-
-            const baseMaxPickedSkillIds = collectChoiceSkillIds(proj_choices);
-            let currentMaxPickedSkillIds = new Set(baseMaxPickedSkillIds);
-    
-            function formatCondition(cond) {
-                if (!cond) return "";
-                return cond.replace(/([a-zA-Z_]+)|(==|>=|<=|!=|>|<|=|&|!)|(\\d+(?:\\.\\d+)?s?)/g, function(match, word, op, num) {
-                    if (word) {
-                        if (word === 'OR') return `<span style="color: #d65d8a;">${word}</span>`;
-                        return `<span style="color: #c084fc;">${word}</span>`;
-                    }
-                    if (op) return `<span style="color: #60a5fa;">${op}</span>`;
-                    if (num) return `<span style="color: #73c991;">${num}</span>`;
-                    return match;
-                });
-            }
-
-            let plannerStyle = document.getElementById("ul-planner-style");
-            if (!plannerStyle) {
-                plannerStyle = document.createElement("style");
-                plannerStyle.id = "ul-planner-style";
-                plannerStyle.innerHTML = `
-                    .sim-data-badge.ul-planner-clickable { cursor: pointer !important; }
-                    .sim-data-badge.ul-planner-selected {
-                        background: rgba(56, 189, 248, 0.16) !important;
-                        border-color: #38bdf8 !important;
-                        box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.45), 0 0 8px rgba(56, 189, 248, 0.22) !important;
-                    }
-                    .sim-data-badge.ul-planner-unaffordable {
-                        cursor: not-allowed !important;
-                        opacity: 0.42 !important;
-                        filter: grayscale(0.45) !important;
-                    }
-                    .ul-planner-icon-selected {
-                        opacity: 1 !important;
-                        filter: drop-shadow(0 0 5px rgba(56, 189, 248, 0.85)) !important;
-                    }
-                    .ul-planner-row-selected {
-                        background: linear-gradient(90deg, rgba(56, 189, 248, 0.20), rgba(56, 189, 248, 0.06)) !important;
-                        box-shadow: inset 3px 0 0 #38bdf8, inset 0 0 0 1px rgba(56, 189, 248, 0.24) !important;
-                        border-radius: 4px !important;
-                    }
-                    .ul-planner-row-dim {
-                        opacity: 0.46 !important;
-                        filter: grayscale(0.55) !important;
-                    }
-                    .ul-planner-icon-dim {
-                        opacity: 0.35 !important;
-                        filter: grayscale(0.7) !important;
-                    }
-                    #ul-planner-toolbox {
-                        position: fixed;
-                        top: 118px;
-                        right: 14px;
-                        width: 196px;
-                        box-sizing: border-box;
-                        padding: 8px 10px;
-                        border: 1px solid rgba(56, 189, 248, 0.45);
-                        border-radius: 6px;
-                        background: rgba(17, 24, 39, 0.94);
-                        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32), inset 3px 0 0 rgba(56, 189, 248, 0.9);
-                        color: #e5e7eb;
-                        font-size: 12px;
-                        line-height: 1.2;
-                        text-shadow: 1px 1px 2px black;
-                        z-index: 10020;
-                        pointer-events: none;
-                    }
-                    #ul-planner-toolbox[data-active="0"] {
-                        opacity: 0.82;
-                    }
-                    .ul-planner-toolbox-title {
-                        display: flex;
-                        align-items: center;
-                        justify-content: space-between;
-                        gap: 8px;
-                        color: #93c5fd;
-                        font-size: 11px;
-                        font-weight: bold;
-                        letter-spacing: 0;
-                        margin-bottom: 6px;
-                    }
-                    .ul-planner-toolbox-reload {
-                        pointer-events: auto;
-                        width: 20px;
-                        height: 20px;
-                        border: 1px solid rgba(96, 165, 250, 0.75);
-                        border-radius: 4px;
-                        background: rgba(96, 165, 250, 0.14);
-                        color: #bfdbfe;
-                        font-size: 13px;
-                        line-height: 1;
-                        padding: 0;
-                        cursor: pointer;
-                    }
-                    .ul-planner-toolbox-reload:hover {
-                        background: rgba(96, 165, 250, 0.25);
-                        color: #e0f2fe;
-                    }
-                    .ul-planner-toolbox-row {
-                        display: flex;
-                        align-items: baseline;
-                        justify-content: space-between;
-                        gap: 8px;
-                        padding: 3px 0;
-                        border-top: 1px solid rgba(75, 85, 99, 0.45);
-                    }
-                    .ul-planner-toolbox-label {
-                        color: #9ca3af;
-                        font-size: 11px;
-                        white-space: nowrap;
-                    }
-                    .ul-planner-toolbox-value {
-                        color: #fcd34d;
-                        font-weight: bold;
-                        text-align: right;
-                        white-space: nowrap;
-                    }
-                    .ul-planner-toolbox-value.ul-planner-toolbox-rating {
-                        display: flex;
-                        align-items: flex-end;
-                        gap: 4px;
-                        line-height: 1.1;
-                    }
-                    .ul-planner-toolbox-rank {
-                        color: #fcd34d;
-                        font-weight: bold;
-                    }
-                    .ul-planner-toolbox-score {
-                        color: #d1d5db;
-                        font-weight: 600;
-                    }
-                    .ul-planner-toolbox-sp {
-                        color: #d1d5db;
-                    }
-                    .ul-planner-toolbox-next {
-                        color: #93c5fd;
-                    }
-                    .ul-planner-toolbox-picked {
-                        margin-top: 6px;
-                        padding-top: 5px;
-                        border-top: 1px solid rgba(75, 85, 99, 0.55);
-                    }
-                    .ul-planner-toolbox-pick {
-                        display: flex;
-                        justify-content: space-between;
-                        gap: 8px;
-                        padding: 2px 0;
-                        color: #d1d5db;
-                        font-size: 11px;
-                    }
-                    .ul-planner-toolbox-pick-name {
-                        min-width: 0;
-                        overflow: hidden;
-                        text-overflow: ellipsis;
-                        white-space: nowrap;
-                    }
-                    .ul-planner-toolbox-pick-cost {
-                        color: #93c5fd;
-                        white-space: nowrap;
-                    }
-                `;
-                document.head.appendChild(plannerStyle);
-            }
-
-            function escapeHtml(value) {
-                return String(value == null ? "" : value).replace(/[&<>"']/g, function(ch) {
-                    return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch];
-                });
-            }
-
-            function isPlannerMode() {
-                return window.UL_MODE_PREF === 'rating';
-            }
-
-            const BASE_RANKS_JS = [
-                [300, "G"], [600, "G+"], [900, "F"], [1300, "F+"], [1800, "E"],
-                [2300, "E+"], [2900, "D"], [3500, "D+"], [4900, "C"], [6500, "C+"],
-                [8200, "B"], [10000, "B+"], [12100, "A"], [14500, "A+"], [15900, "S"],
-                [17500, "S+"], [19200, "SS"], [19600, "SS+"]
-            ];
-            const HIGH_RANKS_JS = [
-                [19600, 400, 23900, "UG"],
-                [23900, 500, 28800, "UF"],
-                [28800, 560, 34400, "UE"],
-                [34400, 630, 40700, "UD"],
-                [40700, 700, 47600, "UC"],
-                [47600, 760, 55200, "UB"],
-                [55200, 800, Infinity, "UA"]
-            ];
-
-            function getRankStrJs(score) {
-                for (const [threshold, rank] of BASE_RANKS_JS) {
-                    if (score < threshold) return rank;
-                }
-                for (const [base, step, bound, prefix] of HIGH_RANKS_JS) {
-                    if (score < bound) {
-                        let sub = Math.floor((score - base) / step);
-                        return sub > 0 ? `${prefix}${sub}` : prefix;
-                    }
-                }
-                return "UA";
-            }
-
-            function getNextRankReqJs(score) {
-                for (const [threshold] of BASE_RANKS_JS) {
-                    if (score < threshold) return threshold - score;
-                }
-                for (const [base, step, bound] of HIGH_RANKS_JS) {
-                    if (score < bound) {
-                        return Math.min(bound, base + ((Math.floor((score - base) / step) + 1) * step)) - score;
-                    }
-                }
-                return 0;
-            }
-
-            function getRankScoreRangeJs(score) {
-                let rankMin = 0;
-                for (const [threshold] of BASE_RANKS_JS) {
-                    if (score < threshold) return [rankMin, threshold - 1];
-                    rankMin = threshold;
-                }
-                for (const [base, step, bound] of HIGH_RANKS_JS) {
-                    if (score < bound) {
-                        let sub = Math.floor((score - base) / step);
-                        rankMin = base + (sub * step);
-                        let rankMax = rankMin + step - 1;
-                        if (bound !== Infinity) rankMax = Math.min(rankMax, bound - 1);
-                        return [rankMin, rankMax];
-                    }
-                }
-                return [score, score];
-            }
-
-            function getSelectedCandidates(excludeGroupId = null) {
-                let selected = [];
-                let excluded = excludeGroupId == null ? null : String(excludeGroupId);
-                for (const [groupId, candidate] of plannerSelectedByGroup.entries()) {
-                    if (excluded !== null && String(groupId) === excluded) continue;
-                    selected.push(candidate);
-                }
-                return selected;
-            }
-
-            function getPlannedSkillIds(excludeGroupId = null) {
-                let planned = new Set();
-                for (const candidate of getSelectedCandidates(excludeGroupId)) {
-                    for (const step of candidate.chain || []) {
-                        planned.add(String(step.id));
-                    }
-                }
-                return planned;
-            }
-
-            function getPlanTotals(excludeGroupId = null) {
-                let cost = 0;
-                let score = 0;
-                for (const candidate of getSelectedCandidates(excludeGroupId)) {
-                    cost += Number(candidate.sp_cost || 0);
-                    score += Number(candidate.score || 0);
-                }
-                return { cost, score };
-            }
-
-            function getPlannedSkillRows() {
-                let rows = [];
-                let seen = new Set();
-                for (const candidate of getSelectedCandidates()) {
-                    for (const step of candidate.chain || []) {
-                        let stepId = String(step.id);
-                        if (seen.has(stepId)) continue;
-                        seen.add(stepId);
-                        rows.push({
-                            name: step.name || stepId,
-                            spCost: Number(step.sp_cost || 0)
-                        });
-                    }
-                }
-                return rows;
-            }
-
-            function candidateHasSkill(candidate, skillId) {
-                let target = String(skillId);
-                return (candidate.chain || []).some(step => String(step.id) === target);
-            }
-
-            function getCandidateEffective(candidate, excludeGroupId = null) {
-                let plannedIds = getPlannedSkillIds(excludeGroupId);
-                let baselineScore = 0;
-                let cost = 0;
-                for (const step of candidate.all_chain || candidate.chain || []) {
-                    let stepId = String(step.id);
-                    let stepScore = Number(step.score || 0);
-                    if (ownedSkillIds.has(stepId) || plannedIds.has(stepId)) {
-                        baselineScore = Math.max(baselineScore, stepScore);
-                    } else {
-                        cost += Number(step.sp_cost || 0);
-                    }
-                }
-
-                let finalScore = Number(candidate.final_score || 0);
-                let gain = finalScore - baselineScore;
-                return { cost, gain, candidate };
-            }
-
-            function canSelectCandidate(candidate) {
-                if (!candidate) return false;
-                let groupId = String(candidate.group_id);
-                let totalsWithoutGroup = getPlanTotals(groupId);
-                let effective = getCandidateEffective(candidate, groupId);
-                return effective.gain > 0 && effective.cost <= Math.max(0, availableSp - totalsWithoutGroup.cost);
-            }
-
-            function computeExpectedMax() {
-                let planTotals = getPlanTotals();
-                let remainingSp = Math.max(0, availableSp - planTotals.cost);
-                let grouped = new Map();
-
-                for (const candidate of plannerCandidates || []) {
-                    let effective = getCandidateEffective(candidate);
-                    if (effective.cost <= 0 || effective.gain <= 0 || effective.cost > remainingSp) continue;
-
-                    let groupId = String(candidate.group_id);
-                    if (!grouped.has(groupId)) grouped.set(groupId, []);
-                    grouped.get(groupId).push({
-                        candidate,
-                        cost: effective.cost,
-                        gain: effective.gain
-                    });
-                }
-
-                let dp = Array(remainingSp + 1).fill(0);
-                let history = [];
-                for (const items of grouped.values()) {
-                    let newDp = dp.slice();
-                    let choices = Array(remainingSp + 1).fill(null);
-                    for (const item of items) {
-                        for (let budget = item.cost; budget <= remainingSp; budget++) {
-                            let candidateScore = dp[budget - item.cost] + item.gain;
-                            if (candidateScore > newDp[budget]) {
-                                newDp[budget] = candidateScore;
-                                choices[budget] = { prevBudget: budget - item.cost, candidate: item.candidate };
-                            }
-                        }
-                    }
-                    dp = newDp;
-                    history.push(choices);
-                }
-
-                let choices = [];
-                let budget = remainingSp;
-                for (let i = history.length - 1; i >= 0; i--) {
-                    let choice = history[i][budget];
-                    if (!choice) continue;
-                    budget = choice.prevBudget;
-                    choices.push(choice.candidate);
-                }
-                choices.reverse();
-                choices.sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
-
-                return {
-                    planCost: planTotals.cost,
-                    planScoreGain: planTotals.score,
-                    remainingSp,
-                    maxScoreGain: dp[remainingSp] || 0,
-                    choices
-                };
-            }
-
-            function updateRankHeader(expected) {
-                let rankDispExists = document.getElementById("ul-rank-display");
-                if (!rankDispExists) return;
-
-                if (plannerSelectedByGroup.size === 0) {
-                    if (proj_score > uma_score) {
-                        let maxTitle = `Expected score: ${proj_score.toLocaleString()}\\n${proj_rank} range: ${projRankMin.toLocaleString()} - ${projRankMax.toLocaleString()}`;
-                        rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank} ${uma_score}<span style="font-weight:normal;color:#d1d5db;margin-left:4px;font-size:0.85em;"> +${uma_next}</span></span> <span title="${maxTitle}" style="color:#a8a29e;font-size:0.5em;margin-left:8px;">Max: ${proj_rank}<span style="font-weight:normal;margin-left:4px;font-size:0.85em;"> +${proj_next}</span></span>`;
-                    } else {
-                        rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank} ${uma_score}<span style="font-weight:normal;color:#d1d5db;margin-left:4px;font-size:0.85em;"> +${uma_next}</span></span>`;
-                    }
-                    return;
-                }
-
-                let plannedScore = uma_score + expected.planScoreGain;
-                let expectedScore = plannedScore + expected.maxScoreGain;
-                let expectedRank = getRankStrJs(expectedScore);
-                let expectedNext = getNextRankReqJs(expectedScore);
-                let [expectedMin, expectedMax] = getRankScoreRangeJs(expectedScore);
-                let maxTitle = `Expected score: ${expectedScore.toLocaleString()}\\n${expectedRank} range: ${expectedMin.toLocaleString()} - ${expectedMax.toLocaleString()}`;
-
-                rankDispExists.innerHTML = `<span style="font-size:0.5em;">Rating: ${uma_rank} ${uma_score}<span style="font-weight:normal;color:#d1d5db;margin-left:4px;font-size:0.85em;"> +${uma_next}</span></span> <span title="${maxTitle}" style="color:#a8a29e;font-size:0.5em;margin-left:8px;">Max: ${expectedRank}<span style="font-weight:normal;margin-left:4px;font-size:0.85em;"> +${expectedNext}</span></span>`;
-            }
-
-            function updatePlannerToolbox(expected) {
-                let toolbox = document.getElementById("ul-planner-toolbox");
-                if (!isPlannerMode()) {
-                    if (toolbox) toolbox.style.display = "none";
-                    return;
-                }
-
-                if (!toolbox) {
-                    toolbox = document.createElement("div");
-                    toolbox.id = "ul-planner-toolbox";
-                    document.body.appendChild(toolbox);
-                }
-                toolbox.style.display = "block";
-
-                let skillsTable = document.querySelector("[class^='skills_skill_table_']");
-                if (skillsTable) {
-                    let tableTop = Math.round(skillsTable.getBoundingClientRect().top);
-                    toolbox.style.top = `${Math.max(92, tableTop)}px`;
-                }
-
-                let plannedScore = uma_score + expected.planScoreGain;
-                let plannedRank = getRankStrJs(plannedScore);
-                let plannedNext = getNextRankReqJs(plannedScore);
-                let expectedScore = plannedScore + expected.maxScoreGain;
-                let expectedRank = getRankStrJs(expectedScore);
-                let plannedSkillRows = getPlannedSkillRows();
-                let plannedSkillsHtml = plannedSkillRows.length > 0
-                    ? plannedSkillRows.map(skill => `
-                        <div class="ul-planner-toolbox-pick">
-                            <span class="ul-planner-toolbox-pick-name">${escapeHtml(skill.name)}</span>
-                            <span class="ul-planner-toolbox-pick-cost">${skill.spCost.toLocaleString()} SP</span>
-                        </div>
-                    `).join("")
-                    : `<div class="ul-planner-toolbox-pick"><span class="ul-planner-toolbox-pick-name">No planned skills</span><span class="ul-planner-toolbox-pick-cost"></span></div>`;
-                toolbox.dataset.active = plannerSelectedByGroup.size > 0 ? "1" : "0";
-                toolbox.innerHTML = `
-                    <div class="ul-planner-toolbox-title">
-                        <span>Planner</span>
-                        <button type="button" class="ul-planner-toolbox-reload" title="Rerun simulation">\\u21bb</button>
-                    </div>
-                    <div class="ul-planner-toolbox-row">
-                        <span class="ul-planner-toolbox-label">Planned</span>
-                        <span class="ul-planner-toolbox-value ul-planner-toolbox-rating">
-                            <span class="ul-planner-toolbox-rank">${plannedRank}</span> <span class="ul-planner-toolbox-score">${plannedScore.toLocaleString()}</span>
-                        </span>
-                    </div>
-                    <div class="ul-planner-toolbox-row">
-                        <span class="ul-planner-toolbox-label">Next</span>
-                        <span class="ul-planner-toolbox-value ul-planner-toolbox-next">
-                            ${plannedNext.toLocaleString()}
-                        </span>
-                    </div>
-                    <div class="ul-planner-toolbox-row">
-                        <span class="ul-planner-toolbox-label">SP Left</span>
-                        <span class="ul-planner-toolbox-value ul-planner-toolbox-sp">${expected.remainingSp.toLocaleString()}</span>
-                    </div>
-                    <div class="ul-planner-toolbox-row">
-                        <span class="ul-planner-toolbox-label">Expected Max</span>
-                        <span class="ul-planner-toolbox-value ul-planner-toolbox-rating">
-                            <span class="ul-planner-toolbox-rank">${expectedRank}</span> <span class="ul-planner-toolbox-score">${expectedScore.toLocaleString()}</span>
-                        </span>
-                    </div>
-                    <div class="ul-planner-toolbox-picked">
-                        ${plannedSkillsHtml}
-                    </div>
-                `;
-
-                let reloadButton = toolbox.querySelector(".ul-planner-toolbox-reload");
-                if (reloadButton) {
-                    reloadButton.onclick = (event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        window.rerunSkillSimulation();
-                    };
-                }
-            }
-
-            function togglePlannerSkill(skillId) {
-                if (!isPlannerMode()) return;
-
-                let candidate = candidateBySkillId.get(String(skillId));
-                if (!candidate) return;
-
-                let groupId = String(candidate.group_id);
-                let selected = plannerSelectedByGroup.get(groupId);
-                if (selected && candidateHasSkill(selected, skillId)) {
-                    plannerSelectedByGroup.delete(groupId);
-                    refreshPlannerUi();
-                    return;
-                }
-
-                if (!canSelectCandidate(candidate)) return;
-                plannerSelectedByGroup.set(groupId, candidate);
-                refreshPlannerUi();
-            }
-
-            function refreshPlannerUi() {
-                if (!isPlannerMode()) {
-                    plannerSelectedByGroup.clear();
-                    let expected = computeExpectedMax();
-                    updateRankHeader(expected);
-                    updatePlannerToolbox(expected);
-                    clearPlannerVisualState(false);
-                    return;
-                }
-
-                let expected = computeExpectedMax();
-                let plannedSkillIds = getPlannedSkillIds();
-                currentMaxPickedSkillIds = plannerSelectedByGroup.size > 0
-                    ? collectChoiceSkillIds(expected.choices)
-                    : new Set(baseMaxPickedSkillIds);
-
-                updateRankHeader(expected);
-                updatePlannerToolbox(expected);
-
-                for (const [skillId, refs] of plannerRows.entries()) {
-                    let candidate = refs.candidate;
-                    let selected = plannedSkillIds.has(skillId);
-                    let affordable = candidate ? canSelectCandidate(candidate) : false;
-                    let acquired = !!refs.acquired;
-                    let dim = acquired || (candidate && !selected && !affordable);
-                    let clickable = candidate && (selected || affordable);
-
-                    refs.row.classList.toggle("ul-planner-row-selected", selected);
-                    refs.row.classList.toggle("ul-planner-row-dim", dim && !selected);
-                    refs.badge.classList.toggle("ul-planner-selected", selected);
-                    refs.badge.classList.toggle("ul-planner-unaffordable", dim && !acquired);
-                    refs.badge.classList.toggle("ul-planner-clickable", clickable);
-                    refs.badge.title = selected ? "Remove from plan" : (acquired ? "Already acquired" : (dim ? "Not enough skill points" : (candidate ? "Add to plan" : "")));
-                    refs.badge.onclick = clickable ? (event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        togglePlannerSkill(skillId);
-                    } : null;
-
-                    if (refs.icon) {
-                        refs.icon.classList.toggle("ul-planner-icon-selected", selected);
-                        refs.icon.classList.toggle("ul-planner-icon-dim", dim && !selected);
-                        refs.icon.style.cursor = clickable ? "pointer" : "";
-                        refs.icon.title = refs.badge.title;
-                        refs.icon.onclick = clickable ? (event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            togglePlannerSkill(skillId);
-                        } : null;
-                    }
-
-                    refs.badge.querySelectorAll(".ul-max-pick-icon").forEach(icon => {
-                        icon.style.display = currentMaxPickedSkillIds.has(skillId) ? "inline-block" : "none";
-                    });
-                }
-            }
-
-            function clearPlannerVisualState(enablePlanner = isPlannerMode()) {
-                currentMaxPickedSkillIds = new Set(baseMaxPickedSkillIds);
-                for (const [skillId, refs] of plannerRows.entries()) {
-                    let candidate = refs.candidate;
-                    let affordable = candidate ? canSelectCandidate(candidate) : false;
-                    let acquired = !!refs.acquired;
-                    let clickable = enablePlanner && candidate && affordable;
-
-                    refs.row.classList.remove("ul-planner-row-selected", "ul-planner-row-dim");
-                    refs.badge.classList.remove("ul-planner-selected", "ul-planner-unaffordable", "ul-planner-clickable");
-                    refs.badge.classList.toggle("ul-planner-clickable", clickable);
-                    refs.badge.title = enablePlanner ? (acquired ? "Already acquired" : (candidate ? (affordable ? "Add to plan" : "Not enough skill points") : "")) : "";
-                    refs.badge.onclick = clickable ? (event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        togglePlannerSkill(skillId);
-                    } : null;
-
-                    if (refs.icon) {
-                        refs.icon.classList.remove("ul-planner-icon-selected", "ul-planner-icon-dim");
-                        refs.icon.style.cursor = clickable ? "pointer" : "";
-                        refs.icon.title = refs.badge.title;
-                        refs.icon.onclick = clickable ? (event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            togglePlannerSkill(skillId);
-                        } : null;
-                    }
-
-                    refs.badge.querySelectorAll(".ul-max-pick-icon").forEach(icon => {
-                        icon.style.display = enablePlanner && baseMaxPickedSkillIds.has(skillId) ? "inline-block" : "none";
-                    });
-                }
-            }
-
-            window.resetSkillPlanner = () => {
-                plannerSelectedByGroup.clear();
-                let expected = computeExpectedMax();
-                updateRankHeader(expected);
-                updatePlannerToolbox(expected);
-                clearPlannerVisualState(isPlannerMode());
-            };
-    
-            let hRange = globalHistMax - globalHistMin;
-            if (hRange === 0) hRange = 1;
-            let hPad = hRange * 0.05; 
-            let hScaleMin = globalHistMin - hPad;
-            let hScaleMax = globalHistMax + hPad;
-            let hScaleRange = hScaleMax - hScaleMin;
-            let getHistPct = (val) => Math.max(0, Math.min(100, ((val - hScaleMin) / hScaleRange) * 100));
-            let hZeroPct = getHistPct(0); 
-    
-            let bRange = globalBoxMax - globalBoxMin;
-            if (bRange === 0) bRange = 1;
-            let bPad = bRange * 0.05;
-            let bScaleMin = globalBoxMin - bPad;
-            let bScaleMax = globalBoxMax + bPad;
-            let bScaleRange = bScaleMax - bScaleMin;
-            let getBoxPct = (val) => Math.max(0, Math.min(100, ((val - bScaleMin) / bScaleRange) * 100));
-            let baseMedianPct = getBoxPct(baseMedianAbs);
-    
-            window.UL_BADGE_PREF = localStorage.getItem('UL_BADGE_PREF') || 'hist';
-            window.UL_MODE_PREF = localStorage.getItem('UL_MODE_PREF') || 'parent';
-            window.UL_CM_DEF = localStorage.getItem('UL_CM_DEF') || selectedCmDefinition;
-            if (!cmOptions.some(option => String(option.id) === String(window.UL_CM_DEF))) {
-                window.UL_CM_DEF = selectedCmDefinition;
-                localStorage.setItem('UL_CM_DEF', window.UL_CM_DEF);
-            }
-
-            function syncCmDefinitionSelect(cmSelect) {
-                cmSelect.replaceChildren();
-                for (const option of cmOptions) {
-                    let cmOption = document.createElement("option");
-                    cmOption.value = String(option.id);
-                    cmOption.textContent = option.label;
-                    cmSelect.appendChild(cmOption);
-                }
-                cmSelect.value = String(window.UL_CM_DEF);
-            }
-
-            window.rerunSkillSimulation = () => {
-                if (window.UL_SIM_STATUS === "running") return;
-                if (typeof window.resetSkillPlanner === "function") {
-                    window.resetSkillPlanner();
-                }
-                window.UL_SIM_STATUS = "running";
-                window.UL_SIM_MESSAGE = "";
-                window.updateSimStatus();
-                fetch('http://127.0.0.1:3150/rerun-skill-simulation', { method: 'POST' });
-            };
-
-            window.ensureSimControls = () => {
-                document.querySelectorAll('button[aria-label="Open Umamusume menu"]').forEach(button => {
-                    let wrapper = button.parentElement && button.parentElement.parentElement
-                        ? button.parentElement.parentElement
-                        : button;
-                    wrapper.remove();
-                });
-
-                let simControlDiv = document.getElementById("ul-sim-controls");
-                if (!simControlDiv) {
-                    simControlDiv = document.createElement("div");
-                    simControlDiv.id = "ul-sim-controls";
-                    simControlDiv.style.display = "inline-flex";
-                    simControlDiv.style.alignItems = "center";
-                    simControlDiv.style.gap = "4px";
-                    simControlDiv.style.marginRight = "0";
-                    simControlDiv.style.fontSize = "12px";
-                    simControlDiv.style.zIndex = "10000";
-
-                    let statusEl = document.createElement("button");
-                    statusEl.id = "ul-sim-status";
-                    statusEl.type = "button";
-                    statusEl.title = "Rerun simulation";
-                    statusEl.style.padding = "4px 5px";
-                    statusEl.style.border = "1px solid #6b7280";
-                    statusEl.style.borderRadius = "4px";
-                    statusEl.style.whiteSpace = "nowrap";
-                    statusEl.style.lineHeight = "1";
-                    statusEl.style.cursor = "pointer";
-                    statusEl.onclick = (event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        window.rerunSkillSimulation();
-                    };
-
-                    simControlDiv.appendChild(statusEl);
-                }
-
-                let staleRerunButton = document.getElementById("ul-sim-rerun");
-                if (staleRerunButton) staleRerunButton.remove();
-
-                let settingsButton = document.querySelector("div.styles_header_settings__hx4QQ[aria-expanded='false'], div.styles_header_settings__hx4QQ");
-                let header = settingsButton ? (settingsButton.closest("header") || settingsButton.parentElement) : null;
-                if (header) {
-                    simControlDiv.style.position = "";
-                    simControlDiv.style.top = "";
-                    simControlDiv.style.right = "";
-                    if (simControlDiv.parentElement !== header) {
-                        header.insertBefore(simControlDiv, settingsButton);
-                    }
-                    header.style.gridTemplateColumns = "1fr max-content 75px";
-                    header.style.alignItems = "center";
-                    simControlDiv.style.gridColumn = "2";
-                    simControlDiv.style.gridRow = "1";
-                    simControlDiv.style.justifySelf = "end";
-                    settingsButton.style.gridColumn = "3";
-                    settingsButton.style.gridRow = "1";
-                    settingsButton.style.justifySelf = "end";
-                }
-                return simControlDiv;
-            };
-
-            window.updateSimStatus = () => {
-                window.ensureSimControls();
-                let statusEl = document.getElementById("ul-sim-status");
-                if (!statusEl) return;
-
-                let status = window.UL_SIM_STATUS || "idle";
-                let text = "Sim: Ready";
-                let color = "#9ca3af";
-                let border = "#6b7280";
-                let background = "rgba(107, 114, 128, 0.16)";
-
-                if (status === "running") {
-                    text = "Sim: Running...";
-                    color = "#fcd34d";
-                    border = "#f59e0b";
-                    background = "rgba(245, 158, 11, 0.18)";
-                } else if (status === "done") {
-                    text = "Sim: Done \\u21bb";
-                    color = "#86efac";
-                    border = "#22c55e";
-                    background = "rgba(34, 197, 94, 0.14)";
-                } else if (status === "rating") {
-                    text = "Sim: Rating mode \\u21bb";
-                    color = "#c084fc";
-                    border = "#a855f7";
-                    background = "rgba(168, 85, 247, 0.16)";
-                } else if (status === "waiting") {
-                    text = "Sim: Waiting";
-                    color = "#93c5fd";
-                    border = "#60a5fa";
-                    background = "rgba(96, 165, 250, 0.14)";
-                } else if (status === "error") {
-                    text = "Sim: Error";
-                    color = "#fca5a5";
-                    border = "#ef4444";
-                    background = "rgba(239, 68, 68, 0.14)";
-                }
-
-                statusEl.textContent = text;
-                statusEl.style.color = color;
-                statusEl.style.borderColor = border;
-                statusEl.style.background = background;
-                statusEl.disabled = false;
-                statusEl.style.cursor = status === "running" ? "default" : "pointer";
-                statusEl.style.opacity = status === "running" ? "0.75" : "1";
-            };
-
-            window.ensureCmDefinitionSelect = () => {
-                let cmSelect = document.getElementById("ul-cm-definition-select");
-                if (!cmSelect) {
-                    cmSelect = document.createElement("select");
-                    cmSelect.id = "ul-cm-definition-select";
-                    cmSelect.style.padding = "4px 5px";
-                    cmSelect.style.borderRadius = "4px";
-                    cmSelect.style.border = "1px solid #60a5fa";
-                    cmSelect.style.background = "transparent";
-                    cmSelect.style.color = "var(--c-text)";
-                    cmSelect.style.cursor = "pointer";
-                    cmSelect.style.fontSize = "12px";
-                    cmSelect.style.verticalAlign = "middle";
-                    cmSelect.style.maxWidth = "76px";
-
-                    cmSelect.onchange = () => {
-                        window.UL_CM_DEF = cmSelect.value;
-                        localStorage.setItem('UL_CM_DEF', window.UL_CM_DEF);
-                        window.UL_SIM_STATUS = "running";
-                        window.UL_SIM_MESSAGE = "";
-                        window.updateSimStatus();
-                        cmSelect.disabled = true;
-                        fetch('http://127.0.0.1:3150/skill-window-cm-definition', {
-                            method: 'POST',
-                            body: window.UL_CM_DEF,
-                            headers: { 'Content-Type': 'text/plain' }
-                        }).finally(() => {
-                            setTimeout(() => { cmSelect.disabled = false; }, 300);
-                        });
-                    };
-                }
-                syncCmDefinitionSelect(cmSelect);
-                return cmSelect;
-            };
-    
-            let pageTitle = document.querySelector("h1");
-            if (pageTitle && !document.getElementById("ul-badge-toggle")) {
-            
-                let tooltipStyle = document.createElement("style");
-                tooltipStyle.id = "ul-custom-tooltips";
-                tooltipStyle.innerHTML = `
-                    .ul-tooltip { position: relative; cursor: help; width: 100%; display: block; }
-                    .ul-tooltip-row-text { 
-                        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; 
-                        width: 100%; display: block; 
-                    }
-                    .ul-tooltip-content {
-                        position: absolute; bottom: 100%; left: 0;
-                        background: rgba(17, 24, 39, 0.95); color: #e5e7eb; padding: 8px 12px; border-radius: 6px;
-                        font-size: 13px; white-space: pre-wrap; z-index: 9999;
-                        opacity: 0; visibility: hidden; pointer-events: none;
-                        transition: none; width: max-content; max-width: 100%;
-                        text-shadow: none; font-weight: normal; font-family: monospace;
-                        text-align: left; border: 1px solid #4b5563;
-                        line-height: 1.4;
-                        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-                        box-sizing: border-box;
-                    }
-                    .ul-tooltip:hover .ul-tooltip-content { opacity: 1; visibility: visible; }
-                    /* Dont truncate tooltip content inside */
-                    .ul-tooltip-content * { white-space: pre-wrap !important; }
-                    
-                    /* Utility for elements at the right edge of the screen */
-                    .ul-tooltip-right .ul-tooltip-content { right: 0; left: auto; }
-                    
-                    /* Layout Fix: Force full width by removing sidebar padding */
-                    div[class*='Layout_content_'], div[class*='Layout_container_'], main { 
-                        padding-right: 0 !important; 
-                        padding-left: 0 !important; 
-                        max-width: 100% !important; 
-                        width: 100% !important;
-                    }
-                `;
-                document.head.appendChild(tooltipStyle);
-                
-                let toggleDiv = document.createElement("div");
-                toggleDiv.id = "ul-badge-toggle";
-                toggleDiv.style.display = "inline-flex";
-                toggleDiv.style.marginLeft = "15px";
-                toggleDiv.style.fontSize = "0.5em";
-                toggleDiv.style.verticalAlign = "middle";
-    
-                let btnHist = document.createElement("button");
-                btnHist.innerText = "Time Saved";
-                btnHist.style.padding = "4px 8px";
-                btnHist.style.borderRadius = "4px 0 0 4px";
-                btnHist.style.border = "1px solid var(--c-topnav)";
-                btnHist.style.cursor = "pointer";
-    
-                let btnBox = document.createElement("button");
-                btnBox.innerText = "Race Time";
-                btnBox.style.padding = "4px 8px";
-                btnBox.style.borderRadius = "0 4px 4px 0";
-                btnBox.style.border = "1px solid var(--c-topnav)";
-                btnBox.style.cursor = "pointer";
-    
-                let modeToggleDiv = document.createElement("div");
-                modeToggleDiv.id = "ul-mode-toggle";
-                modeToggleDiv.style.display = "inline-flex";
-                modeToggleDiv.style.marginLeft = "10px";
-                modeToggleDiv.style.fontSize = "0.5em";
-                modeToggleDiv.style.verticalAlign = "middle";
-    
-                let btnParent = document.createElement("button");
-                btnParent.innerText = "Parent";
-                btnParent.style.padding = "4px 8px";
-                btnParent.style.borderRadius = "4px 0 0 4px";
-                btnParent.style.border = "1px solid #c084fc";
-                btnParent.style.cursor = "pointer";
-    
-                let btnAce = document.createElement("button");
-                btnAce.innerText = "Ace";
-                btnAce.style.padding = "4px 8px";
-                btnAce.style.borderRadius = "0";
-                btnAce.style.border = "1px solid #c084fc";
-                btnAce.style.borderLeft = "none";
-                btnAce.style.cursor = "pointer";
-
-                let btnRating = document.createElement("button");
-                btnRating.innerText = "Rating";
-                btnRating.style.padding = "4px 8px";
-                btnRating.style.borderRadius = "0 4px 4px 0";
-                btnRating.style.border = "1px solid #c084fc";
-                btnRating.style.borderLeft = "none";
-                btnRating.style.cursor = "pointer";
-
-                let cmSelect = window.ensureCmDefinitionSelect();
-    
-                window.updateToggleColors = () => {
-                    if (window.UL_BADGE_PREF === 'hist') {
-                        btnHist.style.background = "var(--c-topnav)";
-                        btnHist.style.color = "white";
-                        btnBox.style.background = "transparent";
-                        btnBox.style.color = "var(--c-text)";
-                    } else {
-                        btnBox.style.background = "var(--c-topnav)";
-                        btnBox.style.color = "white";
-                        btnHist.style.background = "transparent";
-                        btnHist.style.color = "var(--c-text)";
-                    }
-    
-                    if (window.UL_MODE_PREF === 'ace') {
-                        btnAce.style.background = "#c084fc";
-                        btnAce.style.color = "white";
-                        btnParent.style.background = "transparent";
-                        btnParent.style.color = "var(--c-text)";
-                        btnRating.style.background = "transparent";
-                        btnRating.style.color = "var(--c-text)";
-                        document.querySelectorAll(".ul-badge-rating").forEach(el => el.style.display = "none");
-                        if (window.UL_BADGE_PREF === 'hist') {
-                            document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "block");
-                            document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "none");
-                        } else {
-                            document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "none");
-                            document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "flex");
-                        }
-                    } else if (window.UL_MODE_PREF === 'rating') {
-                        btnRating.style.background = "#c084fc";
-                        btnRating.style.color = "white";
-                        btnParent.style.background = "transparent";
-                        btnParent.style.color = "var(--c-text)";
-                        btnAce.style.background = "transparent";
-                        btnAce.style.color = "var(--c-text)";
-                        document.querySelectorAll(".ul-badge-rating").forEach(el => el.style.display = "flex");
-                        document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "none");
-                        document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "none");
-                    } else {
-                        btnParent.style.background = "#c084fc";
-                        btnParent.style.color = "white";
-                        btnAce.style.background = "transparent";
-                        btnAce.style.color = "var(--c-text)";
-                        btnRating.style.background = "transparent";
-                        btnRating.style.color = "var(--c-text)";
-                        document.querySelectorAll(".ul-badge-rating").forEach(el => el.style.display = "none");
-                        if (window.UL_BADGE_PREF === 'hist') {
-                            document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "block");
-                            document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "none");
-                        } else {
-                            document.querySelectorAll(".ul-badge-hist").forEach(el => el.style.display = "none");
-                            document.querySelectorAll(".ul-badge-box").forEach(el => el.style.display = "flex");
-                        }
-                    }
-
-                    if (typeof refreshPlannerUi === "function") {
-                        refreshPlannerUi();
-                    }
-                };
-    
-                btnHist.onclick = () => {
-                    window.UL_BADGE_PREF = 'hist';
-                    localStorage.setItem('UL_BADGE_PREF', 'hist');
-                    window.updateToggleColors();
-                };
-    
-                btnBox.onclick = () => {
-                    window.UL_BADGE_PREF = 'box';
-                    localStorage.setItem('UL_BADGE_PREF', 'box');
-                    window.updateToggleColors();
-                };
-    
-                btnParent.onclick = () => {
-                    window.UL_MODE_PREF = 'parent';
-                    localStorage.setItem('UL_MODE_PREF', 'parent');
-                    window.updateToggleColors();
-                };
-    
-                btnAce.onclick = () => {
-                    window.UL_MODE_PREF = 'ace';
-                    localStorage.setItem('UL_MODE_PREF', 'ace');
-                    window.updateToggleColors();
-                };
-
-                btnRating.onclick = () => {
-                    window.UL_MODE_PREF = 'rating';
-                    localStorage.setItem('UL_MODE_PREF', 'rating');
-                    window.updateToggleColors();
-                };
-
-                window.updateToggleColors();
-                
-                let rankDisp = document.createElement("div");
-                rankDisp.id = "ul-rank-display";
-                rankDisp.style.marginLeft = "20px";
-                rankDisp.style.marginRight = "auto";
-                rankDisp.style.fontSize = "1em";
-                rankDisp.style.fontWeight = "bold";
-                rankDisp.style.color = "#fcd34d";
-                rankDisp.style.textAlign = "left";
-                rankDisp.style.lineHeight = "0.9";
-                rankDisp.style.whiteSpace = "normal";
-                rankDisp.style.textShadow = "1px 1px 2px black, -1px -1px 2px black";
-
-                toggleDiv.appendChild(btnHist);
-                toggleDiv.appendChild(btnBox);
-                modeToggleDiv.appendChild(btnParent);
-                modeToggleDiv.appendChild(btnAce);
-                modeToggleDiv.appendChild(btnRating);
-                
-                pageTitle.appendChild(toggleDiv);
-                pageTitle.appendChild(modeToggleDiv);
-                pageTitle.appendChild(rankDisp);
-                pageTitle.style.display = "flex";
-                pageTitle.style.alignItems = "center";
-                pageTitle.style.width = "100%";
-    
-            } else if (window.updateToggleColors) {
-                window.updateToggleColors();
-            }
-
-            let simControlDiv = window.ensureSimControls();
-            let cmSelect = window.ensureCmDefinitionSelect();
-            let simStatus = document.getElementById("ul-sim-status");
-            if (simControlDiv && cmSelect) {
-                if (simStatus && cmSelect.nextSibling !== simStatus) {
-                    simControlDiv.insertBefore(cmSelect, simStatus);
-                } else if (!simStatus && cmSelect.parentElement !== simControlDiv) {
-                    simControlDiv.appendChild(cmSelect);
-                }
-            }
-
-            window.updateSimStatus();
-            
-            updateRankHeader(computeExpectedMax());
-    
-            let skill_elements = [];
-            let skills_table = document.querySelector("[class^='skills_skill_table_']");
-            let skill_rows = document.querySelectorAll("[class^='skills_table_desc_']");
-            let stripes_element = document.querySelector("[class*='skills_stripes_']");
-            let color_class = stripes_element ? [...stripes_element.classList].filter(item => item.startsWith("skills_stripes_"))[0] : null;
-    
-            if (!skills_table || skill_rows.length === 0) return;
-    
-            for (const item of skill_rows) {
-                if (item.parentNode) item.parentNode.style.display = "none";
-            }
-    
-            for (const skill_id of skills_list) {
-                let display_id = skill_id;
-                if (display_id >= 900000 && display_id < 1000000) {
-                    display_id = display_id - 800000;
-                }
-                
-                let display_string = "(" + display_id + ")";
-                let true_skill_string = "(" + skill_id + ")";
-    
-                for (const item of skill_rows) {
-                    if (item.textContent.includes(display_string) || item.textContent.includes(true_skill_string)) {
-                        let row = item.parentNode;
-                        skill_elements.push(row);
-                        row.remove();
-
-                        let existingBadge = row.querySelector('.sim-data-badge');
-                        if (existingBadge) existingBadge.remove();
-
-                        row.classList.remove("ul-planner-row-selected", "ul-planner-row-dim");
-                        let iconCell = row.children.length > 0 ? row.children[0] : null;
-                        if (iconCell) {
-                            iconCell.classList.remove("ul-planner-icon-selected", "ul-planner-icon-dim");
-                            iconCell.classList.add("ul-planner-skill-icon");
-                            iconCell.style.cursor = "";
-                            iconCell.title = "";
-                            iconCell.onclick = null;
-                        }
-    
-                        let badge = document.createElement("div");
-                        badge.className = "sim-data-badge";
-                        badge.style.gridArea = "badge";
-                        badge.style.width = "155px"; 
-                        badge.style.height = "40px";
-                        badge.style.marginRight = "10px"; 
-                        badge.style.boxSizing = "border-box";
-                        badge.style.display = "block";
-    
-                        let skData = all_sk_data[skill_id.toString()] || {};
-                        let effRaw = skData.effects || "";
-                        let condRaw = skData.conditions || "";
-                        
-                        let displayVal = effRaw ? effRaw : condRaw;
-                        
-                        let condHtml = `<div class="ul-tooltip"><div class="ul-tooltip-row-text" style="color: #d1d5db; font-family: monospace; line-height: 1.2;">${formatCondition(displayVal)} <span style="color: #6b7280; font-size: 0.85em;">(${skill_id})</span></div><div class="ul-tooltip-content">${formatCondition(condRaw)}</div></div>`;
-    
-                        if (row.children.length >= 3) {
-                            let descCell = row.children[2];
-                            if (descCell) {
-                                descCell.innerHTML = condHtml;
-                            }
-                        }
-    
-                        if (row.children.length >= 4) {
-                            row.children[3].style.display = "none";
-                        }
-
-                        let maxPickIcon = `<span class="ul-max-pick-icon" data-skill-id="${skill_id}" style="display:none;color:#fcd34d;font-size:0.85em;line-height:1;margin-right:4px;text-shadow:1px 1px 2px black, -1px -1px 2px black;">&#9733;</span>`;
-                        let isAcquired = ownedSkillIds.has(String(skill_id));
-    
-                        if (isAcquired) {
-                            badge.style.padding = "2px 8px";
-                            badge.style.backgroundColor = "rgba(156, 163, 175, 0.1)"; 
-                            badge.style.border = "1px solid #9ca3af";
-                            badge.style.color = "#9ca3af";
-                            badge.style.borderRadius = "4px";
-                            badge.style.fontWeight = "bold";
-                            badge.style.display = "flex";
-                            badge.style.alignItems = "center";
-                            badge.style.justifyContent = "center";
-                            badge.innerHTML = `${maxPickIcon}Acquired`;
-                        } else {
-                            let rdata = rating_data[skill_id.toString()];
-                            let ratingHtml = '';
-                            if (rdata) {
-                                let eff = rdata.efficiency || 0;
-                                let t = Math.max(0, Math.min(1, (eff - 1) / 1));
-                                let saturation = 30 + t * 70;
-                                let lightness = 85 - t * 45;
-                                let bgColor = `hsla(45, ${saturation}%, ${lightness}%, ${0.08 + t * 0.17})`;
-                                let borderColor = `hsl(45, ${saturation}%, ${Math.max(lightness - 20, 30)}%)`;
-                                let rColor = eff >= 2.5 ? "#ffbe28" : (eff >= 2 ? "#fcd34d" : (eff >= 1 ? "#fff59d" : "#94a3b8"));
-                                let ratingDisplay = window.UL_MODE_PREF === 'rating' ? 'flex' : 'none';
-                                ratingHtml = `
-                                    <div class="ul-badge-rating" style="display: ${ratingDisplay}; position: relative; width: 100%; height: 100%; background: #313131; border: 1px solid ${borderColor}; border-radius: 4px; box-sizing: border-box; overflow: hidden; align-items: center; justify-content: space-between; padding: 0 8px;">
-                                        <div style="display: flex; flex-direction: column; justify-content: center; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black; text-align: left;">
-                                            <div style="font-size: 0.7em; color: rgba(255,255,255,0.9);">Lv ${rdata.hint_level || 0} | ${rdata.sp_cost || "?"} SP</div>
-                                            <div style="font-size: 0.65em; color: ${rColor}; white-space: nowrap;">${rdata.efficiency.toFixed(2)} Pt/SP</div>
-                                        </div>
-                                        <div style="font-size: 1.1em; font-weight: bold; color: ${rColor}; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black; text-align: right; margin-top: 2px;">
-                                            ${maxPickIcon}${rdata.score} Pt
-                                        </div>
-                                    </div>
-                                `;
-                            }
-
-                            let data = sim_results[skill_id.toString()]; 
-                            if (data) {
-                                let color = "#9ca3af";
-                                let eff = data.efficiency;
-                                if (eff >= 0.04) color = "#4ade80";      
-                                else if (eff >= 0.02) color = "#86efac"; 
-                                else if (eff >= 0.01) color = "#bbf7d0"; 
-                                else if (eff <= -0.01) color = "#ca8a8a";                  
-    
-                                let sign = data.saved < 0 ? "-" : (data.saved > 0 ? "+" : "");
-                                let absSaved = Math.abs(data.saved);
-    
-                                let histogramHtml = '';
-                                if (data.frequencies && data.frequencies.length > 0) {
-                                    let bMin = data.binMin;
-                                    let bWid = data.binWidth;
-    
-                                    for (let j = 0; j < data.frequencies.length; j++) {
-                                        let freq = data.frequencies[j];
-                                        if (freq === 0) continue;
-    
-                                        let hPct = (freq / data.vMax) * 100;
-                                        hPct = Math.min(hPct, 100);
-    
-                                        let leftEdge = bMin + (j * bWid); 
-                                        let rightEdge = leftEdge + bWid;  
-    
-                                        let xLeft = getHistPct(leftEdge);
-                                        let xWidth = getHistPct(rightEdge) - xLeft;
-    
-                                        let barColor;
-                                        if (leftEdge <= 0 && rightEdge > 0) {
-                                            barColor = '#9ca3af'; 
-                                        } else if (rightEdge <= 0) {
-                                            barColor = '#86efac'; 
-                                        } else {
-                                            barColor = '#fca5a5'; 
-                                        }
-    
-                                        histogramHtml += `<div style="position: absolute; left: ${xLeft}%; width: ${xWidth}%; bottom: 0; height: ${hPct}%; background-color: ${barColor}; opacity: 0.85;"></div>`;
-                                    }
-    
-                                    let meanX = getHistPct(data.mean);
-    
-                                    histogramHtml += `<div style="position: absolute; left: ${hZeroPct}%; top: 0; bottom: 0; width: 0px; border-left: 1px dashed white; z-index: 2;"></div>`;
-                                    histogramHtml += `<div style="position: absolute; left: ${meanX}%; top: 0; bottom: 0; width: 0px; border-left: 1px dashed #60a5fa; z-index: 3;"></div>`;
-                                }
-    
-                                let histDisplay = window.UL_BADGE_PREF === 'hist' ? 'block' : 'none';
-                                let boxDisplay = window.UL_BADGE_PREF === 'box' ? 'flex' : 'none';
-    
-                                // Format the whole number percents passed from Python
-                                let effStr = data.eff_rate + "%";
-                                let connStr = data.conn_rate + "%";
-                                let timeStr = data.conn_time.toFixed(1) + "s";
-    
-                                badge.innerHTML = `
-                                    ${ratingHtml}
-                                    <div class="ul-badge-hist" style="display: ${histDisplay}; position: relative; width: 100%; height: 100%; background: #313131; border: 1px solid ${color}; border-radius: 4px; overflow: hidden;">
-                                        ${histogramHtml}
-                                        
-                                        <div style="position: absolute; top: 1px; left: 4px; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">
-                                            <div style="font-size: 0.7em; color: rgba(255,255,255,0.9);">Lv ${data.hint_level || 0} | ${data.sp_cost || "?"} SP</div>
-                                            <div style="font-size: 0.6em; color: rgba(200,200,200,0.9); white-space: nowrap;">E: ${effStr} | C: ${connStr} | ${timeStr}</div>
-                                        </div>
-    
-                                        <div style="position: absolute; top: 2px; right: 4px; font-size: 0.75em; text-align: right; line-height: 1.15; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">
-                                            <div style="font-weight: bold; color: ${color};">${sign}${absSaved.toFixed(3)}s</div>
-                                            <div style="color: ${color}; font-weight: bold; font-size: 0.9em;">(${eff.toFixed(3)})</div>
-                                        </div>
-                                    </div>
-    
-                                    <div class="ul-badge-box" style="display: ${boxDisplay}; position: relative; width: 100%; height: 100%; background: #313131; border: 1px solid ${color}; border-radius: 4px; box-sizing: border-box; overflow: hidden;">
-                                        
-                                        <div style="position: absolute; left: ${baseMedianPct}%; top: 0; bottom: 0; width: 0px; border-left: 1px dashed white; z-index: 2;"></div>
-    
-                                        <div style="position: absolute; top: 1px; left: 4px; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">
-                                            <div style="font-size: 0.7em; color: rgba(255,255,255,0.9);">Lv ${data.hint_level || 0} | ${data.sp_cost || "?"} SP</div>
-                                            <div style="font-size: 0.6em; color: rgba(200,200,200,0.9); white-space: nowrap;">E: ${effStr} | C: ${connStr} | ${timeStr}</div>
-                                        </div>
-    
-                                        <div style="position: absolute; top: 2px; right: 4px; font-size: 0.75em; text-align: right; line-height: 1.15; z-index: 4; text-shadow: 1px 1px 2px black, -1px -1px 2px black;">
-                                            <div style="font-weight: bold; color: ${color};">${sign}${absSaved.toFixed(3)}s</div>
-                                            <div style="color: ${color}; font-weight: bold; font-size: 0.9em;">(${eff.toFixed(3)})</div>
-                                        </div>
-    
-                                        <div style="position: absolute; bottom: 0px; left: 0px; right: 0px; height: 20px; z-index: 3;">
-                                            <div style="position: absolute; left: ${getBoxPct(data.wMin)}%; width: ${Math.max(0, getBoxPct(data.q1) - getBoxPct(data.wMin))}%; top: 50%; height: 2px; background: rgba(255,255,255,0.6); transform: translateY(-50%);"></div>
-                                            <div style="position: absolute; left: ${getBoxPct(data.q1)}%; width: ${Math.max(0, getBoxPct(data.q3) - getBoxPct(data.q1))}%; top: 2px; bottom: 2px; background: ${color}; opacity: 0.85; border-radius: 1px;"></div>
-                                            
-                                            <div style="position: absolute; left: ${getBoxPct(data.median)}%; top: 2px; bottom: 2px; width: 1px; background: #60a5fa; z-index: 2;"></div>
-                                            
-                                            <div style="position: absolute; left: ${getBoxPct(data.q3)}%; width: ${Math.max(0, getBoxPct(data.wMax) - getBoxPct(data.q3))}%; top: 50%; height: 2px; background: rgba(255,255,255,0.6); transform: translateY(-50%);"></div>
-                                            ${(data.outliers || []).map(val => `<div style="position: absolute; left: ${getBoxPct(val)}%; top: 50%; width: 1px; height: 10px; background: white; opacity: 0.2; border-radius: 1px; transform: translate(-50%, -50%);"></div>`).join("")}
-                                        </div>
-                                    </div>
-                                `;
-                            } else if (ratingHtml !== '') {
-                                badge.innerHTML = ratingHtml;
-                            }
-                        }
-                        row.prepend(badge);
-                        plannerRows.set(String(skill_id), {
-                            row: row,
-                            badge: badge,
-                            icon: iconCell,
-                            candidate: candidateBySkillId.get(String(skill_id)) || null,
-                            acquired: isAcquired
-                        });
-                        break;
-                    }
-                }
-            }
-    
-            for (let i = 0; i < skill_elements.length; i++) {
-                const item = skill_elements[i];
-                item.style.display = "grid";
-                item.style.width = "100%";
-                item.style.boxSizing = "border-box";
-                item.style.gridTemplateAreas = '"badge image jpname desc"';
-                item.style.gridTemplateColumns = "165px 40px 250px minmax(0, 1fr)";
-    
-                if (color_class) {
-                    if (i % 2 == 0) item.classList.add(color_class);
-                    else item.classList.remove(color_class);
-                }
-                skills_table.appendChild(item);
-            }
-            refreshPlannerUi();
-            """, self.skills_list, sim_summary, global_hist_min, global_hist_max, global_box_min, global_box_max,
-            acquired_skills_list, all_sk_data, base_median_abs, rating_data, uma_score, uma_rank, projected_score,
-            projected_rank, projected_choices, uma_next, proj_next, cm_options, selected_cm_definition,
-            projected_rank_min, projected_rank_max, available_sp, planner_candidates, sim_status, sim_status_message)
-
-    def run_simulation(self, exe_path, payload, timeout=90, expected_generation=None, skill_data_path=None):
+                self._skill_window_prepared = prepared
+                snapshot = prepared['snapshot']
+                if mode != 'ace':
+                    self.skill_browser.execute_script('return window.loadLauncherData(arguments[0]);', snapshot)
+                else:
+                    self.skill_browser.execute_script('window.updateLauncherRating(arguments[0]);', snapshot)
+        elif simulation_completion is not None and self._skill_window_prepared:
+            # Apply latest costs/ratings after importing the older race snapshot.
+            self.skill_browser.execute_script('window.updateLauncherRating(arguments[0]);',
+                                             self._skill_window_prepared['snapshot'])
+
+        with self._skill_sim_condition:
+            running = (self._skill_sim_pending is not None
+                       or self._skill_sim_active_generation == self._skill_sim_generation)
+        if not running and self._skill_window_rerun_requested and self._skill_window_prepared:
+            prepared = self._skill_window_prepared
+            self._skill_window_requested_snapshot = prepared['snapshot']
+            self._skill_window_requested_key = self._queue_skill_simulation(prepared['payload'], prepared['skillDataPath'])
+            self._skill_window_rerun_requested = False
+            running = True
+        if running or self._skill_window_rerun_requested:
+            self.set_skill_window_sim_status('running')
+        elif not (data_completion and data_completion[2]) and (simulation_completion is None or simulation_completion[2]):
+            self.set_skill_window_sim_status('done')
+
+    def run_simulation(self, exe_path, payload, expected_generation=None, skill_data_path=None):
         json_payload = json.dumps(payload)
         process = None
 
@@ -4458,7 +2424,7 @@ class CarrotJuicer:
                         self._skill_sim_stop
                         or (
                             expected_generation is not None
-                            and expected_generation != self._skill_sim_latest_generation
+                            and expected_generation != self._skill_sim_generation
                         )
                     ):
                         return {}
@@ -4479,11 +2445,13 @@ class CarrotJuicer:
                     encoding='utf-8', env=environment, creationflags=startup_flags,
                 )
 
-            stdout, stderr = process.communicate(timeout=timeout)
+            # Large evaluations may take minutes. Stop and launcher shutdown
+            # terminate the subprocess explicitly; elapsed time does not.
+            stdout, stderr = process.communicate()
 
             if expected_generation is not None:
                 with self._skill_sim_condition:
-                    if self._skill_sim_stop or expected_generation != self._skill_sim_latest_generation:
+                    if self._skill_sim_stop or expected_generation != self._skill_sim_generation:
                         return {}  # Expected cancellation, not a simulator failure.
             if stderr:
                 diagnostics = Counter(stderr.splitlines())
@@ -4501,13 +2469,6 @@ class CarrotJuicer:
                 logger.error(f"Simulator returned an invalid result: {result}")
                 return {}
             return result
-
-        except subprocess.TimeoutExpired:
-            logger.error(f"Simulation timed out after {timeout} seconds")
-            if process is not None:
-                process.kill()
-                process.communicate()
-            return {}
 
         except json.JSONDecodeError as exc:
             logger.error("Failed to parse JSON response!")
@@ -4804,15 +2765,14 @@ class CarrotJuicer:
             self.update_event_window()
 
         simulation_completion = self._take_skill_simulation_completion()
-        if self.open_skill_window:
+        data_completion = self._take_skill_data_completion()
+        if self._cancel_requested_skill_simulation():
+            pass
+        elif self.open_skill_window or (self.skill_browser and (
+                simulation_completion is not None or data_completion is not None
+                or self._skill_window_last_state_key != self._skill_window_state_key())):
             self.open_skill_window = False
-            self.previous_skills_list = list(self.skills_list)
-            self.update_skill_window()
-        elif simulation_completion is not None and self.skill_browser:
-            self.update_skill_window(simulation_completion=simulation_completion)
-        elif self.skill_browser and self._skill_window_last_state_key != self._skill_window_state_key():
-            self.previous_skills_list = list(self.skills_list)
-            self.update_skill_window()
+            self.update_skill_window(simulation_completion=simulation_completion, data_completion=data_completion)
 
         if self.open_schedule_window:
             self.open_schedule_window = False
@@ -5837,94 +3797,44 @@ def setup_helper_page(browser: horsium.BrowserWindow):
     gametora_close_ad_banner(browser)
 
 def setup_skill_window(browser: horsium.BrowserWindow):
-    # Setup callback for window position
     browser.execute_script("""
-    window.send_screen_rect = function() {
-        let rect = {
-            'x': window.screenX,
-            'y': window.screenY,
-            'width': window.outerWidth,
-            'height': window.outerHeight
+        window.ulSkillWindowUpdate = async () => {
+            try {
+                const response = await fetch('http://127.0.0.1:3150/skill-window-plan', { method: 'POST' });
+                if (!response.ok) throw new Error('UmaLauncher could not update the skill plan');
+            } catch (error) {
+                window.setLauncherDataError(error.message);
+            }
         };
-        let serializedRect = JSON.stringify(rect);
-        if (serializedRect !== window.UL_LAST_SCREEN_RECT) {
-            window.UL_LAST_SCREEN_RECT = serializedRect;
-            fetch('http://127.0.0.1:3150/skills-window-rect', { method: 'POST', body: serializedRect, headers: { 'Content-Type': 'text/plain' } });
-        }
+        window.ulSkillWindowRun = async () => {
+            try {
+                const response = await fetch('http://127.0.0.1:3150/rerun-skill-simulation', { method: 'POST' });
+                if (!response.ok) throw new Error('UmaLauncher could not start the simulation');
+            } catch (error) {
+                window.setLauncherStatus('error', error.message);
+            }
+        };
+        window.ulSkillWindowStop = async () => {
+            try {
+                const response = await fetch('http://127.0.0.1:3150/stop-skill-simulation', { method: 'POST' });
+                if (!response.ok) throw new Error('UmaLauncher could not stop the simulation');
+            } catch (error) {
+                window.setLauncherStatus('error', error.message);
+            }
+        };
+        window.send_screen_rect = function() {
+            const rect = {x: screenX, y: screenY, width: outerWidth, height: outerHeight};
+            const serialized = JSON.stringify(rect);
+            if (serialized !== window.UL_LAST_SCREEN_RECT) {
+                window.UL_LAST_SCREEN_RECT = serialized;
+                fetch('http://127.0.0.1:3150/skills-window-rect', {
+                    method: 'POST', body: serialized, headers: {'Content-Type': 'text/plain'}
+                }).catch(() => {});
+            }
+            setTimeout(window.send_screen_rect, 2000);
+        };
         setTimeout(window.send_screen_rect, 2000);
-    }
-    setTimeout(window.send_screen_rect, 2000);
     """)
-    # Hide filters by finding the search box and hiding its parent container
-    browser.execute_script("""
-        let searchBox = document.querySelector("input[class*='filters_search_box']");
-        if (searchBox && searchBox.parentElement) {
-            searchBox.parentElement.style.display = "none";
-        }
-    """)
-    # Hide navigation and collapse the empty space it leaves behind
-    browser.execute_script("""
-        let navBar = document.querySelector("nav");
-        if (navBar) navBar.style.display = "none";
-
-        let navBg = document.querySelector("div[id^='styles_page-topnav-bg']");
-        if (navBg) navBg.style.display = "none";
-        
-        let rightNav = document.querySelector("div[id*='page-rightnav']");
-        if (rightNav) rightNav.style.display = "none";
-
-        let pageWrapper = document.querySelector("div[class^='styles_page__']");
-        if (pageWrapper) {
-            // Replacing fixed pixel heights with 'auto' tells the grid to shrink empty rows to 0px
-            pageWrapper.style.gridTemplateRows = "auto auto 1fr"; 
-            pageWrapper.style.gridTemplateColumns = "[main-page] 1fr";
-            
-            pageWrapper.style.maxWidth = "none";
-            pageWrapper.style.width = "100%";
-            pageWrapper.style.padding = "0";
-        }
-
-        let mainContent = document.querySelector("main[id^='styles_page-main']");
-        if (mainContent) {
-            mainContent.style.paddingTop = "0px";
-            mainContent.style.marginTop = "0px";
-            mainContent.style.width = "100%";
-            mainContent.style.maxWidth = "none";
-        }
-    """)
-
-    # Hide the result count
-    browser.execute_script("""
-        let possibleDivs = document.querySelectorAll('div[style*="margin-bottom: 20px"]');
-        for (let div of possibleDivs) {
-            if (div.textContent.includes("Found") && div.textContent.includes("results")) {
-                div.style.display = "none";
-                break;
-            }
-        }
-    """)
-
-    gametora_dark_mode(browser)
-
-    # Enable all settings checkboxes
-    browser.execute_script("""
-        const settingsIds = [
-            'highlightCheckbox',
-            'showIdCheckbox',
-            'showCondViewerCheckbox',
-            'alwaysShowAllCheckbox'
-        ];
-
-        settingsIds.forEach(id => {
-            let cb = document.getElementById(id);
-            if (cb && !cb.checked) {
-                cb.click();
-            }
-        });
-    """)
-
-    gametora_remove_cookies_banner(browser)
-    gametora_close_ad_banner(browser)
 
 
 def setup_schedule_window(browser: horsium.BrowserWindow):
