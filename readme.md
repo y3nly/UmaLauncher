@@ -40,7 +40,8 @@ are retained for the current career.
   changes update local costs/ratings without triggering a simulation.
 - **Parent** uses published CM values and actual trainee rating to recommend purchases toward
   **SS at 17,500**. The planner prefers useful CM skills and adds rating-efficient choices when needed.
-  If SS is unreachable, it says so and recommends CM purchases without rating-only filler. **Select**
+  If SS is unreachable, it says so, maximizes CM usefulness first, then maximizes rating with otherwise
+  unused SP. Zero-CM-value purchases can use the remainder; exclusions still apply. **Select**
   marks hypothetical purchases and **Exclude** removes choices from the plan; excluded prerequisites
   block their upgrades. Unaffordable purchases cannot be selected; upgrades replace the selected lower
   rank when checking the budget. Saved choices are rechecked against current SP and costs.
@@ -61,6 +62,11 @@ The green **Run** button becomes a red **Stop** during an Ace evaluation, includ
 Existing results stay visible. New skill updates in Ace queue one latest follow-up without interrupting
 the active run. Only explicit Stop or launcher shutdown terminates an evaluation; there is no time limit.
 Rating/planning work runs separately from both packet handling and the simulator.
+
+In Parent mode, the summary reflects checked purchases. SP, projected rating, and whether SS is
+reachable update immediately in the browser using the prepared costs, rating gains, and skill groups.
+CM recommendations refresh asynchronously through a direct local request; changing choices does not
+reload skill data or charts. Rapid changes keep only the latest pending recommendation request.
 
 Skill definitions, names, ratings, costs, and prerequisite relationships come from the installed Global
 database and trainee packets. Bashin supplies CM conditions, course geometry, visuals, and published
