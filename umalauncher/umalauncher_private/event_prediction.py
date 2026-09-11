@@ -567,17 +567,22 @@ class EventPredictionExtension:
     def __init__(self, owner, parser=None):
         self.owner = owner
         if parser is None:
+            character_name_dict = {}
+            skill_name_dict = {}
             try:
                 import mdb
                 character_name_dict = mdb.get_chara_name_dict()
+                # Keep the predictor's name cache independent of skill-window data.
+                with mdb.Connection() as (_, cursor):
+                    cursor.execute('SELECT "index", text FROM text_data WHERE category = 47')
+                    skill_name_dict = dict(cursor.fetchall())
             except Exception:
                 logger.warning(
-                    "Could not load character names for private event predictions"
+                    "Could not load names for private event predictions"
                 )
-                character_name_dict = {}
             parser = EventRewardParser(
                 status_name_dict=getattr(owner, "status_name_dict", {}),
-                skill_name_dict=getattr(owner, "skill_name_dict", {}),
+                skill_name_dict=skill_name_dict,
                 character_name_dict=character_name_dict,
                 logger=logger,
             )
