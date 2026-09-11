@@ -190,7 +190,8 @@ class CarrotJuicer:
             util.get_appdata("skill-simulator"),
         )
         self._skill_window_data = skill_planner.SkillWindowData(self._skill_sim_data)
-        self._skill_data_worker = skill_planner.PreparationWorker(self._skill_window_data.prepare)
+        self._skill_data_worker = skill_planner.PreparationWorker(
+            self._skill_window_data.prepare, self._skill_window_data.replan)
         self._skill_sim_active_generation = None
         self._skill_window_last_state_key = None
         self._skill_sim_generation = 0
@@ -291,6 +292,10 @@ class CarrotJuicer:
     def request_skill_window_update(self):
         """Read the new mode/selection/planner choices on the browser thread."""
         self.open_skill_window = True
+
+    def request_skill_plan(self, request):
+        # HTTP waits on the worker, without entering the browser/packet cadence.
+        return self._skill_data_worker.submit_plan(request).result()
 
     def _cancel_requested_skill_simulation(self):
         """Cancel on the browser-owning thread, keeping the worker reusable."""
@@ -2389,7 +2394,12 @@ class CarrotJuicer:
 
         # Costs/rating preparation can proceed while the independent race worker runs.
         data_selection = {key: selection[key] for key in ('cmId', 'style', 'mode', 'pageId', 'version', 'choices')}
-        data_key = skill_simulation.fingerprint([state_key, data_selection])
+        # Choice-only requests have their own direct reply. A later maintenance
+        # update must not repeat them as a full published-data import.
+        data_identity = {k: v for k, v in data_selection.items()
+                         if mode != 'rating' or not selection.get('directPlanner')
+                         or k not in ('version', 'choices')}
+        data_key = skill_simulation.fingerprint([state_key, data_identity])
         if force or data_key != self._skill_window_data_key:
             self._skill_window_data_key = data_key
             self._skill_window_prepared = None
@@ -2409,7 +2419,7 @@ class CarrotJuicer:
                     self.skill_browser.execute_script('return window.loadLauncherData(arguments[0]);', snapshot)
                 else:
                     self.skill_browser.execute_script('window.updateLauncherRating(arguments[0]);', snapshot)
-        elif simulation_completion is not None and self._skill_window_prepared:
+        elif simulation_completion is not None and self._skill_window_prepared and mode == 'ace':
             # Apply latest costs/ratings after importing the older race snapshot.
             self.skill_browser.execute_script('window.updateLauncherRating(arguments[0]);',
                                              self._skill_window_prepared['snapshot'])
@@ -3822,11 +3832,16 @@ def setup_helper_page(browser: horsium.BrowserWindow):
 
 def setup_skill_window(browser: horsium.BrowserWindow):
     browser.execute_script("""
-        window.ulSkillWindowUpdate = async () => {
+        window.ulSkillWindowUpdate = async (selection) => {
             try {
-                const response = await fetch('http://127.0.0.1:3150/skill-window-plan', { method: 'POST' });
+                const response = await fetch('http://127.0.0.1:3150/skill-window-plan', {
+                    method: 'POST', body: selection ? JSON.stringify(selection) : undefined,
+                    headers: {'Content-Type': 'text/plain'}
+                });
                 if (!response.ok) throw new Error('UmaLauncher could not update the skill plan');
+                return response.status === 204 ? null : await response.json();
             } catch (error) {
+                if (selection) throw error;
                 window.setLauncherDataError(error.message);
             }
         };

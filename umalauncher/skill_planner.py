@@ -7,6 +7,8 @@ import math
 import threading
 import time
 import traceback
+import uuid
+from concurrent.futures import Future
 from loguru import logger
 import mdb
 import skill_simulation as sim
@@ -224,11 +226,14 @@ def purchase_plan(rating, options, budget, choices):
     reachable = max_rating_gain >= needed
     base_reachable = max_gain(False) >= needed
     cm_only = needed == 0 or not reachable
-    # State: spend, gain, base gain, base CM, upgrade CM, ranked count, options.
-    zero = (0, 0, 0, 0.0, 0.0, 0, ())
+    # State: spend, gain, base gain, base CM, upgrade CM, ranked count, options, tie IDs.
+    tie_ids = {o['id']: -int(o['id']) for o in options}
+    zero = (0, 0, 0, 0.0, 0.0, 0, (), ())
     states = {(0, 0): zero}
     def preference(s):
-        ids = tuple(-int(o['id']) for o in s[6])
+        ids = s[7]
+        if not reachable:
+            return (s[3], s[1], -s[5], -s[0], ids)
         if cm_only:
             return (s[3]+s[4], -s[5], -s[0], ids)
         if base_reachable:
@@ -238,10 +243,15 @@ def purchase_plan(rating, options, budget, choices):
         following = dict(states)
         for s in states.values():
             for o in groups[group]:
-                if s[0]+o['cost'] > remaining or (cm_only and (o['cm'] is None or o['cm'] <= 0)):
+                if s[0]+o['cost'] > remaining or (cm_only and (
+                        o['cm'] is None or o['cm'] < 0 or (reachable and o['cm'] == 0))):
                     continue
+                # Without a reachable SS target, preserve actual CM value first
+                # and use tied CM outcomes to maximize rating with spare SP.
                 candidate = (s[0]+o['cost'], s[1]+o['gain'], s[2]+o['baseGain'],
-                             s[3]+o['baseCm'], s[4]+o['upgradeCm'], s[5]+int(o['ranked']), s[6]+(o,))
+                             s[3]+(o['baseCm'] if reachable else o['cm']),
+                             s[4]+o['upgradeCm'], s[5]+int(o['ranked']),
+                             s[6]+(o,), s[7]+(tie_ids[o['id']],))
                 capped = 0 if cm_only else min(needed, candidate[2] if base_reachable else candidate[1])
                 key = (candidate[0], capped)
                 if key not in following or preference(candidate) > preference(following[key]):
@@ -260,6 +270,7 @@ def purchase_plan(rating, options, budget, choices):
     projected = rating['score'] + gain + best[1]
     selected = [dict(o, reason='Selected' if o['id'] in required else
                 'Reaching SS' if not cm_only and projected-o['gain'] < SS_TARGET else
+                'Spare SP rating' if not reachable and o['cm'] == 0 else
                 'CM value' if o['cm'] is not None and o['cm'] > 0 else 'Reaching SS') for o in selected]
     selected.sort(key=lambda o: (o['ranked'], -(o['cm'] or 0), int(o['id'])))
     return dict(result, status='ready' if reachable else 'unreachable', purchases=selected,
@@ -277,8 +288,10 @@ class SkillWindowData:
         self.page_id = None
         self.configs = self.courses = None
         self.published = {}
+        self.planning_context = None
 
     def prepare(self, request):
+        self.planning_context = None
         selection, chara = request['selection'], request['chara']
         cm_id, style, mode = selection['cmId'], selection['style'], selection['mode']
         page_id = selection.get('pageId')
@@ -321,16 +334,41 @@ class SkillWindowData:
             snapshot['publishedBenchmarks'] = published['benchmarks']
             snapshot['meta']['locationFiles'] = published['meta'].get('locationFiles', {})
             snapshot['baseSetting'] = dict(payload['baseSetting'], umaStatus=published['benchmarks'][style]['baseStats'])
+            context_id = uuid.uuid4().hex
+            self.planning_context = (context_id, rating, options, chara['skill_point'])
+            snapshot['rating'].update(contextId=context_id, options=[
+                dict(id=o['id'], group=o['group'], cost=o['cost'], gain=o['gain'],
+                     prerequisites=[step['id'] for step in o['chain']]) for o in options
+            ])
         return dict(snapshot=snapshot, payload=payload, skillDataPath=str(self.snapshot.path))
+
+    def replan(self, request):
+        """Reprice choices against the last prepared inputs, without loading any data."""
+        if not self.planning_context or request.get('contextId') != self.planning_context[0]:
+            return None
+        version, choices = request.get('version'), request.get('choices')
+        if type(version) is not int or version < 0 or not isinstance(choices, dict):
+            raise ValueError('Invalid planner selection')
+        if any(not isinstance(choices.get(key), list) or len(choices[key]) > 1000
+               or any(type(sid) not in (str, int) for sid in choices[key])
+               for key in ('required', 'excluded')):
+            raise ValueError('Invalid planner choices')
+        context_id, rating, options, budget = self.planning_context
+        return dict(contextId=context_id, selectionVersion=version,
+                    plan=purchase_plan(rating, options, budget, choices))
 
 
 class PreparationWorker:
     """One active calculation and one latest pending request, independent of Ace."""
-    def __init__(self, prepare):
+    def __init__(self, prepare, replan=None):
         self.prepare = prepare
+        self.replan = replan
         self.condition = threading.Condition()
         self.revision = 0
         self.pending = self.completion = None
+        self.plan_pending = self.plan_reply = None
+        self.context_id = None
+        self.plan_version = -1
         self.stopped = False
         self.thread = threading.Thread(target=self._run, name='skill-planner-worker', daemon=True)
 
@@ -351,10 +389,34 @@ class PreparationWorker:
             result, self.completion = self.completion, None
             return result
 
+    def submit_plan(self, request):
+        """Reply directly to the browser; keep only its latest pending choices."""
+        reply = Future()
+        with self.condition:
+            version = request.get('version')
+            if (self.stopped or self.replan is None or type(version) is not int
+                    or not self.context_id or request.get('contextId') != self.context_id
+                    or version < self.plan_version):
+                reply.set_result(None)
+                return reply
+            self.plan_version = version
+            if self.plan_pending:
+                self.plan_pending[1].set_result(None)
+            if self.plan_reply and not self.plan_reply.done():
+                self.plan_reply.set_result(None)
+            self.plan_pending = (request, reply)
+            self.condition.notify()
+        return reply
+
     def stop(self):
         with self.condition:
             self.stopped = True
             self.pending = None
+            if self.plan_pending:
+                self.plan_pending[1].set_result(None)
+                self.plan_pending = None
+            if self.plan_reply and not self.plan_reply.done():
+                self.plan_reply.set_result(None)
             self.condition.notify_all()
         if self.thread.is_alive():
             self.thread.join(timeout=1)
@@ -362,18 +424,34 @@ class PreparationWorker:
     def _run(self):
         while True:
             with self.condition:
-                self.condition.wait_for(lambda: self.stopped or self.pending is not None)
+                self.condition.wait_for(lambda: self.stopped or self.pending is not None or self.plan_pending is not None)
                 if self.stopped:
                     return
-                revision, request = self.pending
-                self.pending = None
+                if self.pending is not None:
+                    revision, request = self.pending
+                    self.pending = None
+                    reply = None
+                else:
+                    request, reply = self.plan_pending
+                    self.plan_pending = None
+                    self.plan_reply = reply
             start = time.monotonic()
             try:
-                result, error = self.prepare(request), None
-                logger.debug(f"Skill window {request['selection']['mode']} preparation: {time.monotonic()-start:.3f}s")
+                result, error = (self.replan(request) if reply else self.prepare(request)), None
+                operation = 'choices' if reply else request['selection']['mode']
+                logger.debug(f"Skill window {operation} preparation: {time.monotonic()-start:.3f}s")
             except Exception as exc:
                 logger.error(f'Skill window preparation failed:\n{traceback.format_exc()}')
                 result, error = None, str(exc)
             with self.condition:
-                if not self.stopped and revision == self.revision:
+                if reply:
+                    self.plan_reply = None
+                    if not reply.done():
+                        if error:
+                            reply.set_exception(ValueError(error))
+                        else:
+                            reply.set_result(result)
+                elif not self.stopped and revision == self.revision:
+                    self.context_id = result['snapshot']['rating'].get('contextId') if result else None
+                    self.plan_version = -1
                     self.completion = (revision, result, error)

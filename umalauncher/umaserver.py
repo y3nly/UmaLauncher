@@ -72,10 +72,20 @@ def stop_skill_simulation():
 
 @app.route('/skill-window-plan', methods=['POST'])
 def update_skill_window_plan():
-    # The browser owns mode/choices; read them on its owning thread.
-    if threader.carrotjuicer:
+    if not threader.carrotjuicer:
+        return 'UmaLauncher is not running', 503
+    if not request.data:
+        # CM/style/mode changes still read their inputs on the browser thread.
         threader.carrotjuicer.request_skill_window_update()
-    return '', 200
+        return '', 204
+    try:
+        selection = json.loads(request.data)
+        if not isinstance(selection, dict):
+            raise ValueError('Invalid planner selection')
+        result = threader.carrotjuicer.request_skill_plan(selection)
+    except (ValueError, UnicodeError) as error:
+        return str(error), 400
+    return (result, 200) if result is not None else ('', 204)
 
 @app.route('/open-schedule-window', methods=['POST'])
 def open_schedule_window():
