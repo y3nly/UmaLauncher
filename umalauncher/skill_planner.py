@@ -300,19 +300,20 @@ class SkillWindowData:
             self.configs = self.courses = None
             self.published.clear()
         if self.configs is None:
-            configs = sim.load_cm_configs(self.bashin.load_json)
-            courses = sim.load_course_data(self.bashin.load_json)
-            self.configs, self.courses = configs, courses
+            self.configs = sim.load_cm_configs(self.bashin.load_json)
         self.snapshot.refresh(mdb.get_db_path())
         available = expand_purchases(request['available'])
         cm = self.configs[cm_id]
-        course = self.courses['courses'][str(cm['course'])]
+        if cm.get('kind') not in ('tt', 'cm_pool') and self.courses is None:
+            self.courses = sim.load_course_data(self.bashin.load_json)
+        course = (cm['racePool']['scenarios'][0]['track'] if cm.get('kind') == 'cm_pool' else
+                  cm['racePool']['courses'][0] if cm.get('kind') == 'tt' else self.courses['courses'][str(cm['course'])])
         payload, rows, benchmarks = sim.build_evaluation(chara, available, cm, course, style,
                                                        self.snapshot.metadata, mdb.get_prerequisite_skill_ids)
         published = None
         if mode != 'ace':
             if cm_id not in self.published:
-                value = self.bashin.load_json(f'https://bashin.app/cm/cm_data_{cm_id}.json')
+                value = self.bashin.load_json(sim.BASHIN_DATA_ROOT + cm['file'])
                 if not value.get('skills') or str(value.get('meta', {}).get('cmId')) != str(cm_id):
                     raise ValueError('Published CM evaluation is missing or invalid')
                 self.published[cm_id] = value
@@ -322,11 +323,14 @@ class SkillWindowData:
         plan = purchase_plan(rating, options, chara['skill_point'], choices) if mode == 'rating' else None
         snapshot = dict(careerId=sim.career_id(chara), source='ace' if mode == 'ace' else 'published',
             mode=mode, selectionVersion=selection['version'],
-            meta=dict(cmId=cm_id, courseId=cm['course'], name=cm['name'], label=f"CM {cm_id} {cm['name']}",
-                      season=cm['season'], weather=cm['weather'], groundCondition=cm['ground_condition']),
+            meta=dict(cm['meta']),
             baseSetting=payload['baseSetting'], courseData=self.courses, skills=rows,
             benchmarkDefinitions=benchmarks, rating=dict(current=rating, availableSp=chara['skill_point'],
                 plan=plan, learnedIds=[str(s['skill_id']) for s in chara['skill_array']]))
+        if mode == 'ace':
+            snapshot['meta']['effectivenessThresholdSeconds'] = payload['effectivenessThresholdSeconds']
+            if 'racePool' in payload:
+                snapshot['racePool'] = payload['racePool']
         if published:
             metrics = {str(s['id']): s['metrics'] for s in published['skills']}
             for row in rows:
@@ -334,6 +338,8 @@ class SkillWindowData:
             snapshot['publishedBenchmarks'] = published['benchmarks']
             snapshot['meta']['locationFiles'] = published['meta'].get('locationFiles', {})
             snapshot['baseSetting'] = dict(payload['baseSetting'], umaStatus=published['benchmarks'][style]['baseStats'])
+            if published['benchmarks'][style].get('staminaByCourse'):
+                snapshot['staminaByCourse'] = published['benchmarks'][style]['staminaByCourse']
             context_id = uuid.uuid4().hex
             self.planning_context = (context_id, rating, options, chara['skill_point'])
             snapshot['rating'].update(contextId=context_id, options=[

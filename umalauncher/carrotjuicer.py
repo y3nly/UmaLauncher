@@ -2334,7 +2334,7 @@ class CarrotJuicer:
             """
             if (!['getLauncherSelection', 'updateLauncherRating', 'loadLauncherData']
                 .every(name => typeof window[name] === 'function')) return null;
-            return window.getLauncherSelection(arguments[0], arguments[1]);
+            return window.getLauncherSelection(arguments[0], arguments[1], null, {racePools: true, raceScenarios: true});
             """,
             skill_simulation.career_id(chara), skill_simulation.STYLES[chara['race_running_style']-1],
         ))
