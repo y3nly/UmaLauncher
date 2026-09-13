@@ -139,5 +139,32 @@ class TeamTrialsTests(unittest.TestCase):
         finally:
             release.set(); worker.stop()
 
+    def test_cancel_discards_active_preparation_and_worker_can_run_again(self):
+        started, release = threading.Event(), threading.Event()
+        cancelled = []
+        def prepare(request):
+            if request['selection']['cmId'] == 'old':
+                started.set()
+                release.wait(2)
+                cancelled.append(request['_cancelled']())
+            return {'snapshot': {'rating': {'contextId': request['selection']['cmId']}}}
+        worker = planner.PreparationWorker(prepare)
+        try:
+            worker.submit({'selection': {'cmId': 'old', 'mode': 'rating'}})
+            self.assertTrue(started.wait(2))
+            worker.cancel()
+            self.assertIsNone(worker.take())
+            worker.submit({'selection': {'cmId': 'new', 'mode': 'rating'}})
+            release.set()
+            with worker.condition:
+                self.assertTrue(worker.condition.wait_for(lambda: worker.completion is not None, timeout=2))
+            completion = worker.take()
+            self.assertEqual(cancelled, [True])
+            self.assertEqual(completion[1]['snapshot']['rating']['contextId'], 'new')
+            self.assertIsNone(completion[2])
+        finally:
+            release.set()
+            worker.stop()
+
 
 if __name__=='__main__': unittest.main()
