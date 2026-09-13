@@ -284,6 +284,7 @@ class CarrotJuicer:
         self.open_skill_window = True
 
     def request_skill_simulation_stop(self):
+        self._skill_data_worker.cancel()
         with self._skill_sim_condition:
             self._skill_sim_cancel_requested = True
 
@@ -305,13 +306,18 @@ class CarrotJuicer:
             self._force_next_skill_simulation = False
             self._skill_window_requested_key = None
             self._skill_window_requested_snapshot = None
+            self._skill_window_data_key = None
+            self._skill_window_prepared = None
             self._skill_window_rerun_requested = False
             self.open_skill_window = False
+        self._skill_data_worker.cancel()
         skill_key = self._skill_window_state_key()
         self._skill_window_last_state_key = skill_key
         chara = (self.last_helper_data or {}).get('chara_info')
         self._skill_window_last_skill_key = skill_simulation.skill_change_key(chara) if chara else None
         self.set_skill_window_sim_status("stopped", "Stopped")
+        if self.skill_browser:
+            self.skill_browser.execute_script("if (window.setLauncherPlanning) window.setLauncherPlanning(false);")
         return True
 
     def _stop_skill_simulation_worker(self):
@@ -2334,7 +2340,7 @@ class CarrotJuicer:
             """
             if (!['getLauncherSelection', 'updateLauncherRating', 'loadLauncherData']
                 .every(name => typeof window[name] === 'function')) return null;
-            return window.getLauncherSelection(arguments[0], arguments[1]);
+            return window.getLauncherSelection(arguments[0], arguments[1], null, {racePools: true, raceScenarios: true});
             """,
             skill_simulation.career_id(chara), skill_simulation.STYLES[chara['race_running_style']-1],
         ))
@@ -2386,7 +2392,10 @@ class CarrotJuicer:
                 chara=copy.deepcopy(chara), available=copy.deepcopy(self.skill_data),
                 selection=selection,
             ))
+            if mode == 'rating':
+                self.skill_browser.execute_script("if (window.setLauncherPlanning) window.setLauncherPlanning(true);")
         if data_completion is not None and data_completion[0] == self._skill_window_data_revision:
+            self.skill_browser.execute_script("if (window.setLauncherPlanning) window.setLauncherPlanning(false);")
             _, prepared, error = data_completion
             if error:
                 self._skill_window_rerun_requested = False

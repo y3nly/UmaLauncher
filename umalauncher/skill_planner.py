@@ -8,7 +8,9 @@ import threading
 import time
 import traceback
 import uuid
-from concurrent.futures import Future
+from array import array
+from collections import OrderedDict
+from concurrent.futures import CancelledError, Future
 from loguru import logger
 import mdb
 import skill_simulation as sim
@@ -170,8 +172,12 @@ def rating_rows(chara, available, rows, catalog, published=None, style=None):
     return rating, options
 
 
-def purchase_plan(rating, options, budget, choices):
+def purchase_plan(rating, options, budget, choices, cancelled=None):
     """Grouped DP: CM first, SS feasibility, and minimum necessary ranked padding."""
+    def check_cancelled():
+        if cancelled and cancelled():
+            raise CancelledError()
+    check_cancelled()
     by_id = {o['id']: o for o in options}
     fixed, rejected, spent = {}, [], 0
     # Recheck saved choices against current SP/costs, preserving selection order.
@@ -206,13 +212,15 @@ def purchase_plan(rating, options, budget, choices):
         return dict(result, status='conflict', purchases=fixed_options, plannedCost=spent,
                     leftoverSp=budget-spent, projectedScore=rating['score']+gain,
                     projectedRank=rank_name(rating['score']+gain))
-    groups = {g: opts for g, opts in groups.items() if g not in fixed}
     remaining = budget - spent
+    groups = {g: affordable for g, opts in groups.items() if g not in fixed
+              if (affordable := [o for o in opts if o['cost'] <= remaining])}
     needed = max(0, SS_TARGET - rating['score'] - gain)
     def max_gain(include_ranked):
         dp = [-1] * (remaining + 1)
         dp[0] = 0
         for opts in groups.values():
+            check_cancelled()
             following = dp.copy()
             for o in opts:
                 if o['ranked'] and not include_ranked:
@@ -224,49 +232,138 @@ def purchase_plan(rating, options, budget, choices):
         return max(dp)
     max_rating_gain = max_gain(True)
     reachable = max_rating_gain >= needed
-    base_reachable = max_gain(False) >= needed
+    base_reachable = needed == 0 or (reachable and max_gain(False) >= needed)
     cm_only = needed == 0 or not reachable
-    # State: spend, gain, base gain, base CM, upgrade CM, ranked count, options, tie IDs.
-    tie_ids = {o['id']: -int(o['id']) for o in options}
-    zero = (0, 0, 0, 0.0, 0.0, 0, (), ())
-    states = {(0, 0): zero}
-    def preference(s):
-        ids = s[7]
-        if not reachable:
-            return (s[3], s[1], -s[5], -s[0], ids)
-        if cm_only:
-            return (s[3]+s[4], -s[5], -s[0], ids)
-        if base_reachable:
-            return (s[3], s[4], -s[5], -s[0], ids)
-        return (-s[5], s[3], s[4], -s[0], ids)
+    if not reachable:
+        def priority(cost, gain, base_cm, upgrade_cm, ranked):
+            return (base_cm, gain, -ranked, -cost)
+    elif cm_only:
+        def priority(cost, gain, base_cm, upgrade_cm, ranked):
+            return (base_cm + upgrade_cm, -ranked, -cost)
+    elif base_reachable:
+        def priority(cost, gain, base_cm, upgrade_cm, ranked):
+            return (base_cm, upgrade_cm, -ranked, -cost)
+    else:
+        def priority(cost, gain, base_cm, upgrade_cm, ranked):
+            return (-ranked, base_cm, upgrade_cm, -cost)
+
+    # Path nodes contain two packed indices instead of references to whole
+    # earlier states. Numeric states can then be discarded immediately.
+    previous_nodes, purchase_indices = array('i', [-1]), array('i', [-1])
+    option_indices = {o['id']: i for i, o in enumerate(options)}
+    tie_ids = [-int(o['id']) for o in options]
+    ids_by_node = {0: ()}
+
+    def path_ids(node):
+        ids = ids_by_node.get(node)
+        if ids is None:
+            suffix, ancestor = [], node
+            while ancestor not in ids_by_node:
+                suffix.append(tie_ids[purchase_indices[ancestor]])
+                ancestor = previous_nodes[ancestor]
+            ids = ids_by_node[node] = ids_by_node[ancestor] + tuple(reversed(suffix))
+        return ids
+
+    # State: spend, gain, base gain, base CM, upgrade CM, ranked count, priority, node.
+    zero = (0, 0, 0, 0.0, 0.0, 0, priority(0, 0, 0.0, 0.0, 0), 0)
+    states = [zero]
+    by_spend = [None] * (remaining + 1)
+    by_spend[0] = zero if cm_only else {0: zero}
     for group in sorted(groups):
-        following = dict(states)
-        for s in states.values():
-            for o in groups[group]:
-                if s[0]+o['cost'] > remaining or (cm_only and (
-                        o['cm'] is None or o['cm'] < 0 or (reachable and o['cm'] == 0))):
+        check_cancelled()
+        purchases = [
+            (o['cost'], o['gain'], o['baseGain'], o['baseCm'] if reachable else o['cm'],
+             o['upgradeCm'], int(o['ranked']), option_indices[o['id']])
+            for o in groups[group]
+            if not cm_only or (o['cm'] is not None and o['cm'] >= 0 and
+                               (not reachable or o['cm'] > 0))
+        ]
+        if not purchases:
+            continue
+        following = by_spend.copy()
+        for index, s in enumerate(states):
+            if index % 256 == 0:
+                check_cancelled()
+            (spent_so_far, gain_so_far, base_gain_so_far, base_cm_so_far,
+             upgrade_cm_so_far, ranked_so_far, _, parent_node) = s
+            for cost, option_gain, base_gain, base_cm, upgrade_cm, ranked, option_index in purchases:
+                new_spent = spent_so_far + cost
+                if new_spent > remaining:
                     continue
-                # Without a reachable SS target, preserve actual CM value first
-                # and use tied CM outcomes to maximize rating with spare SP.
-                candidate = (s[0]+o['cost'], s[1]+o['gain'], s[2]+o['baseGain'],
-                             s[3]+(o['baseCm'] if reachable else o['cm']),
-                             s[4]+o['upgradeCm'], s[5]+int(o['ranked']),
-                             s[6]+(o,), s[7]+(tie_ids[o['id']],))
-                capped = 0 if cm_only else min(needed, candidate[2] if base_reachable else candidate[1])
-                key = (candidate[0], capped)
-                if key not in following or preference(candidate) > preference(following[key]):
-                    following[key] = candidate
-        # Keep only rating/CM Pareto improvements at each spend, as in Umapyoi.
-        states = {}
-        best_by_spend = {}
-        for key in sorted(following, key=lambda k: (k[0], -k[1])):
-            p = preference(following[key])
-            if key[0] not in best_by_spend or p > best_by_spend[key[0]]:
-                states[key] = following[key]
-                best_by_spend[key[0]] = p
-    candidates = [s for (_, capped), s in states.items() if cm_only or capped >= needed]
-    best = max(candidates, key=preference)
-    selected = fixed_options + list(best[6])
+                new_gain = gain_so_far + option_gain
+                new_base_gain = base_gain_so_far + base_gain
+                new_base_cm = base_cm_so_far + base_cm
+                new_upgrade_cm = upgrade_cm_so_far + upgrade_cm
+                new_ranked = ranked_so_far + ranked
+                candidate_priority = priority(new_spent, new_gain, new_base_cm, new_upgrade_cm, new_ranked)
+                if cm_only:
+                    existing = following[new_spent]
+                else:
+                    capped_gain = new_base_gain if base_reachable else new_gain
+                    capped = needed if capped_gain > needed else capped_gain
+                    bucket = following[new_spent]
+                    existing = bucket.get(capped) if bucket is not None else None
+                ids = None
+                if existing is not None:
+                    if candidate_priority < existing[6]:
+                        continue
+                    if candidate_priority == existing[6]:
+                        ids = path_ids(parent_node) + (tie_ids[option_index],)
+                        if ids <= path_ids(existing[7]):
+                            continue
+                node = len(previous_nodes)
+                previous_nodes.append(parent_node)
+                purchase_indices.append(option_index)
+                if ids is not None:
+                    ids_by_node[node] = ids
+                candidate = (new_spent, new_gain, new_base_gain, new_base_cm, new_upgrade_cm,
+                             new_ranked, candidate_priority, node)
+                if cm_only:
+                    following[new_spent] = candidate
+                else:
+                    # Never mutate a previous-group bucket: ranks in one group
+                    # are alternatives, not purchases that can be accumulated.
+                    if bucket is None:
+                        bucket = following[new_spent] = {}
+                    elif bucket is by_spend[new_spent]:
+                        bucket = following[new_spent] = bucket.copy()
+                    bucket[capped] = candidate
+        if cm_only:
+            states = [s for s in following if s is not None]
+        else:
+            states = []
+            for cost, bucket in enumerate(following):
+                if cost % 256 == 0:
+                    check_cancelled()
+                if bucket is None:
+                    continue
+                # Unchanged buckets already have the required order and frontier.
+                if bucket is by_spend[cost] or len(bucket) == 1:
+                    states.extend(bucket.values())
+                    continue
+                kept, best = {}, None
+                # Preserve the existing dominance rule and traversal order,
+                # sorting only rating gains within an individual SP bucket.
+                for capped in sorted(bucket, reverse=True):
+                    candidate = bucket[capped]
+                    if (best is None or candidate[6] > best[6] or
+                            (candidate[6] == best[6] and path_ids(candidate[7]) > path_ids(best[7]))):
+                        kept[capped] = best = candidate
+                        states.append(candidate)
+                following[cost] = kept
+        by_spend = following
+    best = None
+    for s in states:
+        if not cm_only and s[2 if base_reachable else 1] < needed:
+            continue
+        if (best is None or s[6] > best[6] or
+                (s[6] == best[6] and path_ids(s[7]) > path_ids(best[7]))):
+            best = s
+    selected, node = [], best[7]
+    while node:
+        selected.append(options[purchase_indices[node]])
+        node = previous_nodes[node]
+    selected = fixed_options + list(reversed(selected))
     projected = rating['score'] + gain + best[1]
     selected = [dict(o, reason='Selected' if o['id'] in required else
                 'Reaching SS' if not cm_only and projected-o['gain'] < SS_TARGET else
@@ -289,9 +386,26 @@ class SkillWindowData:
         self.configs = self.courses = None
         self.published = {}
         self.planning_context = None
+        self.plans = OrderedDict()
+
+    def _plan(self, rating, options, budget, choices, cancelled):
+        # Selection order matters for ranks and for pruning unaffordable choices.
+        key = (tuple(map(str, choices.get('required', []))),
+               tuple(sorted(set(map(str, choices.get('excluded', []))))))
+        if cancelled and cancelled():
+            raise CancelledError()
+        if key in self.plans:
+            self.plans.move_to_end(key)
+            return self.plans[key]
+        plan = purchase_plan(rating, options, budget, choices, cancelled)
+        self.plans[key] = plan
+        if len(self.plans) > 32:
+            self.plans.popitem(last=False)
+        return plan
 
     def prepare(self, request):
         self.planning_context = None
+        self.plans.clear()
         selection, chara = request['selection'], request['chara']
         cm_id, style, mode = selection['cmId'], selection['style'], selection['mode']
         page_id = selection.get('pageId')
@@ -300,33 +414,37 @@ class SkillWindowData:
             self.configs = self.courses = None
             self.published.clear()
         if self.configs is None:
-            configs = sim.load_cm_configs(self.bashin.load_json)
-            courses = sim.load_course_data(self.bashin.load_json)
-            self.configs, self.courses = configs, courses
+            self.configs = sim.load_cm_configs(self.bashin.load_json)
         self.snapshot.refresh(mdb.get_db_path())
         available = expand_purchases(request['available'])
         cm = self.configs[cm_id]
-        course = self.courses['courses'][str(cm['course'])]
+        if cm.get('kind') not in ('tt', 'cm_pool') and self.courses is None:
+            self.courses = sim.load_course_data(self.bashin.load_json)
+        course = (cm['racePool']['scenarios'][0]['track'] if cm.get('kind') == 'cm_pool' else
+                  cm['racePool']['courses'][0] if cm.get('kind') == 'tt' else self.courses['courses'][str(cm['course'])])
         payload, rows, benchmarks = sim.build_evaluation(chara, available, cm, course, style,
                                                        self.snapshot.metadata, mdb.get_prerequisite_skill_ids)
         published = None
         if mode != 'ace':
             if cm_id not in self.published:
-                value = self.bashin.load_json(f'https://bashin.app/cm/cm_data_{cm_id}.json')
+                value = self.bashin.load_json(sim.BASHIN_DATA_ROOT + cm['file'])
                 if not value.get('skills') or str(value.get('meta', {}).get('cmId')) != str(cm_id):
                     raise ValueError('Published CM evaluation is missing or invalid')
                 self.published[cm_id] = value
             published = self.published[cm_id]
         rating, options = rating_rows(chara, available, rows, self.snapshot.catalog, published, style)
         choices = selection.get('choices', {})
-        plan = purchase_plan(rating, options, chara['skill_point'], choices) if mode == 'rating' else None
+        plan = self._plan(rating, options, chara['skill_point'], choices, request.get('_cancelled')) if mode == 'rating' else None
         snapshot = dict(careerId=sim.career_id(chara), source='ace' if mode == 'ace' else 'published',
             mode=mode, selectionVersion=selection['version'],
-            meta=dict(cmId=cm_id, courseId=cm['course'], name=cm['name'], label=f"CM {cm_id} {cm['name']}",
-                      season=cm['season'], weather=cm['weather'], groundCondition=cm['ground_condition']),
+            meta=dict(cm['meta']),
             baseSetting=payload['baseSetting'], courseData=self.courses, skills=rows,
             benchmarkDefinitions=benchmarks, rating=dict(current=rating, availableSp=chara['skill_point'],
                 plan=plan, learnedIds=[str(s['skill_id']) for s in chara['skill_array']]))
+        if mode == 'ace':
+            snapshot['meta']['effectivenessThresholdSeconds'] = payload['effectivenessThresholdSeconds']
+            if 'racePool' in payload:
+                snapshot['racePool'] = payload['racePool']
         if published:
             metrics = {str(s['id']): s['metrics'] for s in published['skills']}
             for row in rows:
@@ -334,6 +452,8 @@ class SkillWindowData:
             snapshot['publishedBenchmarks'] = published['benchmarks']
             snapshot['meta']['locationFiles'] = published['meta'].get('locationFiles', {})
             snapshot['baseSetting'] = dict(payload['baseSetting'], umaStatus=published['benchmarks'][style]['baseStats'])
+            if published['benchmarks'][style].get('staminaByCourse'):
+                snapshot['staminaByCourse'] = published['benchmarks'][style]['staminaByCourse']
             context_id = uuid.uuid4().hex
             self.planning_context = (context_id, rating, options, chara['skill_point'])
             snapshot['rating'].update(contextId=context_id, options=[
@@ -355,7 +475,7 @@ class SkillWindowData:
             raise ValueError('Invalid planner choices')
         context_id, rating, options, budget = self.planning_context
         return dict(contextId=context_id, selectionVersion=version,
-                    plan=purchase_plan(rating, options, budget, choices))
+                    plan=self._plan(rating, options, budget, choices, request.get('_cancelled')))
 
 
 class PreparationWorker:
@@ -369,6 +489,7 @@ class PreparationWorker:
         self.plan_pending = self.plan_reply = None
         self.context_id = None
         self.plan_version = -1
+        self.active_cancel = None
         self.stopped = False
         self.thread = threading.Thread(target=self._run, name='skill-planner-worker', daemon=True)
 
@@ -379,6 +500,8 @@ class PreparationWorker:
             if not self.thread.is_alive():
                 self.thread.start()
             self.revision += 1
+            if self.active_cancel:
+                self.active_cancel.set()
             self.pending = (self.revision, request)
             self.completion = None
             self.condition.notify()
@@ -404,20 +527,31 @@ class PreparationWorker:
                 self.plan_pending[1].set_result(None)
             if self.plan_reply and not self.plan_reply.done():
                 self.plan_reply.set_result(None)
+            if self.plan_reply and self.active_cancel:
+                self.active_cancel.set()
             self.plan_pending = (request, reply)
             self.condition.notify()
         return reply
 
-    def stop(self):
+    def cancel(self):
+        """Stop preparation/recommendations without shutting down the reusable worker."""
         with self.condition:
-            self.stopped = True
+            self.revision += 1
             self.pending = None
+            self.completion = None
+            if self.active_cancel:
+                self.active_cancel.set()
             if self.plan_pending:
                 self.plan_pending[1].set_result(None)
                 self.plan_pending = None
             if self.plan_reply and not self.plan_reply.done():
                 self.plan_reply.set_result(None)
             self.condition.notify_all()
+
+    def stop(self):
+        with self.condition:
+            self.stopped = True
+            self.cancel()
         if self.thread.is_alive():
             self.thread.join(timeout=1)
 
@@ -435,15 +569,20 @@ class PreparationWorker:
                     request, reply = self.plan_pending
                     self.plan_pending = None
                     self.plan_reply = reply
+                self.active_cancel = threading.Event()
+                request = dict(request, _cancelled=self.active_cancel.is_set)
             start = time.monotonic()
             try:
                 result, error = (self.replan(request) if reply else self.prepare(request)), None
                 operation = 'choices' if reply else request['selection']['mode']
                 logger.debug(f"Skill window {operation} preparation: {time.monotonic()-start:.3f}s")
+            except CancelledError:
+                result, error = None, None
             except Exception as exc:
                 logger.error(f'Skill window preparation failed:\n{traceback.format_exc()}')
                 result, error = None, str(exc)
             with self.condition:
+                self.active_cancel = None
                 if reply:
                     self.plan_reply = None
                     if not reply.done():
