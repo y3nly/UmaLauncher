@@ -13,6 +13,35 @@ MISSING_CHARACTER_IMAGE = (
     "%3Ctext x='32' y='44' text-anchor='middle' font-size='40' fill='%23ffffff'%3E?%3C/text%3E%3C/svg%3E"
 )
 
+UNIQUE_SKILL_EVENT_TURN = 55
+UNIQUE_SKILL_WARNING_START_TURN = UNIQUE_SKILL_EVENT_TURN - 8
+UNIQUE_SKILL_DIRECTOR_SCENARIOS = (1, 3, 5)
+UNIQUE_SKILL_FAN_ONLY_SCENARIOS = (2,)
+UNIQUE_SKILL_REDUCED_FAN_CHARAS = (1046, 1052, 1098)
+UNIQUE_SKILL_DIRECTOR_BOND = 60
+
+
+def get_unique_skill_warning(chara_id, scenario_id, turn, fans, eval_dict):
+    if scenario_id not in UNIQUE_SKILL_DIRECTOR_SCENARIOS + UNIQUE_SKILL_FAN_ONLY_SCENARIOS:
+        return None
+    if not UNIQUE_SKILL_WARNING_START_TURN <= turn < UNIQUE_SKILL_EVENT_TURN:
+        return None
+
+    fan_required = 60_000 if chara_id in UNIQUE_SKILL_REDUCED_FAN_CHARAS else 70_000
+    fan_missing = max(0, fan_required - fans)
+    director_required = scenario_id in UNIQUE_SKILL_DIRECTOR_SCENARIOS
+    director_bond = eval_dict.get(102).starting_bond if 102 in eval_dict else 0
+
+    if not fan_missing and (not director_required or director_bond >= UNIQUE_SKILL_DIRECTOR_BOND):
+        return None
+
+    return {
+        "turns_left": UNIQUE_SKILL_EVENT_TURN - turn,
+        "fan_missing": fan_missing,
+        "director_bond": director_bond,
+        "director_bond_required": UNIQUE_SKILL_DIRECTOR_BOND if director_required else 0,
+    }
+
 
 def get_modern_g1_races(races):
     """Return sanitized display data for the G1 races available this turn."""
@@ -405,6 +434,10 @@ class HelperTable():
                 logger.error(f"Error while creating TrainingPartner: {e}")
                 continue
 
+        unique_skill_warning = get_unique_skill_warning(
+            chara_id, scenario_id, turn, fans, eval_dict
+        )
+
         chara_name_dict = {}
         if modern:
             try:
@@ -589,12 +622,19 @@ class HelperTable():
                     and 1 <= training_partner_id <= 6
                     and training_partner.support_card_id is not None
                 )
+                show_director = (
+                    training_partner_id == 102
+                    and unique_skill_warning
+                    and unique_skill_warning['director_bond']
+                    < unique_skill_warning['director_bond_required']
+                )
                 # Modern always shows deck supports. NPCs are admitted only
-                # when this training gives useful Unity progress or the NPC is
-                # the source of a blue/purple burst.
+                # when they have useful scenario progress, or when the Director
+                # still needs bond for the upcoming unique-skill event.
                 if (
                     not partner_is_support
                     and not unity_display['show_npc']
+                    and not show_director
                 ):
                     continue
 
@@ -1067,6 +1107,7 @@ class HelperTable():
             "energy": energy,
             "max_energy": max_energy,
             "fans": fans,
+            "unique_skill_warning": unique_skill_warning,
             "skillpt": skillpt,
             "scheduled_races": scheduled_races,
             "gm_fragments": gm_fragments,
