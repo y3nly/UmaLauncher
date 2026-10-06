@@ -1,14 +1,14 @@
 """Packet/master-based ratings and advisory SS purchase planning.
 
 The aptitude, learned-group and grouped-knapsack rules follow Umapyoi's
-core/actions/packet_skills.py. No game transactions or simulator calls live here.
+core/actions/packet_skills.py. The pure optimizer is identical in both projects.
+No game transactions or simulator calls live here.
 """
 import math
 import threading
 import time
 import traceback
 import uuid
-from array import array
 from collections import OrderedDict
 from concurrent.futures import CancelledError, Future
 from loguru import logger
@@ -16,6 +16,8 @@ import mdb
 import skill_simulation as sim
 from uma_rating import stat_rating
 from bashin_data import BashinJsonCache
+from skill_activation import skill_can_activate
+from skill_purchase_optimizer import optimize_purchases, purchase_order, purchase_tier
 
 SS_TARGET = 17500
 RANKS = ((300, 'G'), (600, 'G+'), (900, 'F'), (1300, 'F+'), (1800, 'E'),
@@ -104,36 +106,88 @@ def expand_purchases(available):
     return expanded
 
 
+STYLE_NAMES = dict(NIGE='front', SEN='pace', SASI='late', OI='end')
+STYLE_BASELINES = dict(NIGE=(201252, 201242), SEN=(201322, 201312),
+                       SASI=(201392, 201382), OI=(201462, 201452))
+
+
 def rating_rows(chara, available, rows, catalog, published=None, style=None):
+    """Price eligible endpoints and classify their CM/activation priorities."""
     rating, acquired_groups = current_rating(chara, catalog)
     learned = {s['skill_id'] for s in chara['skill_array']}
     hint_levels = {(tip['group_id'], tip['rarity']): tip.get('level', 0)
                    for tip in chara['skill_tips_array']}
     metrics = {int(s['id']): s.get('metrics', {}).get(style) for s in (published or {}).get('skills', [])}
-    base_rows = {}
-    for row in catalog.values():
-        if row['group_rate'] <= 0:
-            continue
-        group = row['group_id'] or row['id']
-        prior = base_rows.get(group)
-        if prior is None or (row['group_rate'], row['id']) < (prior['group_rate'], prior['id']):
-            base_rows[group] = row
+
     def cm_value(sid):
         value = (metrics.get(sid) or {}).get('mean')
         return float(value) if value is not None and math.isfinite(float(value)) else None
+
+    def rank_cost(sid):
+        record = catalog_row(catalog, sid)
+        # White hints discount both circle ranks; gold hints remain separate.
+        hint = hint_levels.get((record['group_id'], record['rarity']),
+                               available.get(sid, {}).get('hint_level', 0))
+        return int(record['baseCost'] * (100 - sim.DISCOUNTS[max(0, min(int(hint), 5))]) / 100)
+
+    efficiencies = [(cm_value(sid) or 0) / catalog[sid]['baseCost']
+                    for sid in STYLE_BASELINES.get(style, ())
+                    if sid in catalog and catalog[sid]['baseCost'] > 0 and (cm_value(sid) or 0) > 0]
+    threshold = .5 * min(efficiencies, default=0)
+    families = {}
+    for record in catalog.values():
+        if record['group_rate'] > 0 and record['skill_category'] != 5:
+            families.setdefault(record['group_id'] or record['id'], []).append(record)
+    good_rates = {}
+    for group, family in families.items():
+        family.sort(key=lambda row: (row['group_rate'], row['id']))
+        full_cost = 0
+        for rate in sorted({record['group_rate'] for record in family}):
+            ranks = [record for record in family if record['group_rate'] == rate]
+            record = next((record for record in ranks if record['id'] in available), ranks[0])
+            full_cost += rank_cost(record['id'])
+            value = cm_value(record['id']) or 0
+            if value > 0 and full_cost > 0 and value / full_cost >= threshold:
+                good_rates[group] = record['group_rate']
+                break
+    gold_groups = {catalog[sid]['group_id'] for sid in available
+                   if sid in catalog and catalog[sid]['rarity'] > 1
+                   and catalog[sid]['skill_category'] != 5}
     options = []
+    for current in acquired_groups.values():
+        if current['group_rate'] >= 0 or current['baseCost'] <= 0:
+            continue
+        sid = current['id']
+        options.append(dict(
+            id=str(sid), name=current['name'], group=str(current['group_id']),
+            skill_id=sid, group_id=current['group_id'], cost=current['baseCost'],
+            gain=-skill_rating(current, chara), cm=0.0, cm_value=0.0, ranked=False,
+            rate=current['group_rate'],
+            chain=[dict(id=str(sid), name=current['name'], cost=current['baseCost'])],
+        ))
     for skill in rows:
         sid = int(skill['id'])
         row = catalog_row(catalog, sid)
         if row is None:
             raise ValueError(f'Rating data missing for skill {sid}')
-        group = row['group_id'] or sid
-        # Inherited uniques are independent purchases, even when a unique shares a group.
         inherited = skill['skillKind'] == 'inheritedUnique' or 900000 <= sid < 1000000
+        if sid in learned:
+            continue
+        if row['skill_category'] == 5 and not inherited:
+            continue
+        group = row['group_id'] or sid
         current = None if inherited else acquired_groups.get(group)
+        current_rate = max(0, current['group_rate']) if current else 0
+        if not inherited and row['group_rate'] <= current_rate:
+            continue
+        base = families[group][0] if not inherited else row
+        if group in gold_groups and row['rarity'] == 1 and row['group_rate'] > base['group_rate']:
+            continue
         prior_score = skill_rating(current, chara) if current else 0
         gain = skill_rating(row, chara) - prior_score
         chain = []
+        if current and current['group_rate'] < 0:
+            chain.append(dict(id=str(current['id']), name=current['name'], cost=current['baseCost']))
         for rank in [*mdb.get_prerequisite_skill_ids(sid), sid]:
             info = available.get(rank, {})
             if rank in learned or info.get('is_acquired'):
@@ -141,240 +195,97 @@ def rating_rows(chara, available, rows, catalog, published=None, style=None):
             record = catalog_row(catalog, rank)
             if record is None:
                 raise ValueError(f'Rating data missing for prerequisite {rank}')
-            # A white hint discounts both circle ranks; gold has its own hint.
-            hint = hint_levels.get((record['group_id'], record['rarity']), info.get('hint_level', 0))
-            hint = max(0, min(int(hint), 5))
-            cost = int(record['baseCost'] * (100 - sim.DISCOUNTS[hint]) / 100)
-            chain.append(dict(id=str(rank), name=record['name'], cost=cost))
+            chain.append(dict(id=str(rank), name=record['name'], cost=rank_cost(rank)))
         cost = sum(step['cost'] for step in chain)
         skill.update(baseCost=cost, ratingGain=gain, pointsPerSp=gain / cost if cost > 0 else None,
                      groupRate=row['group_rate'], purchaseChain=chain)
-        endpoint_cm = cm_value(sid)
-        prior_cm = cm_value(current['id']) if current else 0.0
-        incremental = endpoint_cm - prior_cm if endpoint_cm is not None and prior_cm is not None else None
-        base = base_rows.get(group, row)
-        current_rate = current['group_rate'] if current else 0
-        base_cm = cm_value(base['id'])
+        endpoint_cm = None if inherited else cm_value(sid)
+        prior_cm = (cm_value(current['id']) or 0) if current and current_rate else 0.0
+        incremental = (endpoint_cm or 0) - prior_cm
+        base_cm = cm_value(base['id']) or 0
         adds_base = current_rate < base['group_rate']
         base_gain = skill_rating(base, chara) - prior_score if adds_base else 0
-        base_value = max(0, base_cm - (prior_cm or 0)) if adds_base and base_cm is not None else 0
-        upgrade_value = max(0, endpoint_cm - (base_cm if adds_base else prior_cm)) if (
-            row['group_rate'] > max(base['group_rate'], current_rate) and endpoint_cm is not None
-            and (base_cm if adds_base else prior_cm) is not None) else 0
+        base_value = max(0, base_cm - prior_cm) if adds_base else 0
+        upgrade_value = max(0, (endpoint_cm or 0) - (base_cm if adds_base else prior_cm)) if (
+            row['group_rate'] > max(base['group_rate'], current_rate)) else 0
+        good_rate = good_rates.get(group)
+        cm_id = (published or {}).get('meta', {}).get('cmId')
+        activates = not inherited and skill_can_activate(
+            row, cm_id, STYLE_NAMES.get(style), chara,
+            {f'{style}_rate': (metrics.get(sid) or {}).get('effectiveRate', 0)},
+        )
         if inherited:
-            # Parent planning values inherited uniques only for reaching SS.
-            incremental = 0.0
-            base_gain, base_value, upgrade_value = gain, 0.0, 0.0
-        options.append(dict(id=str(sid), name=skill['name'], group=str(sid) if inherited else str(group),
-            cost=cost, gain=gain, baseGain=base_gain, cm=incremental, baseCm=base_value,
-            upgradeCm=upgrade_value, ranked=not inherited and row['group_rate'] > base['group_rate'],
-            chain=chain))
+            incremental, base_value, upgrade_value = 0.0, 0.0, 0.0
+        options.append(dict(
+            id=str(sid), name=skill['name'], group=str(sid) if inherited else str(group),
+            skill_id=sid, group_id=sid if inherited else group,
+            cost=cost, gain=gain, baseGain=base_gain, cm=endpoint_cm,
+            baseCm=base_value, upgradeCm=upgrade_value, cm_value=incremental,
+            rate=row['group_rate'], ranked=not inherited and row['group_rate'] > base['group_rate'],
+            good=not inherited and good_rate is not None and row['group_rate'] >= good_rate,
+            new_good=not inherited and good_rate is not None and current_rate < good_rate <= row['group_rate'],
+            new_family=current_rate == 0, rank_gain=row['group_rate'] - max(base['group_rate'], current_rate),
+            green=row['skill_category'] == 0, activates=activates, ss_only=inherited,
+            chain=chain,
+        ))
     return rating, options
 
 
 def purchase_plan(rating, options, budget, choices, cancelled=None):
-    """Grouped DP: CM first, SS feasibility, and minimum necessary ranked padding."""
-    def check_cancelled():
-        if cancelled and cancelled():
-            raise CancelledError()
-    check_cancelled()
-    by_id = {o['id']: o for o in options}
+    """Use the same final-purchase priorities and SS constraint as Umapyoi."""
+    by_id = {option['id']: option for option in options}
     fixed, rejected, spent = {}, [], 0
-    # Recheck saved choices against current SP/costs, preserving selection order.
+    # Required selections reserve a minimum rank, allowing a later upgrade.
     for sid in dict.fromkeys(map(str, choices.get('required', []))):
         option = by_id.get(sid)
-        if option is None:
+        if option is None or option.get('ss_only'):
             continue
-        previous = fixed.get(option['group'])
+        previous = fixed.get(option['group_id'])
+        if previous and previous['rate'] >= option['rate']:
+            continue
         cost = spent - (previous['cost'] if previous else 0) + option['cost']
         if cost > budget:
             rejected.append(sid)
             continue
-        fixed[option['group']] = option
+        fixed[option['group_id']] = option
         spent = cost
-    required = {o['id'] for o in fixed.values()}
+    required = {option['id'] for option in fixed.values()}
     excluded = set(map(str, choices.get('excluded', [])))
+    # Explicit UI exclusions are absolute. They do not become SS exceptions.
     groups = {}
     conflict = None
     for option in options:
-        sid, group = option['id'], option['group']
-        blocked = sid in excluded or any(step['id'] in excluded for step in option['chain'])
-        if sid in required:
-            if blocked:
-                conflict = 'A selected purchase needs an excluded prerequisite.'
+        blocked = option['id'] in excluded or any(step['id'] in excluded for step in option['chain'])
+        if option['id'] in required and blocked:
+            conflict = 'A selected purchase needs an excluded prerequisite.'
         if not blocked and option['cost'] > 0:
-            groups.setdefault(group, []).append(option)
-    fixed_options = list(fixed.values())
-    gain = sum(o['gain'] for o in fixed_options)
+            if option['group_id'] in fixed:
+                option = dict(option, good=True)
+            groups.setdefault(option['group_id'], []).append(option)
     result = dict(target=SS_TARGET, current=rating, availableSp=budget, required=sorted(required),
                   excluded=sorted(excluded), rejected=rejected, conflict=conflict)
     if conflict:
-        return dict(result, status='conflict', purchases=fixed_options, plannedCost=spent,
+        gain = sum(option['gain'] for option in fixed.values())
+        return dict(result, status='conflict', purchases=list(fixed.values()), plannedCost=spent,
                     leftoverSp=budget-spent, projectedScore=rating['score']+gain,
                     projectedRank=rank_name(rating['score']+gain))
-    remaining = budget - spent
-    groups = {g: affordable for g, opts in groups.items() if g not in fixed
-              if (affordable := [o for o in opts if o['cost'] <= remaining])}
-    needed = max(0, SS_TARGET - rating['score'] - gain)
-    def max_gain(include_ranked):
-        dp = [-1] * (remaining + 1)
-        dp[0] = 0
-        for opts in groups.values():
-            check_cancelled()
-            following = dp.copy()
-            for o in opts:
-                if o['ranked'] and not include_ranked:
-                    continue
-                for used in range(remaining - o['cost'] + 1):
-                    if dp[used] >= 0:
-                        following[used+o['cost']] = max(following[used+o['cost']], dp[used]+o['gain'])
-            dp = following
-        return max(dp)
-    max_rating_gain = max_gain(True)
-    reachable = max_rating_gain >= needed
-    base_reachable = needed == 0 or (reachable and max_gain(False) >= needed)
-    cm_only = needed == 0 or not reachable
-    if not reachable:
-        def priority(cost, gain, base_cm, upgrade_cm, ranked):
-            return (base_cm, gain, -ranked, -cost)
-    elif cm_only:
-        def priority(cost, gain, base_cm, upgrade_cm, ranked):
-            return (base_cm + upgrade_cm, -ranked, -cost)
-    elif base_reachable:
-        def priority(cost, gain, base_cm, upgrade_cm, ranked):
-            return (base_cm, upgrade_cm, -ranked, -cost)
-    else:
-        def priority(cost, gain, base_cm, upgrade_cm, ranked):
-            return (-ranked, base_cm, upgrade_cm, -cost)
-
-    # Path nodes contain two packed indices instead of references to whole
-    # earlier states. Numeric states can then be discarded immediately.
-    previous_nodes, purchase_indices = array('i', [-1]), array('i', [-1])
-    option_indices = {o['id']: i for i, o in enumerate(options)}
-    tie_ids = [-int(o['id']) for o in options]
-    ids_by_node = {0: ()}
-
-    def path_ids(node):
-        ids = ids_by_node.get(node)
-        if ids is None:
-            suffix, ancestor = [], node
-            while ancestor not in ids_by_node:
-                suffix.append(tie_ids[purchase_indices[ancestor]])
-                ancestor = previous_nodes[ancestor]
-            ids = ids_by_node[node] = ids_by_node[ancestor] + tuple(reversed(suffix))
-        return ids
-
-    # State: spend, gain, base gain, base CM, upgrade CM, ranked count, priority, node.
-    zero = (0, 0, 0, 0.0, 0.0, 0, priority(0, 0, 0.0, 0.0, 0), 0)
-    states = [zero]
-    by_spend = [None] * (remaining + 1)
-    by_spend[0] = zero if cm_only else {0: zero}
-    for group in sorted(groups):
-        check_cancelled()
-        purchases = [
-            (o['cost'], o['gain'], o['baseGain'], o['baseCm'] if reachable else o['cm'],
-             o['upgradeCm'], int(o['ranked']), option_indices[o['id']])
-            for o in groups[group]
-            if not cm_only or (o['cm'] is not None and o['cm'] >= 0 and
-                               (not reachable or o['cm'] > 0))
-        ]
-        if not purchases:
-            continue
-        following = by_spend.copy()
-        for index, s in enumerate(states):
-            if index % 256 == 0:
-                check_cancelled()
-            (spent_so_far, gain_so_far, base_gain_so_far, base_cm_so_far,
-             upgrade_cm_so_far, ranked_so_far, _, parent_node) = s
-            for cost, option_gain, base_gain, base_cm, upgrade_cm, ranked, option_index in purchases:
-                new_spent = spent_so_far + cost
-                if new_spent > remaining:
-                    continue
-                new_gain = gain_so_far + option_gain
-                new_base_gain = base_gain_so_far + base_gain
-                new_base_cm = base_cm_so_far + base_cm
-                new_upgrade_cm = upgrade_cm_so_far + upgrade_cm
-                new_ranked = ranked_so_far + ranked
-                candidate_priority = priority(new_spent, new_gain, new_base_cm, new_upgrade_cm, new_ranked)
-                if cm_only:
-                    existing = following[new_spent]
-                else:
-                    capped_gain = new_base_gain if base_reachable else new_gain
-                    capped = needed if capped_gain > needed else capped_gain
-                    bucket = following[new_spent]
-                    existing = bucket.get(capped) if bucket is not None else None
-                ids = None
-                if existing is not None:
-                    if candidate_priority < existing[6]:
-                        continue
-                    if candidate_priority == existing[6]:
-                        ids = path_ids(parent_node) + (tie_ids[option_index],)
-                        if ids <= path_ids(existing[7]):
-                            continue
-                node = len(previous_nodes)
-                previous_nodes.append(parent_node)
-                purchase_indices.append(option_index)
-                if ids is not None:
-                    ids_by_node[node] = ids
-                candidate = (new_spent, new_gain, new_base_gain, new_base_cm, new_upgrade_cm,
-                             new_ranked, candidate_priority, node)
-                if cm_only:
-                    following[new_spent] = candidate
-                else:
-                    # Never mutate a previous-group bucket: ranks in one group
-                    # are alternatives, not purchases that can be accumulated.
-                    if bucket is None:
-                        bucket = following[new_spent] = {}
-                    elif bucket is by_spend[new_spent]:
-                        bucket = following[new_spent] = bucket.copy()
-                    bucket[capped] = candidate
-        if cm_only:
-            states = [s for s in following if s is not None]
-        else:
-            states = []
-            for cost, bucket in enumerate(following):
-                if cost % 256 == 0:
-                    check_cancelled()
-                if bucket is None:
-                    continue
-                # Unchanged buckets already have the required order and frontier.
-                if bucket is by_spend[cost] or len(bucket) == 1:
-                    states.extend(bucket.values())
-                    continue
-                kept, best = {}, None
-                # Preserve the existing dominance rule and traversal order,
-                # sorting only rating gains within an individual SP bucket.
-                for capped in sorted(bucket, reverse=True):
-                    candidate = bucket[capped]
-                    if (best is None or candidate[6] > best[6] or
-                            (candidate[6] == best[6] and path_ids(candidate[7]) > path_ids(best[7]))):
-                        kept[capped] = best = candidate
-                        states.append(candidate)
-                following[cost] = kept
-        by_spend = following
-    best = None
-    for s in states:
-        if not cm_only and s[2 if base_reachable else 1] < needed:
-            continue
-        if (best is None or s[6] > best[6] or
-                (s[6] == best[6] and path_ids(s[7]) > path_ids(best[7]))):
-            best = s
-    selected, node = [], best[7]
-    while node:
-        selected.append(options[purchase_indices[node]])
-        node = previous_nodes[node]
-    selected = fixed_options + list(reversed(selected))
-    projected = rating['score'] + gain + best[1]
-    selected = [dict(o, reason='Selected' if o['id'] in required else
-                'Reaching SS' if not cm_only and projected-o['gain'] < SS_TARGET else
-                'Spare SP rating' if not reachable and o['cm'] == 0 else
-                'CM value' if o['cm'] is not None and o['cm'] > 0 else 'Reaching SS') for o in selected]
-    selected.sort(key=lambda o: (o['ranked'], -(o['cm'] or 0), int(o['id'])))
+    optimized = optimize_purchases(groups, budget, fixed,
+                                   max(0, SS_TARGET - rating['score']), cancelled=cancelled)
+    reachable = optimized.ss_without_exceptions or optimized.ss_exception
+    projected = rating['score'] + optimized.rating_gain
+    selected = [dict(option, tier=purchase_tier(option, fixed)) for option in optimized.choices]
+    required_order = {group: index for index, group in enumerate(fixed)}
+    selected.sort(key=lambda option: purchase_order(option, required_order))
+    for option in selected:
+        reason = 'Selected' if option['group_id'] in fixed else option['tier']
+        if reachable and projected-option['gain'] < SS_TARGET:
+            reason += '; Reaching SS'
+        option['reason'] = reason
     return dict(result, status='ready' if reachable else 'unreachable', purchases=selected,
-                maximumScore=rating['score']+gain+max_rating_gain, projectedScore=projected,
-                projectedRank=rank_name(projected), plannedCost=spent+best[0], leftoverSp=remaining-best[0],
+                maximumScore=rating['score']+optimized.maximum_rating_gain, projectedScore=projected,
+                projectedRank=rank_name(projected), plannedCost=optimized.cost, leftoverSp=budget-optimized.cost,
                 pointsToSs=max(0, SS_TARGET-projected),
-                missingPerformance=[o['id'] for o in options if o['cm'] is None])
+                missingPerformance=[option['id'] for option in options if option['cm'] is None and not option.get('ss_only')])
 
 
 class SkillWindowData:
