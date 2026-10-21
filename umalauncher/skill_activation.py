@@ -1,8 +1,7 @@
-"""CM activation evidence from simulations and supported master conditions.
+"""Activation evidence from simulations and published race/course metadata.
 
-Race values match the CM21/22 master race definitions and the course
-metadata used to generate the bundled CM simulations. No race time is supplied
-there, so time-dependent skills remain unknown rather than assumed active.
+No race time is supplied for individual CMs, so time-dependent skills remain
+unknown rather than assumed active. Pools use observed simulation evidence only.
 """
 
 from __future__ import annotations
@@ -13,20 +12,30 @@ import re
 from typing import Any, Mapping
 
 
-_CM_CONDITIONS = {
-    21: dict(track_id=10007, rotation=2, ground_type=1, distance_type=1,
-             is_basis_distance=1, season=4, weather=1, ground_condition=1,
-             is_dirtgrade=0),
-    22: dict(track_id=10006, rotation=2, ground_type=2, distance_type=2,
-             is_basis_distance=1, season=4, weather=4, ground_condition=3,
-             is_dirtgrade=0),
-}
 _STYLES = {"front": 1, "pace": 2, "late": 3, "end": 4}
 _COMPARISONS = {
     "==": operator.eq, "!=": operator.ne, ">=": operator.ge,
     "<=": operator.le, ">": operator.gt, "<": operator.lt,
 }
 _ATOM = re.compile(r"([a-z_]+)(==|!=|>=|<=|>|<)(\d+)")
+
+
+def race_conditions(
+    cm: Mapping[str, Any] | None, course: Mapping[str, Any] | None,
+) -> dict[str, int]:
+    """Translate the loaded single-race profile into master condition values."""
+    if not cm or cm.get("kind") in ("tt", "cm_pool") or not course:
+        return {}
+    track_id = course["raceTrackId"]
+    return dict(
+        track_id=track_id, rotation=course["turn"], ground_type=course["surface"],
+        distance_type=course["distanceType"],
+        is_basis_distance=int(course["distance"] % 400 == 0),
+        season=cm["season"], weather=cm["weather"],
+        ground_condition={"GOOD": 1, "YAYAOMO": 2, "OMO": 3, "BAD": 4}[cm["ground_condition"]],
+        # Match the simulator's trackDetail.isDirtGrade venue rule.
+        is_dirtgrade=int(track_id in (10101, 10103, 10104, 10105)),
+    )
 
 
 def _possible(expression: str, domains: Mapping[str, set[int]]) -> bool:
@@ -49,7 +58,8 @@ def _possible(expression: str, domains: Mapping[str, set[int]]) -> bool:
 
 
 def green_skill_can_activate(
-    row: Mapping[str, Any], cm_id: int, style: str | None, chara: Mapping[str, Any],
+    row: Mapping[str, Any], conditions: Mapping[str, int], style: str | None,
+    chara: Mapping[str, Any],
 ) -> bool:
     """Whether a green has a supported, possible activation in this CM.
 
@@ -57,11 +67,12 @@ def green_skill_can_activate(
     possible; this is not a promise of activation in every race. Other skill
     categories and unknown condition variables are outside this first pass.
     """
-    return row.get("skill_category") == 0 and skill_can_activate(row, cm_id, style, chara)
+    return row.get("skill_category") == 0 and skill_can_activate(row, conditions, style, chara)
 
 
 def skill_can_activate(
-    row: Mapping[str, Any], cm_id: int, style: str | None, chara: Mapping[str, Any],
+    row: Mapping[str, Any], conditions: Mapping[str, int], style: str | None,
+    chara: Mapping[str, Any],
     simulation: Mapping[str, Any] | None = None,
 ) -> bool:
     """Require observed activation or supported, satisfiable master conditions.
@@ -76,9 +87,9 @@ def skill_can_activate(
         rate = 0.0
     if math.isfinite(rate) and rate > 0:
         return True
-    if cm_id not in _CM_CONDITIONS:
+    if not conditions:
         return False
-    domains = {key: {value} for key, value in _CM_CONDITIONS[cm_id].items()}
+    domains = {key: {value} for key, value in conditions.items()}
     domains.update({
         "always": {1}, "post_number": set(range(1, 10)),
         "popularity": set(range(1, 10)), "random_lot": set(range(1, 101)),

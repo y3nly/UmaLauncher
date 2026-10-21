@@ -16,7 +16,7 @@ import mdb
 import skill_simulation as sim
 from uma_rating import stat_rating
 from bashin_data import BashinJsonCache
-from skill_activation import skill_can_activate
+from skill_activation import race_conditions, skill_can_activate
 from skill_purchase_optimizer import optimize_purchases, purchase_order, purchase_tier
 
 SS_TARGET = 17500
@@ -111,13 +111,14 @@ STYLE_BASELINES = dict(NIGE=(201252, 201242), SEN=(201322, 201312),
                        SASI=(201392, 201382), OI=(201462, 201452))
 
 
-def rating_rows(chara, available, rows, catalog, published=None, style=None):
+def rating_rows(chara, available, rows, catalog, published=None, style=None, cm=None, course=None):
     """Price eligible endpoints and classify their CM/activation priorities."""
     rating, acquired_groups = current_rating(chara, catalog)
     learned = {s['skill_id'] for s in chara['skill_array']}
     hint_levels = {(tip['group_id'], tip['rarity']): tip.get('level', 0)
                    for tip in chara['skill_tips_array']}
     metrics = {int(s['id']): s.get('metrics', {}).get(style) for s in (published or {}).get('skills', [])}
+    conditions = race_conditions(cm, course)
 
     def cm_value(sid):
         value = (metrics.get(sid) or {}).get('mean')
@@ -209,9 +210,8 @@ def rating_rows(chara, available, rows, catalog, published=None, style=None):
         upgrade_value = max(0, (endpoint_cm or 0) - (base_cm if adds_base else prior_cm)) if (
             row['group_rate'] > max(base['group_rate'], current_rate)) else 0
         good_rate = good_rates.get(group)
-        cm_id = (published or {}).get('meta', {}).get('cmId')
         activates = not inherited and skill_can_activate(
-            row, cm_id, STYLE_NAMES.get(style), chara,
+            row, conditions, STYLE_NAMES.get(style), chara,
             {f'{style}_rate': (metrics.get(sid) or {}).get('effectiveRate', 0)},
         )
         if inherited:
@@ -343,7 +343,7 @@ class SkillWindowData:
                     raise ValueError('Published CM evaluation is missing or invalid')
                 self.published[cm_id] = value
             published = self.published[cm_id]
-        rating, options = rating_rows(chara, available, rows, self.snapshot.catalog, published, style)
+        rating, options = rating_rows(chara, available, rows, self.snapshot.catalog, published, style, cm, course)
         choices = selection.get('choices', {})
         plan = self._plan(rating, options, chara['skill_point'], choices, request.get('_cancelled')) if mode == 'rating' else None
         snapshot = dict(careerId=sim.career_id(chara), source='ace' if mode == 'ace' else 'published',

@@ -37,8 +37,12 @@ then lower total cost and stable IDs. Fallback purchases are ordered within thei
 tiers by rating gained per SP.
 
 `umalauncher/skill_purchase_optimizer.py` is identical to Umapyoi's
-`core/utils/skill_purchase_optimizer.py`; keep both copies synchronized. The
-activation helper is mirrored too. Observed effective rates or supported master
-conditions qualify activating skills. Unknown activation only qualifies for the
-last rating fallback. Each app keeps its own packet/master and performance-data
-adapter, so different published Bashin inputs can produce different selections.
+`core/utils/skill_purchase_optimizer.py`; keep both copies synchronized.
+Observed effective rates or supported master conditions qualify activating skills.
+UmaLauncher derives single-CM race conditions from Bashin's loaded profile index
+and course metadata, without a per-CM activation map. Basis-distance and
+Collaborative Graded venue checks follow the simulator's course rules. Race time
+remains unknown; CM All and TT pools use observed activation evidence only.
+Unknown activation only qualifies for the last rating fallback. Each app keeps
+its own packet/master and performance-data adapter, so different published Bashin
+inputs can produce different selections.
