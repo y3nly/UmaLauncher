@@ -1,6 +1,6 @@
 """CM activation evidence from simulations and supported master conditions.
 
-Race values match umasim/data/cm_configs.json entries 19/20 and the course
+Race values match the CM21/22 master race definitions and the course
 metadata used to generate the bundled CM simulations. No race time is supplied
 there, so time-dependent skills remain unknown rather than assumed active.
 """
@@ -14,11 +14,11 @@ from typing import Any, Mapping
 
 
 _CM_CONDITIONS = {
-    19: dict(track_id=10008, rotation=1, ground_type=1, distance_type=3,
-             is_basis_distance=0, season=3, weather=1, ground_condition=1,
+    21: dict(track_id=10007, rotation=2, ground_type=1, distance_type=1,
+             is_basis_distance=1, season=4, weather=1, ground_condition=1,
              is_dirtgrade=0),
-    20: dict(track_id=10005, rotation=1, ground_type=1, distance_type=4,
-             is_basis_distance=0, season=4, weather=2, ground_condition=2,
+    22: dict(track_id=10006, rotation=2, ground_type=2, distance_type=2,
+             is_basis_distance=1, season=4, weather=4, ground_condition=3,
              is_dirtgrade=0),
 }
 _STYLES = {"front": 1, "pace": 2, "late": 3, "end": 4}
