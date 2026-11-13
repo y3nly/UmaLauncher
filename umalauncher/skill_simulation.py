@@ -26,10 +26,16 @@ def load_cm_configs(load_json):
     entries = data.get("profiles") if isinstance(data, dict) else None
     if not isinstance(entries, list) or not entries:
         raise ValueError("Bashin CM index is empty or invalid")
+    additional = data.get('additionalProfiles', [])
+    entries = entries + additional
     configs = {}
     for entry in entries:
         if not isinstance(entry, dict):
             raise ValueError("Invalid Bashin CM definition")
+        if entry in additional:
+            configs[entry['cmId']] = dict(entry, course=entry.get('courseId'),
+                ground_condition=entry.get('groundCondition') or 'GOOD', meta=entry)
+            continue
         if entry.get("kind") == "cm_pool":
             pool = entry.get("racePool", {})
             scenarios = pool.get("scenarios", [])

@@ -27,15 +27,20 @@ def race_conditions(
     if not cm or cm.get("kind") in ("tt", "cm_pool") or not course:
         return {}
     track_id = course["raceTrackId"]
-    return dict(
+    conditions = dict(
         track_id=track_id, rotation=course["turn"], ground_type=course["surface"],
         distance_type=course["distanceType"],
         is_basis_distance=int(course["distance"] % 400 == 0),
-        season=cm["season"], weather=cm["weather"],
-        ground_condition={"GOOD": 1, "YAYAOMO": 2, "OMO": 3, "BAD": 4}[cm["ground_condition"]],
+        season=cm["season"],
         # Match the simulator's trackDetail.isDirtGrade venue rule.
         is_dirtgrade=int(track_id in (10101, 10103, 10104, 10105)),
     )
+    if cm.get('weather') in (1, 2, 3, 4):
+        conditions['weather'] = cm['weather']
+    ground = cm.get('meta', {}).get('groundCondition', cm.get('ground_condition'))
+    if ground in ('GOOD', 'YAYAOMO', 'OMO', 'BAD'):
+        conditions['ground_condition'] = {"GOOD": 1, "YAYAOMO": 2, "OMO": 3, "BAD": 4}[ground]
+    return conditions
 
 
 def _possible(expression: str, domains: Mapping[str, set[int]]) -> bool:
