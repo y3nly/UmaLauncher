@@ -1,0 +1,32 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const {JSDOM} = require('jsdom');
+const html = fs.readFileSync(process.argv[2], 'utf8');
+const dom = new JSDOM(html, {runScripts: 'dangerously', url: 'http://localhost/',
+  beforeParse(w) {
+    w.fetch = async () => ({ok: true, json: async () => ({})});
+    w.ResizeObserver = class { observe() {} disconnect() {} };
+  }});
+const w = dom.window;
+const catalog = {title: 'Event', outcomes: [1, 2].map(i => ({label: '', lines: [{text: `Catalog ${i}`}]}))};
+const chain = {index: 0, packetIndex: 0, total: 2};
+const text = () => w.document.getElementById('event-fallback').textContent;
+w.UL_OPEN_EVENT_DRAWER({generation: 1, gametoraEvent: catalog, chain});
+assert.match(text(), /Catalog 1/);
+assert.equal(w.UL_SET_GAME_REWARDS({outcomes: [{lines: [{text: 'Game +20'}]}, null]}, 0), false);
+assert.match(text(), /Catalog 1/);
+w.UL_SET_GAME_REWARDS({outcomes: [{lines: [{text: 'Game +20'}]}, null]}, 1);
+assert.match(text(), /Game \+20/);
+assert.match(text(), /Catalog 2/);
+assert.doesNotMatch(text(), /Catalog 1/);
+w.UL_SET_GAMETORA_EVENT(catalog, {...chain, index: 1}, 1);
+assert.doesNotMatch(text(), /Game \+20/);
+w.UL_SET_GAMETORA_EVENT(catalog, chain, 1);
+assert.match(text(), /Game \+20/);
+w.UL_CLOSE_EVENT_DRAWER(1);
+w.UL_OPEN_EVENT_DRAWER({generation: 2, gametoraEvent: catalog, chain});
+assert.doesNotMatch(text(), /Game \+20/);
+assert.equal(w.UL_SET_GAME_REWARDS({outcomes: []}, 2), false);
+assert.match(text(), /Catalog 1/);
+dom.window.close();
+console.log('Event source precedence passed');

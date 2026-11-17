@@ -40,6 +40,10 @@ class GameToraDOMTests(unittest.TestCase):
             text=True, capture_output=True, encoding="utf-8",
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        result = subprocess.run(["node", str(ROOT / "tests/event_sources_dom.cjs"),
+                                 str(ROOT / "umalauncher/_assets/training_helper/index.html")],
+                                text=True, capture_output=True, encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":
