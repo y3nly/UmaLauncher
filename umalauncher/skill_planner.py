@@ -330,7 +330,7 @@ class SkillWindowData:
         self.snapshot.refresh(mdb.get_db_path())
         available = expand_purchases(request['available'])
         cm = self.configs[cm_id]
-        if mode == 'ace' and cm.get('publishedOnly'):
+        if mode == 'ace' and cm.get('publishedOnly') and not cm.get('conditionDistribution'):
             raise ValueError('This profile has published ratings only; select Parent mode.')
         if cm.get('kind') not in ('tt', 'cm_pool') and self.courses is None:
             self.courses = sim.load_course_data(self.bashin.load_json)
