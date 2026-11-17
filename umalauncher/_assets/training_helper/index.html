@@ -373,6 +373,15 @@
     .semantic-status.is-positive { color: #ff9d54; }
     .semantic-status.is-negative { color: #69b7ff; }
 
+    .game-reward-outcome + .game-reward-outcome {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .game-reward-heading {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
     .gametora-reward-line + .gametora-reward-line {
       margin-top: 2px;
     }
@@ -1058,15 +1067,24 @@
           appendTextElement(card, "div", "gametora-choice-label", label);
           const rewardLines = document.createElement("div");
           rewardLines.className = "gametora-reward-lines";
+          let rewardGroup = rewardLines;
           outcome.lines.forEach(line => {
             const lineData = line && typeof line === "object" ? line : {text: line};
+            if (Number.isInteger(lineData.outcomeNumber) && lineData.outcomeNumber > 0) {
+              rewardGroup = document.createElement("div");
+              rewardGroup.className = "game-reward-outcome";
+              rewardGroup.dataset.outcomeNumber = lineData.outcomeNumber;
+              appendTextElement(rewardGroup, "div", "game-reward-heading", lineData.text);
+              rewardLines.appendChild(rewardGroup);
+              return;
+            }
             const rewardLine = document.createElement("div");
             rewardLine.className = `gametora-reward-line${lineData.owned ? " is-owned" : ""}`;
             if (isSupportChainEndText(lineData.text)) {
               rewardLine.classList.add("is-chain-end");
             }
             appendSemanticText(rewardLine, lineData.text, lineData.tone || "neutral", lineData.highlights);
-            rewardLines.appendChild(rewardLine);
+            rewardGroup.appendChild(rewardLine);
           });
           card.appendChild(rewardLines);
           list.appendChild(card);

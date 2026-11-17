@@ -118,7 +118,7 @@ class RewardFormatter:
             lines = []
             for number, variant in enumerate(variants, 1):
                 if len(variants) > 1:
-                    lines.append({"text": f"Possible outcome {number}:"})
+                    lines.append({"text": f"Branch {number}", "outcomeNumber": number})
                 parts = [self._format_reward_part(effect) for effect in variant["gain_param_array"]
                          if isinstance(effect, dict)]
                 # Unknown effect codes must not replace a useful catalog description.

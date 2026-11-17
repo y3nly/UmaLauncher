@@ -28,5 +28,17 @@ w.UL_OPEN_EVENT_DRAWER({generation: 2, gametoraEvent: catalog, chain});
 assert.doesNotMatch(text(), /Game \+20/);
 assert.equal(w.UL_SET_GAME_REWARDS({outcomes: []}, 2), false);
 assert.match(text(), /Catalog 1/);
+// Packet branches have separate headings and retain their own reward lines.
+w.UL_SET_GAME_REWARDS({outcomes: [{lines: [
+  {text: 'Branch 1', outcomeNumber: 1}, {text: 'Energy +20'},
+  {text: 'Branch 2', outcomeNumber: 2}, {text: 'Energy -10'}
+]}]}, 2);
+const branches = w.document.querySelectorAll('.game-reward-outcome');
+assert.equal(branches.length, 2);
+assert.equal(branches[0].querySelector('.game-reward-heading').textContent, 'Branch 1');
+assert.match(branches[0].textContent, /Energy \+20/);
+assert.doesNotMatch(branches[0].textContent, /Energy -10/);
+assert.equal(branches[1].querySelector('.game-reward-heading').textContent, 'Branch 2');
+assert.match(branches[1].textContent, /Energy -10/);
 dom.window.close();
 console.log('Event source precedence passed');
