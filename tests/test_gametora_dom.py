@@ -32,10 +32,11 @@ class GameToraDOMTests(unittest.TestCase):
         configure = next(script for script in scripts if "const hiddenSources =" in script)
         helper = (ROOT / "umalauncher/_assets/training_helper/index.html").read_text(encoding="utf-8")
         tokenizer = helper.split("function appendSemanticTokens", 1)[1].split("function appendSemanticText", 1)[0]
+        formatter = helper.split("function appendSemanticText", 1)[1].split("window.UL_APPEND_REWARD_TEXT", 1)[0]
         result = subprocess.run(
             ["node", str(ROOT / "tests/gametora_dom.cjs")],
             input=json.dumps({"extraction": extraction, "search": search,
-                              "configure": configure, "tokenizer": tokenizer}),
+                              "configure": configure, "tokenizer": tokenizer, "formatter": formatter}),
             text=True, capture_output=True, encoding="utf-8",
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

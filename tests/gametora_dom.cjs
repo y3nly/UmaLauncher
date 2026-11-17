@@ -70,5 +70,18 @@ assert.equal(colored.querySelectorAll('.semantic-value.is-positive').length, 2);
 assert.equal(colored.querySelectorAll('.semantic-value.is-negative').length, 2);
 assert.equal(colored.querySelectorAll('.semantic-gain').length, 1);
 assert.equal(colored.textContent, 'Speed +10 Energy -5 Mood −1 Gain + 2');
+w.eval(`function safeText(value) { return String(value ?? ''); }
+function appendSemanticText${scripts.formatter}`);
+for (const [text, tone] of [
+    ['Get Charming', 'positive'], ['Get Hot Topic', 'positive'],
+    ['Get Slow Metabolism', 'negative'], ['Become Night Owl', 'negative'],
+    ['Cures Migraine', 'positive'], ['Heal Practice Poor', 'positive'],
+    ['Remove Charming', 'negative'], ['Lose Hot Topic', 'negative'],
+]) {
+    const line = d.createElement('div');
+    w.appendSemanticText(line, text);
+    assert.equal(line.querySelector('.semantic-status')?.className, `semantic-status is-${tone}`, text);
+    assert.equal(line.textContent, text);
+}
 dom.window.close();
 console.log('GameTora DOM regressions passed');

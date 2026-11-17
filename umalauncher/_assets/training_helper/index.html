@@ -370,6 +370,9 @@
       color: #69b7ff;
     }
 
+    .semantic-status.is-positive { color: #ff9d54; }
+    .semantic-status.is-negative { color: #69b7ff; }
+
     .gametora-reward-line + .gametora-reward-line {
       margin-top: 2px;
     }
@@ -377,7 +380,8 @@
     .gametora-reward-line.is-owned,
     .gametora-reward-line.is-owned .semantic-value,
     .gametora-reward-line.is-owned .semantic-gain,
-    .gametora-reward-line.is-owned .semantic-skill {
+    .gametora-reward-line.is-owned .semantic-skill,
+    .gametora-reward-line.is-owned .semantic-status {
       color: #7d8594;
     }
 
@@ -957,11 +961,23 @@
         return hasSignedValue;
       }
 
+      function statusRewardTone(text, name) {
+        const bad = /^(night owl|slacker|dry skin|slow metabolism|migraine|practice poor)$/i.test(name);
+        const known = bad || /^(charming(?: [○◎])?|hot topic|practice perfect(?: [○◎])?|fast learner)$/i.test(name);
+        if (!known) return null;
+        const prefix = text.slice(0, text.toLowerCase().indexOf(name.toLowerCase()));
+        const actions = [...prefix.matchAll(/\b(cures?|heals?|removes?|loses?|lost|get|gets|gain|gains|become|becomes)\b/gi)];
+        const action = actions.at(-1)?.[1] || "get";
+        const removes = /^(cure|heal|remove|lose|lost)/i.test(action);
+        return bad !== removes ? "negative" : "positive";
+      }
+
       function appendSemanticText(parent, value, tone = "neutral", highlights = []) {
         const text = safeText(value);
+        const statusNames = text.match(/\b(?:night owl|slacker|dry skin|slow metabolism|migraine|practice poor|charming(?: [○◎])?|hot topic|practice perfect(?: [○◎])?|fast learner)\b/gi) || [];
         const highlightSignedValues = tone !== "hint";
         const highlightValues = [...new Set(
-          (Array.isArray(highlights) ? highlights : [])
+          [...(Array.isArray(highlights) ? highlights : []), ...statusNames]
             .map(safeText)
             .filter(Boolean)
         )].sort((left, right) => right.length - left.length);
@@ -997,7 +1013,8 @@
               parent.appendChild(document.createTextNode(leadingText));
             }
           }
-          appendTextElement(parent, "span", "semantic-skill", range.text);
+          const statusTone = statusRewardTone(text, range.text);
+          appendTextElement(parent, "span", statusTone ? `semantic-status is-${statusTone}` : "semantic-skill", range.text);
           cursor = range.end;
         });
         if (cursor < text.length) {
@@ -1016,6 +1033,8 @@
           parent.classList.add(`is-${tone}`);
         }
       }
+
+      window.UL_APPEND_REWARD_TEXT = appendSemanticText;
 
       function isSupportChainEndText(value) {
         return /^end this support card['’]s chain event[.!]?$/i.test(
