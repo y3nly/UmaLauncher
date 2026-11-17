@@ -1,0 +1,4388 @@
+{
+  "source": "2026-09-28 09-48-31.244359_packet_in.json",
+  "sourceSha256": "23b43888aa241625ccfa6e27f044deff1bb98891c3d0381c0b71acabc2454b43",
+  "veterans": [
+    {
+      "trained_chara_id": 6131,
+      "single_mode_chara_id": 3594,
+      "card_id": 100601,
+      "speed": 805,
+      "stamina": 552,
+      "power": 828,
+      "wiz": 1216,
+      "guts": 518,
+      "rank_score": 17725,
+      "rank": 17,
+      "scenario_id": 2,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 6,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200132,
+          "level": 1
+        },
+        {
+          "skill_id": 200262,
+          "level": 1
+        },
+        {
+          "skill_id": 200342,
+          "level": 1
+        },
+        {
+          "skill_id": 200362,
+          "level": 1
+        },
+        {
+          "skill_id": 200372,
+          "level": 1
+        },
+        {
+          "skill_id": 200461,
+          "level": 1
+        },
+        {
+          "skill_id": 200491,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200581,
+          "level": 1
+        },
+        {
+          "skill_id": 200881,
+          "level": 1
+        },
+        {
+          "skill_id": 200911,
+          "level": 1
+        },
+        {
+          "skill_id": 201102,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201312,
+          "level": 1
+        },
+        {
+          "skill_id": 201322,
+          "level": 1
+        },
+        {
+          "skill_id": 201342,
+          "level": 1
+        },
+        {
+          "skill_id": 201641,
+          "level": 1
+        },
+        {
+          "skill_id": 201902,
+          "level": 1
+        },
+        {
+          "skill_id": 202081,
+          "level": 1
+        },
+        {
+          "skill_id": 202262,
+          "level": 1
+        },
+        {
+          "skill_id": 202282,
+          "level": 1
+        },
+        {
+          "skill_id": 210012,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210051,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 6155,
+      "single_mode_chara_id": 3622,
+      "card_id": 101101,
+      "speed": 1090,
+      "stamina": 668,
+      "power": 676,
+      "wiz": 1295,
+      "guts": 535,
+      "rank_score": 18465,
+      "rank": 17,
+      "scenario_id": 2,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 5,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 2,
+      "proper_distance_short": 1,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 6,
+      "proper_distance_long": 7,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100111,
+          "level": 6
+        },
+        {
+          "skill_id": 200012,
+          "level": 1
+        },
+        {
+          "skill_id": 200352,
+          "level": 1
+        },
+        {
+          "skill_id": 200372,
+          "level": 1
+        },
+        {
+          "skill_id": 200432,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200491,
+          "level": 1
+        },
+        {
+          "skill_id": 200502,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200722,
+          "level": 1
+        },
+        {
+          "skill_id": 200911,
+          "level": 1
+        },
+        {
+          "skill_id": 201152,
+          "level": 1
+        },
+        {
+          "skill_id": 201312,
+          "level": 1
+        },
+        {
+          "skill_id": 201902,
+          "level": 1
+        },
+        {
+          "skill_id": 202081,
+          "level": 1
+        },
+        {
+          "skill_id": 202282,
+          "level": 1
+        },
+        {
+          "skill_id": 202312,
+          "level": 1
+        },
+        {
+          "skill_id": 202371,
+          "level": 1
+        },
+        {
+          "skill_id": 210011,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210052,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 6185,
+      "single_mode_chara_id": 3653,
+      "card_id": 100901,
+      "speed": 995,
+      "stamina": 624,
+      "power": 686,
+      "wiz": 1219,
+      "guts": 612,
+      "rank_score": 17959,
+      "rank": 17,
+      "scenario_id": 2,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 7,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 3,
+      "proper_running_style_oikomi": 1,
+      "proper_distance_short": 2,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 6,
+      "talent_level": 4,
+      "skill_array": [
+        {
+          "skill_id": 100091,
+          "level": 5
+        },
+        {
+          "skill_id": 200012,
+          "level": 1
+        },
+        {
+          "skill_id": 200162,
+          "level": 1
+        },
+        {
+          "skill_id": 200192,
+          "level": 1
+        },
+        {
+          "skill_id": 200262,
+          "level": 1
+        },
+        {
+          "skill_id": 200342,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200461,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200582,
+          "level": 1
+        },
+        {
+          "skill_id": 200722,
+          "level": 1
+        },
+        {
+          "skill_id": 200732,
+          "level": 1
+        },
+        {
+          "skill_id": 200881,
+          "level": 1
+        },
+        {
+          "skill_id": 200891,
+          "level": 1
+        },
+        {
+          "skill_id": 200911,
+          "level": 1
+        },
+        {
+          "skill_id": 201152,
+          "level": 1
+        },
+        {
+          "skill_id": 201162,
+          "level": 1
+        },
+        {
+          "skill_id": 201312,
+          "level": 1
+        },
+        {
+          "skill_id": 201532,
+          "level": 1
+        },
+        {
+          "skill_id": 201601,
+          "level": 1
+        },
+        {
+          "skill_id": 201611,
+          "level": 1
+        },
+        {
+          "skill_id": 201902,
+          "level": 1
+        },
+        {
+          "skill_id": 202081,
+          "level": 1
+        },
+        {
+          "skill_id": 210011,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210052,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 6195,
+      "single_mode_chara_id": 3663,
+      "card_id": 100901,
+      "speed": 1080,
+      "stamina": 701,
+      "power": 669,
+      "wiz": 1194,
+      "guts": 540,
+      "rank_score": 17968,
+      "rank": 17,
+      "scenario_id": 2,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 5,
+      "proper_running_style_nige": 7,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 3,
+      "proper_running_style_oikomi": 1,
+      "proper_distance_short": 2,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 6,
+      "talent_level": 4,
+      "skill_array": [
+        {
+          "skill_id": 100091,
+          "level": 5
+        },
+        {
+          "skill_id": 200132,
+          "level": 1
+        },
+        {
+          "skill_id": 200332,
+          "level": 1
+        },
+        {
+          "skill_id": 200362,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200582,
+          "level": 1
+        },
+        {
+          "skill_id": 200722,
+          "level": 1
+        },
+        {
+          "skill_id": 200732,
+          "level": 1
+        },
+        {
+          "skill_id": 200881,
+          "level": 1
+        },
+        {
+          "skill_id": 200891,
+          "level": 1
+        },
+        {
+          "skill_id": 200911,
+          "level": 1
+        },
+        {
+          "skill_id": 200952,
+          "level": 1
+        },
+        {
+          "skill_id": 201102,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201312,
+          "level": 1
+        },
+        {
+          "skill_id": 201322,
+          "level": 1
+        },
+        {
+          "skill_id": 201532,
+          "level": 1
+        },
+        {
+          "skill_id": 201611,
+          "level": 1
+        },
+        {
+          "skill_id": 201902,
+          "level": 1
+        },
+        {
+          "skill_id": 202081,
+          "level": 1
+        },
+        {
+          "skill_id": 202132,
+          "level": 1
+        },
+        {
+          "skill_id": 202302,
+          "level": 1
+        },
+        {
+          "skill_id": 210012,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210052,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 6230,
+      "single_mode_chara_id": 3698,
+      "card_id": 100601,
+      "speed": 1068,
+      "stamina": 575,
+      "power": 820,
+      "wiz": 1243,
+      "guts": 513,
+      "rank_score": 17891,
+      "rank": 17,
+      "scenario_id": 2,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 6,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200192,
+          "level": 1
+        },
+        {
+          "skill_id": 200332,
+          "level": 1
+        },
+        {
+          "skill_id": 200342,
+          "level": 1
+        },
+        {
+          "skill_id": 200362,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200722,
+          "level": 1
+        },
+        {
+          "skill_id": 200911,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201132,
+          "level": 1
+        },
+        {
+          "skill_id": 201142,
+          "level": 1
+        },
+        {
+          "skill_id": 201312,
+          "level": 1
+        },
+        {
+          "skill_id": 201532,
+          "level": 1
+        },
+        {
+          "skill_id": 201611,
+          "level": 1
+        },
+        {
+          "skill_id": 201672,
+          "level": 1
+        },
+        {
+          "skill_id": 201902,
+          "level": 1
+        },
+        {
+          "skill_id": 202132,
+          "level": 1
+        },
+        {
+          "skill_id": 202312,
+          "level": 1
+        },
+        {
+          "skill_id": 202372,
+          "level": 1
+        },
+        {
+          "skill_id": 202472,
+          "level": 1
+        },
+        {
+          "skill_id": 210011,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210052,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 6236,
+      "single_mode_chara_id": 3704,
+      "card_id": 100601,
+      "speed": 1097,
+      "stamina": 688,
+      "power": 916,
+      "wiz": 1205,
+      "guts": 528,
+      "rank_score": 18970,
+      "rank": 17,
+      "scenario_id": 2,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 6,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200012,
+          "level": 1
+        },
+        {
+          "skill_id": 200162,
+          "level": 1
+        },
+        {
+          "skill_id": 200212,
+          "level": 1
+        },
+        {
+          "skill_id": 200262,
+          "level": 1
+        },
+        {
+          "skill_id": 200332,
+          "level": 1
+        },
+        {
+          "skill_id": 200342,
+          "level": 1
+        },
+        {
+          "skill_id": 200372,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200881,
+          "level": 1
+        },
+        {
+          "skill_id": 201102,
+          "level": 1
+        },
+        {
+          "skill_id": 201132,
+          "level": 1
+        },
+        {
+          "skill_id": 201312,
+          "level": 1
+        },
+        {
+          "skill_id": 201322,
+          "level": 1
+        },
+        {
+          "skill_id": 201532,
+          "level": 1
+        },
+        {
+          "skill_id": 201641,
+          "level": 1
+        },
+        {
+          "skill_id": 201672,
+          "level": 1
+        },
+        {
+          "skill_id": 202081,
+          "level": 1
+        },
+        {
+          "skill_id": 202282,
+          "level": 1
+        },
+        {
+          "skill_id": 202371,
+          "level": 1
+        },
+        {
+          "skill_id": 210011,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210052,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 6339,
+      "single_mode_chara_id": 3811,
+      "card_id": 100402,
+      "speed": 1164,
+      "stamina": 488,
+      "power": 602,
+      "wiz": 1252,
+      "guts": 545,
+      "rank_score": 17502,
+      "rank": 17,
+      "scenario_id": 2,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 7,
+      "proper_running_style_senko": 3,
+      "proper_running_style_sashi": 1,
+      "proper_running_style_oikomi": 1,
+      "proper_distance_short": 6,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 6,
+      "proper_distance_long": 5,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 110041,
+          "level": 5
+        },
+        {
+          "skill_id": 200032,
+          "level": 1
+        },
+        {
+          "skill_id": 200132,
+          "level": 1
+        },
+        {
+          "skill_id": 200162,
+          "level": 1
+        },
+        {
+          "skill_id": 200182,
+          "level": 1
+        },
+        {
+          "skill_id": 200192,
+          "level": 1
+        },
+        {
+          "skill_id": 200232,
+          "level": 1
+        },
+        {
+          "skill_id": 200252,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200502,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200652,
+          "level": 1
+        },
+        {
+          "skill_id": 200682,
+          "level": 1
+        },
+        {
+          "skill_id": 200722,
+          "level": 1
+        },
+        {
+          "skill_id": 200891,
+          "level": 1
+        },
+        {
+          "skill_id": 200911,
+          "level": 1
+        },
+        {
+          "skill_id": 201082,
+          "level": 1
+        },
+        {
+          "skill_id": 201142,
+          "level": 1
+        },
+        {
+          "skill_id": 201152,
+          "level": 1
+        },
+        {
+          "skill_id": 201162,
+          "level": 1
+        },
+        {
+          "skill_id": 201312,
+          "level": 1
+        },
+        {
+          "skill_id": 201322,
+          "level": 1
+        },
+        {
+          "skill_id": 201382,
+          "level": 1
+        },
+        {
+          "skill_id": 201532,
+          "level": 1
+        },
+        {
+          "skill_id": 201581,
+          "level": 1
+        },
+        {
+          "skill_id": 201661,
+          "level": 1
+        },
+        {
+          "skill_id": 202082,
+          "level": 1
+        },
+        {
+          "skill_id": 210012,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210052,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 6383,
+      "single_mode_chara_id": 3857,
+      "card_id": 103201,
+      "speed": 1194,
+      "stamina": 656,
+      "power": 673,
+      "wiz": 998,
+      "guts": 597,
+      "rank_score": 17596,
+      "rank": 17,
+      "scenario_id": 2,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 3,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 6,
+      "proper_running_style_oikomi": 2,
+      "proper_distance_short": 1,
+      "proper_distance_mile": 8,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 6,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100321,
+          "level": 6
+        },
+        {
+          "skill_id": 200012,
+          "level": 1
+        },
+        {
+          "skill_id": 200162,
+          "level": 1
+        },
+        {
+          "skill_id": 200192,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200582,
+          "level": 1
+        },
+        {
+          "skill_id": 200722,
+          "level": 1
+        },
+        {
+          "skill_id": 200841,
+          "level": 1
+        },
+        {
+          "skill_id": 200911,
+          "level": 1
+        },
+        {
+          "skill_id": 201102,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201142,
+          "level": 1
+        },
+        {
+          "skill_id": 201152,
+          "level": 1
+        },
+        {
+          "skill_id": 201312,
+          "level": 1
+        },
+        {
+          "skill_id": 201322,
+          "level": 1
+        },
+        {
+          "skill_id": 201532,
+          "level": 1
+        },
+        {
+          "skill_id": 201611,
+          "level": 1
+        },
+        {
+          "skill_id": 201661,
+          "level": 1
+        },
+        {
+          "skill_id": 201672,
+          "level": 1
+        },
+        {
+          "skill_id": 202082,
+          "level": 1
+        },
+        {
+          "skill_id": 202262,
+          "level": 1
+        },
+        {
+          "skill_id": 210011,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210052,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 6385,
+      "single_mode_chara_id": 3859,
+      "card_id": 103201,
+      "speed": 1043,
+      "stamina": 595,
+      "power": 637,
+      "wiz": 1273,
+      "guts": 562,
+      "rank_score": 17714,
+      "rank": 17,
+      "scenario_id": 2,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 6,
+      "proper_running_style_nige": 3,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 6,
+      "proper_running_style_oikomi": 2,
+      "proper_distance_short": 1,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 6,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100321,
+          "level": 6
+        },
+        {
+          "skill_id": 200012,
+          "level": 1
+        },
+        {
+          "skill_id": 200192,
+          "level": 1
+        },
+        {
+          "skill_id": 200332,
+          "level": 1
+        },
+        {
+          "skill_id": 200362,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200722,
+          "level": 1
+        },
+        {
+          "skill_id": 201102,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201152,
+          "level": 1
+        },
+        {
+          "skill_id": 201312,
+          "level": 1
+        },
+        {
+          "skill_id": 201532,
+          "level": 1
+        },
+        {
+          "skill_id": 201601,
+          "level": 1
+        },
+        {
+          "skill_id": 201611,
+          "level": 1
+        },
+        {
+          "skill_id": 201641,
+          "level": 1
+        },
+        {
+          "skill_id": 201661,
+          "level": 1
+        },
+        {
+          "skill_id": 201902,
+          "level": 1
+        },
+        {
+          "skill_id": 202082,
+          "level": 1
+        },
+        {
+          "skill_id": 202312,
+          "level": 1
+        },
+        {
+          "skill_id": 210011,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210052,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 6466,
+      "single_mode_chara_id": 3943,
+      "card_id": 101401,
+      "speed": 1129,
+      "stamina": 609,
+      "power": 685,
+      "wiz": 1233,
+      "guts": 648,
+      "rank_score": 18617,
+      "rank": 17,
+      "scenario_id": 2,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 3,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 5,
+      "proper_distance_short": 2,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 6,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100141,
+          "level": 6
+        },
+        {
+          "skill_id": 200012,
+          "level": 1
+        },
+        {
+          "skill_id": 200132,
+          "level": 1
+        },
+        {
+          "skill_id": 200192,
+          "level": 1
+        },
+        {
+          "skill_id": 200262,
+          "level": 1
+        },
+        {
+          "skill_id": 200332,
+          "level": 1
+        },
+        {
+          "skill_id": 200342,
+          "level": 1
+        },
+        {
+          "skill_id": 200362,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200722,
+          "level": 1
+        },
+        {
+          "skill_id": 200911,
+          "level": 1
+        },
+        {
+          "skill_id": 200952,
+          "level": 1
+        },
+        {
+          "skill_id": 201102,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201312,
+          "level": 1
+        },
+        {
+          "skill_id": 201332,
+          "level": 1
+        },
+        {
+          "skill_id": 201611,
+          "level": 1
+        },
+        {
+          "skill_id": 201641,
+          "level": 1
+        },
+        {
+          "skill_id": 201661,
+          "level": 1
+        },
+        {
+          "skill_id": 202081,
+          "level": 1
+        },
+        {
+          "skill_id": 202312,
+          "level": 1
+        },
+        {
+          "skill_id": 210012,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210051,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 6635,
+      "single_mode_chara_id": 4093,
+      "card_id": 100601,
+      "speed": 1158,
+      "stamina": 549,
+      "power": 882,
+      "wiz": 1234,
+      "guts": 436,
+      "rank_score": 18588,
+      "rank": 17,
+      "scenario_id": 2,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 8,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 6,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200262,
+          "level": 1
+        },
+        {
+          "skill_id": 200332,
+          "level": 1
+        },
+        {
+          "skill_id": 200342,
+          "level": 1
+        },
+        {
+          "skill_id": 200362,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200911,
+          "level": 1
+        },
+        {
+          "skill_id": 201101,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201132,
+          "level": 1
+        },
+        {
+          "skill_id": 201152,
+          "level": 1
+        },
+        {
+          "skill_id": 201312,
+          "level": 1
+        },
+        {
+          "skill_id": 201322,
+          "level": 1
+        },
+        {
+          "skill_id": 201532,
+          "level": 1
+        },
+        {
+          "skill_id": 201601,
+          "level": 1
+        },
+        {
+          "skill_id": 201641,
+          "level": 1
+        },
+        {
+          "skill_id": 201661,
+          "level": 1
+        },
+        {
+          "skill_id": 201902,
+          "level": 1
+        },
+        {
+          "skill_id": 202081,
+          "level": 1
+        },
+        {
+          "skill_id": 202312,
+          "level": 1
+        },
+        {
+          "skill_id": 202332,
+          "level": 1
+        },
+        {
+          "skill_id": 210011,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210052,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 6681,
+      "single_mode_chara_id": 4139,
+      "card_id": 103201,
+      "speed": 1008,
+      "stamina": 687,
+      "power": 621,
+      "wiz": 1320,
+      "guts": 577,
+      "rank_score": 18375,
+      "rank": 17,
+      "scenario_id": 2,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 4,
+      "proper_running_style_nige": 3,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 6,
+      "proper_running_style_oikomi": 2,
+      "proper_distance_short": 1,
+      "proper_distance_mile": 8,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 6,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100321,
+          "level": 6
+        },
+        {
+          "skill_id": 200012,
+          "level": 1
+        },
+        {
+          "skill_id": 200192,
+          "level": 1
+        },
+        {
+          "skill_id": 200262,
+          "level": 1
+        },
+        {
+          "skill_id": 200332,
+          "level": 1
+        },
+        {
+          "skill_id": 200342,
+          "level": 1
+        },
+        {
+          "skill_id": 200362,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200722,
+          "level": 1
+        },
+        {
+          "skill_id": 200911,
+          "level": 1
+        },
+        {
+          "skill_id": 201102,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201152,
+          "level": 1
+        },
+        {
+          "skill_id": 201362,
+          "level": 1
+        },
+        {
+          "skill_id": 201641,
+          "level": 1
+        },
+        {
+          "skill_id": 201661,
+          "level": 1
+        },
+        {
+          "skill_id": 201902,
+          "level": 1
+        },
+        {
+          "skill_id": 202081,
+          "level": 1
+        },
+        {
+          "skill_id": 202322,
+          "level": 1
+        },
+        {
+          "skill_id": 210012,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210051,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 6857,
+      "single_mode_chara_id": 4298,
+      "card_id": 103201,
+      "speed": 1128,
+      "stamina": 452,
+      "power": 751,
+      "wiz": 1338,
+      "guts": 592,
+      "rank_score": 19351,
+      "rank": 18,
+      "scenario_id": 2,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 4,
+      "proper_running_style_nige": 3,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 6,
+      "proper_running_style_oikomi": 2,
+      "proper_distance_short": 1,
+      "proper_distance_mile": 8,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 6,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100321,
+          "level": 6
+        },
+        {
+          "skill_id": 200192,
+          "level": 1
+        },
+        {
+          "skill_id": 200212,
+          "level": 1
+        },
+        {
+          "skill_id": 200262,
+          "level": 1
+        },
+        {
+          "skill_id": 200331,
+          "level": 1
+        },
+        {
+          "skill_id": 200362,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200582,
+          "level": 1
+        },
+        {
+          "skill_id": 200911,
+          "level": 1
+        },
+        {
+          "skill_id": 201102,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201312,
+          "level": 1
+        },
+        {
+          "skill_id": 201362,
+          "level": 1
+        },
+        {
+          "skill_id": 201532,
+          "level": 1
+        },
+        {
+          "skill_id": 201611,
+          "level": 1
+        },
+        {
+          "skill_id": 201661,
+          "level": 1
+        },
+        {
+          "skill_id": 201682,
+          "level": 1
+        },
+        {
+          "skill_id": 201702,
+          "level": 1
+        },
+        {
+          "skill_id": 201902,
+          "level": 1
+        },
+        {
+          "skill_id": 202082,
+          "level": 1
+        },
+        {
+          "skill_id": 210012,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210051,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 8867,
+      "single_mode_chara_id": 6288,
+      "card_id": 100601,
+      "speed": 863,
+      "stamina": 769,
+      "power": 837,
+      "wiz": 1139,
+      "guts": 572,
+      "rank_score": 17517,
+      "rank": 17,
+      "scenario_id": 2,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 6,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 7,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 7,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200012,
+          "level": 1
+        },
+        {
+          "skill_id": 200042,
+          "level": 1
+        },
+        {
+          "skill_id": 200152,
+          "level": 1
+        },
+        {
+          "skill_id": 200162,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200622,
+          "level": 1
+        },
+        {
+          "skill_id": 200642,
+          "level": 1
+        },
+        {
+          "skill_id": 200671,
+          "level": 1
+        },
+        {
+          "skill_id": 200702,
+          "level": 1
+        },
+        {
+          "skill_id": 200732,
+          "level": 1
+        },
+        {
+          "skill_id": 200771,
+          "level": 1
+        },
+        {
+          "skill_id": 201032,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201322,
+          "level": 1
+        },
+        {
+          "skill_id": 201482,
+          "level": 1
+        },
+        {
+          "skill_id": 201571,
+          "level": 1
+        },
+        {
+          "skill_id": 201591,
+          "level": 1
+        },
+        {
+          "skill_id": 201601,
+          "level": 1
+        },
+        {
+          "skill_id": 201611,
+          "level": 1
+        },
+        {
+          "skill_id": 201641,
+          "level": 1
+        },
+        {
+          "skill_id": 201661,
+          "level": 1
+        },
+        {
+          "skill_id": 202161,
+          "level": 1
+        },
+        {
+          "skill_id": 202352,
+          "level": 1
+        },
+        {
+          "skill_id": 210011,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 9977,
+      "single_mode_chara_id": 7317,
+      "card_id": 100601,
+      "speed": 1155,
+      "stamina": 493,
+      "power": 923,
+      "wiz": 762,
+      "guts": 605,
+      "rank_score": 17809,
+      "rank": 17,
+      "scenario_id": 3,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 8,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 8,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200042,
+          "level": 1
+        },
+        {
+          "skill_id": 200132,
+          "level": 1
+        },
+        {
+          "skill_id": 200192,
+          "level": 1
+        },
+        {
+          "skill_id": 200222,
+          "level": 1
+        },
+        {
+          "skill_id": 200232,
+          "level": 1
+        },
+        {
+          "skill_id": 200332,
+          "level": 1
+        },
+        {
+          "skill_id": 200342,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200502,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200582,
+          "level": 1
+        },
+        {
+          "skill_id": 200602,
+          "level": 1
+        },
+        {
+          "skill_id": 200732,
+          "level": 1
+        },
+        {
+          "skill_id": 200762,
+          "level": 1
+        },
+        {
+          "skill_id": 200891,
+          "level": 1
+        },
+        {
+          "skill_id": 200911,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201152,
+          "level": 1
+        },
+        {
+          "skill_id": 201162,
+          "level": 1
+        },
+        {
+          "skill_id": 201591,
+          "level": 1
+        },
+        {
+          "skill_id": 201611,
+          "level": 1
+        },
+        {
+          "skill_id": 201662,
+          "level": 1
+        },
+        {
+          "skill_id": 201672,
+          "level": 1
+        },
+        {
+          "skill_id": 201902,
+          "level": 1
+        },
+        {
+          "skill_id": 202012,
+          "level": 1
+        },
+        {
+          "skill_id": 202092,
+          "level": 1
+        },
+        {
+          "skill_id": 202152,
+          "level": 1
+        },
+        {
+          "skill_id": 202372,
+          "level": 1
+        },
+        {
+          "skill_id": 210012,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210072,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 9998,
+      "single_mode_chara_id": 7339,
+      "card_id": 100601,
+      "speed": 901,
+      "stamina": 632,
+      "power": 838,
+      "wiz": 1184,
+      "guts": 556,
+      "rank_score": 17524,
+      "rank": 17,
+      "scenario_id": 2,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 7,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200012,
+          "level": 1
+        },
+        {
+          "skill_id": 200192,
+          "level": 1
+        },
+        {
+          "skill_id": 200332,
+          "level": 1
+        },
+        {
+          "skill_id": 200342,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200592,
+          "level": 1
+        },
+        {
+          "skill_id": 200601,
+          "level": 1
+        },
+        {
+          "skill_id": 200781,
+          "level": 1
+        },
+        {
+          "skill_id": 200881,
+          "level": 1
+        },
+        {
+          "skill_id": 201142,
+          "level": 1
+        },
+        {
+          "skill_id": 201212,
+          "level": 1
+        },
+        {
+          "skill_id": 201332,
+          "level": 1
+        },
+        {
+          "skill_id": 201382,
+          "level": 1
+        },
+        {
+          "skill_id": 201392,
+          "level": 1
+        },
+        {
+          "skill_id": 201452,
+          "level": 1
+        },
+        {
+          "skill_id": 201591,
+          "level": 1
+        },
+        {
+          "skill_id": 201631,
+          "level": 1
+        },
+        {
+          "skill_id": 201682,
+          "level": 1
+        },
+        {
+          "skill_id": 201692,
+          "level": 1
+        },
+        {
+          "skill_id": 201702,
+          "level": 1
+        },
+        {
+          "skill_id": 202132,
+          "level": 1
+        },
+        {
+          "skill_id": 210012,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210051,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 10031,
+      "single_mode_chara_id": 7373,
+      "card_id": 100601,
+      "speed": 1203,
+      "stamina": 574,
+      "power": 916,
+      "wiz": 818,
+      "guts": 527,
+      "rank_score": 18284,
+      "rank": 17,
+      "scenario_id": 3,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 7,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200011,
+          "level": 1
+        },
+        {
+          "skill_id": 200042,
+          "level": 1
+        },
+        {
+          "skill_id": 200192,
+          "level": 1
+        },
+        {
+          "skill_id": 200222,
+          "level": 1
+        },
+        {
+          "skill_id": 200252,
+          "level": 1
+        },
+        {
+          "skill_id": 200332,
+          "level": 1
+        },
+        {
+          "skill_id": 200342,
+          "level": 1
+        },
+        {
+          "skill_id": 200432,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200602,
+          "level": 1
+        },
+        {
+          "skill_id": 200722,
+          "level": 1
+        },
+        {
+          "skill_id": 200771,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201242,
+          "level": 1
+        },
+        {
+          "skill_id": 201322,
+          "level": 1
+        },
+        {
+          "skill_id": 201342,
+          "level": 1
+        },
+        {
+          "skill_id": 201381,
+          "level": 1
+        },
+        {
+          "skill_id": 201391,
+          "level": 1
+        },
+        {
+          "skill_id": 201452,
+          "level": 1
+        },
+        {
+          "skill_id": 201532,
+          "level": 1
+        },
+        {
+          "skill_id": 201591,
+          "level": 1
+        },
+        {
+          "skill_id": 201611,
+          "level": 1
+        },
+        {
+          "skill_id": 201662,
+          "level": 1
+        },
+        {
+          "skill_id": 201902,
+          "level": 1
+        },
+        {
+          "skill_id": 202082,
+          "level": 1
+        },
+        {
+          "skill_id": 202152,
+          "level": 1
+        },
+        {
+          "skill_id": 202292,
+          "level": 1
+        },
+        {
+          "skill_id": 210012,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210071,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 10059,
+      "single_mode_chara_id": 7408,
+      "card_id": 100601,
+      "speed": 1202,
+      "stamina": 543,
+      "power": 875,
+      "wiz": 768,
+      "guts": 640,
+      "rank_score": 18252,
+      "rank": 17,
+      "scenario_id": 3,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 8,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200042,
+          "level": 1
+        },
+        {
+          "skill_id": 200132,
+          "level": 1
+        },
+        {
+          "skill_id": 200142,
+          "level": 1
+        },
+        {
+          "skill_id": 200152,
+          "level": 1
+        },
+        {
+          "skill_id": 200202,
+          "level": 1
+        },
+        {
+          "skill_id": 200222,
+          "level": 1
+        },
+        {
+          "skill_id": 200332,
+          "level": 1
+        },
+        {
+          "skill_id": 200342,
+          "level": 1
+        },
+        {
+          "skill_id": 200362,
+          "level": 1
+        },
+        {
+          "skill_id": 200382,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200502,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200702,
+          "level": 1
+        },
+        {
+          "skill_id": 200722,
+          "level": 1
+        },
+        {
+          "skill_id": 200891,
+          "level": 1
+        },
+        {
+          "skill_id": 200911,
+          "level": 1
+        },
+        {
+          "skill_id": 201052,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201132,
+          "level": 1
+        },
+        {
+          "skill_id": 201152,
+          "level": 1
+        },
+        {
+          "skill_id": 201181,
+          "level": 1
+        },
+        {
+          "skill_id": 201382,
+          "level": 1
+        },
+        {
+          "skill_id": 201391,
+          "level": 1
+        },
+        {
+          "skill_id": 201452,
+          "level": 1
+        },
+        {
+          "skill_id": 201611,
+          "level": 1
+        },
+        {
+          "skill_id": 201662,
+          "level": 1
+        },
+        {
+          "skill_id": 201902,
+          "level": 1
+        },
+        {
+          "skill_id": 202152,
+          "level": 1
+        },
+        {
+          "skill_id": 202292,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210071,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 10062,
+      "single_mode_chara_id": 7411,
+      "card_id": 100601,
+      "speed": 1191,
+      "stamina": 565,
+      "power": 852,
+      "wiz": 808,
+      "guts": 599,
+      "rank_score": 18264,
+      "rank": 17,
+      "scenario_id": 3,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 7,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200011,
+          "level": 1
+        },
+        {
+          "skill_id": 200042,
+          "level": 1
+        },
+        {
+          "skill_id": 200142,
+          "level": 1
+        },
+        {
+          "skill_id": 200152,
+          "level": 1
+        },
+        {
+          "skill_id": 200192,
+          "level": 1
+        },
+        {
+          "skill_id": 200222,
+          "level": 1
+        },
+        {
+          "skill_id": 200292,
+          "level": 1
+        },
+        {
+          "skill_id": 200332,
+          "level": 1
+        },
+        {
+          "skill_id": 200342,
+          "level": 1
+        },
+        {
+          "skill_id": 200352,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200722,
+          "level": 1
+        },
+        {
+          "skill_id": 200742,
+          "level": 1
+        },
+        {
+          "skill_id": 200762,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201132,
+          "level": 1
+        },
+        {
+          "skill_id": 201152,
+          "level": 1
+        },
+        {
+          "skill_id": 201212,
+          "level": 1
+        },
+        {
+          "skill_id": 201262,
+          "level": 1
+        },
+        {
+          "skill_id": 201322,
+          "level": 1
+        },
+        {
+          "skill_id": 201611,
+          "level": 1
+        },
+        {
+          "skill_id": 201631,
+          "level": 1
+        },
+        {
+          "skill_id": 201662,
+          "level": 1
+        },
+        {
+          "skill_id": 201692,
+          "level": 1
+        },
+        {
+          "skill_id": 202022,
+          "level": 1
+        },
+        {
+          "skill_id": 202092,
+          "level": 1
+        },
+        {
+          "skill_id": 202152,
+          "level": 1
+        },
+        {
+          "skill_id": 202312,
+          "level": 1
+        },
+        {
+          "skill_id": 210012,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210071,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 10063,
+      "single_mode_chara_id": 7412,
+      "card_id": 100601,
+      "speed": 1173,
+      "stamina": 575,
+      "power": 856,
+      "wiz": 800,
+      "guts": 538,
+      "rank_score": 17484,
+      "rank": 16,
+      "scenario_id": 3,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 8,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 8,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 7,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200042,
+          "level": 1
+        },
+        {
+          "skill_id": 200132,
+          "level": 1
+        },
+        {
+          "skill_id": 200152,
+          "level": 1
+        },
+        {
+          "skill_id": 200172,
+          "level": 1
+        },
+        {
+          "skill_id": 200192,
+          "level": 1
+        },
+        {
+          "skill_id": 200202,
+          "level": 1
+        },
+        {
+          "skill_id": 200222,
+          "level": 1
+        },
+        {
+          "skill_id": 200292,
+          "level": 1
+        },
+        {
+          "skill_id": 200342,
+          "level": 1
+        },
+        {
+          "skill_id": 200432,
+          "level": 1
+        },
+        {
+          "skill_id": 200442,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200702,
+          "level": 1
+        },
+        {
+          "skill_id": 200722,
+          "level": 1
+        },
+        {
+          "skill_id": 200891,
+          "level": 1
+        },
+        {
+          "skill_id": 200911,
+          "level": 1
+        },
+        {
+          "skill_id": 200952,
+          "level": 1
+        },
+        {
+          "skill_id": 201102,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201162,
+          "level": 1
+        },
+        {
+          "skill_id": 201182,
+          "level": 1
+        },
+        {
+          "skill_id": 201352,
+          "level": 1
+        },
+        {
+          "skill_id": 201452,
+          "level": 1
+        },
+        {
+          "skill_id": 201591,
+          "level": 1
+        },
+        {
+          "skill_id": 201631,
+          "level": 1
+        },
+        {
+          "skill_id": 201661,
+          "level": 1
+        },
+        {
+          "skill_id": 201692,
+          "level": 1
+        },
+        {
+          "skill_id": 202002,
+          "level": 1
+        },
+        {
+          "skill_id": 202092,
+          "level": 1
+        },
+        {
+          "skill_id": 202152,
+          "level": 1
+        },
+        {
+          "skill_id": 202372,
+          "level": 1
+        },
+        {
+          "skill_id": 202472,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210072,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 10064,
+      "single_mode_chara_id": 7413,
+      "card_id": 100601,
+      "speed": 1179,
+      "stamina": 557,
+      "power": 836,
+      "wiz": 733,
+      "guts": 542,
+      "rank_score": 17516,
+      "rank": 17,
+      "scenario_id": 3,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 7,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200012,
+          "level": 1
+        },
+        {
+          "skill_id": 200042,
+          "level": 1
+        },
+        {
+          "skill_id": 200222,
+          "level": 1
+        },
+        {
+          "skill_id": 200272,
+          "level": 1
+        },
+        {
+          "skill_id": 200382,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200582,
+          "level": 1
+        },
+        {
+          "skill_id": 200592,
+          "level": 1
+        },
+        {
+          "skill_id": 200712,
+          "level": 1
+        },
+        {
+          "skill_id": 200722,
+          "level": 1
+        },
+        {
+          "skill_id": 200762,
+          "level": 1
+        },
+        {
+          "skill_id": 200891,
+          "level": 1
+        },
+        {
+          "skill_id": 200911,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201152,
+          "level": 1
+        },
+        {
+          "skill_id": 201181,
+          "level": 1
+        },
+        {
+          "skill_id": 201242,
+          "level": 1
+        },
+        {
+          "skill_id": 201322,
+          "level": 1
+        },
+        {
+          "skill_id": 201381,
+          "level": 1
+        },
+        {
+          "skill_id": 201391,
+          "level": 1
+        },
+        {
+          "skill_id": 201452,
+          "level": 1
+        },
+        {
+          "skill_id": 201611,
+          "level": 1
+        },
+        {
+          "skill_id": 201662,
+          "level": 1
+        },
+        {
+          "skill_id": 202152,
+          "level": 1
+        },
+        {
+          "skill_id": 210012,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210071,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 10065,
+      "single_mode_chara_id": 7414,
+      "card_id": 100601,
+      "speed": 1204,
+      "stamina": 584,
+      "power": 826,
+      "wiz": 833,
+      "guts": 513,
+      "rank_score": 17519,
+      "rank": 17,
+      "scenario_id": 3,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 8,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 8,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200011,
+          "level": 1
+        },
+        {
+          "skill_id": 200132,
+          "level": 1
+        },
+        {
+          "skill_id": 200161,
+          "level": 1
+        },
+        {
+          "skill_id": 200222,
+          "level": 1
+        },
+        {
+          "skill_id": 200342,
+          "level": 1
+        },
+        {
+          "skill_id": 200382,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200591,
+          "level": 1
+        },
+        {
+          "skill_id": 200722,
+          "level": 1
+        },
+        {
+          "skill_id": 200851,
+          "level": 1
+        },
+        {
+          "skill_id": 201102,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201381,
+          "level": 1
+        },
+        {
+          "skill_id": 201452,
+          "level": 1
+        },
+        {
+          "skill_id": 201541,
+          "level": 1
+        },
+        {
+          "skill_id": 201591,
+          "level": 1
+        },
+        {
+          "skill_id": 201631,
+          "level": 1
+        },
+        {
+          "skill_id": 201662,
+          "level": 1
+        },
+        {
+          "skill_id": 202152,
+          "level": 1
+        },
+        {
+          "skill_id": 202231,
+          "level": 1
+        },
+        {
+          "skill_id": 210012,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210052,
+          "level": 1
+        },
+        {
+          "skill_id": 210071,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 10066,
+      "single_mode_chara_id": 7415,
+      "card_id": 100601,
+      "speed": 1220,
+      "stamina": 596,
+      "power": 834,
+      "wiz": 881,
+      "guts": 546,
+      "rank_score": 17569,
+      "rank": 17,
+      "scenario_id": 3,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 7,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200042,
+          "level": 1
+        },
+        {
+          "skill_id": 200221,
+          "level": 1
+        },
+        {
+          "skill_id": 200331,
+          "level": 1
+        },
+        {
+          "skill_id": 200341,
+          "level": 1
+        },
+        {
+          "skill_id": 200432,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200602,
+          "level": 1
+        },
+        {
+          "skill_id": 201032,
+          "level": 1
+        },
+        {
+          "skill_id": 201181,
+          "level": 1
+        },
+        {
+          "skill_id": 201212,
+          "level": 1
+        },
+        {
+          "skill_id": 201422,
+          "level": 1
+        },
+        {
+          "skill_id": 201541,
+          "level": 1
+        },
+        {
+          "skill_id": 201591,
+          "level": 1
+        },
+        {
+          "skill_id": 201611,
+          "level": 1
+        },
+        {
+          "skill_id": 201662,
+          "level": 1
+        },
+        {
+          "skill_id": 202152,
+          "level": 1
+        },
+        {
+          "skill_id": 210012,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210071,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 10067,
+      "single_mode_chara_id": 7416,
+      "card_id": 100601,
+      "speed": 1214,
+      "stamina": 599,
+      "power": 891,
+      "wiz": 816,
+      "guts": 566,
+      "rank_score": 17526,
+      "rank": 17,
+      "scenario_id": 3,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 7,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200011,
+          "level": 1
+        },
+        {
+          "skill_id": 200042,
+          "level": 1
+        },
+        {
+          "skill_id": 200161,
+          "level": 1
+        },
+        {
+          "skill_id": 200201,
+          "level": 1
+        },
+        {
+          "skill_id": 200222,
+          "level": 1
+        },
+        {
+          "skill_id": 200261,
+          "level": 1
+        },
+        {
+          "skill_id": 200341,
+          "level": 1
+        },
+        {
+          "skill_id": 200352,
+          "level": 1
+        },
+        {
+          "skill_id": 200362,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200602,
+          "level": 1
+        },
+        {
+          "skill_id": 200762,
+          "level": 1
+        },
+        {
+          "skill_id": 201322,
+          "level": 1
+        },
+        {
+          "skill_id": 201391,
+          "level": 1
+        },
+        {
+          "skill_id": 201532,
+          "level": 1
+        },
+        {
+          "skill_id": 201662,
+          "level": 1
+        },
+        {
+          "skill_id": 201692,
+          "level": 1
+        },
+        {
+          "skill_id": 202152,
+          "level": 1
+        },
+        {
+          "skill_id": 210012,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210052,
+          "level": 1
+        },
+        {
+          "skill_id": 210071,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 10068,
+      "single_mode_chara_id": 7417,
+      "card_id": 100601,
+      "speed": 1223,
+      "stamina": 592,
+      "power": 832,
+      "wiz": 798,
+      "guts": 607,
+      "rank_score": 17552,
+      "rank": 17,
+      "scenario_id": 3,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 7,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200041,
+          "level": 1
+        },
+        {
+          "skill_id": 200221,
+          "level": 1
+        },
+        {
+          "skill_id": 200291,
+          "level": 1
+        },
+        {
+          "skill_id": 200341,
+          "level": 1
+        },
+        {
+          "skill_id": 200352,
+          "level": 1
+        },
+        {
+          "skill_id": 200362,
+          "level": 1
+        },
+        {
+          "skill_id": 200432,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 201032,
+          "level": 1
+        },
+        {
+          "skill_id": 201102,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201322,
+          "level": 1
+        },
+        {
+          "skill_id": 201332,
+          "level": 1
+        },
+        {
+          "skill_id": 201362,
+          "level": 1
+        },
+        {
+          "skill_id": 201381,
+          "level": 1
+        },
+        {
+          "skill_id": 201391,
+          "level": 1
+        },
+        {
+          "skill_id": 201541,
+          "level": 1
+        },
+        {
+          "skill_id": 201611,
+          "level": 1
+        },
+        {
+          "skill_id": 201631,
+          "level": 1
+        },
+        {
+          "skill_id": 201662,
+          "level": 1
+        },
+        {
+          "skill_id": 202152,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210071,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 10069,
+      "single_mode_chara_id": 7418,
+      "card_id": 100601,
+      "speed": 1195,
+      "stamina": 595,
+      "power": 910,
+      "wiz": 800,
+      "guts": 551,
+      "rank_score": 17479,
+      "rank": 16,
+      "scenario_id": 3,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 7,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200042,
+          "level": 1
+        },
+        {
+          "skill_id": 200142,
+          "level": 1
+        },
+        {
+          "skill_id": 200192,
+          "level": 1
+        },
+        {
+          "skill_id": 200201,
+          "level": 1
+        },
+        {
+          "skill_id": 200221,
+          "level": 1
+        },
+        {
+          "skill_id": 200341,
+          "level": 1
+        },
+        {
+          "skill_id": 200352,
+          "level": 1
+        },
+        {
+          "skill_id": 200362,
+          "level": 1
+        },
+        {
+          "skill_id": 200432,
+          "level": 1
+        },
+        {
+          "skill_id": 200442,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200881,
+          "level": 1
+        },
+        {
+          "skill_id": 201102,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201162,
+          "level": 1
+        },
+        {
+          "skill_id": 201192,
+          "level": 1
+        },
+        {
+          "skill_id": 201541,
+          "level": 1
+        },
+        {
+          "skill_id": 201591,
+          "level": 1
+        },
+        {
+          "skill_id": 201631,
+          "level": 1
+        },
+        {
+          "skill_id": 201662,
+          "level": 1
+        },
+        {
+          "skill_id": 201692,
+          "level": 1
+        },
+        {
+          "skill_id": 201902,
+          "level": 1
+        },
+        {
+          "skill_id": 202152,
+          "level": 1
+        },
+        {
+          "skill_id": 202312,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210071,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 10070,
+      "single_mode_chara_id": 7419,
+      "card_id": 100601,
+      "speed": 1211,
+      "stamina": 577,
+      "power": 859,
+      "wiz": 776,
+      "guts": 519,
+      "rank_score": 17500,
+      "rank": 17,
+      "scenario_id": 3,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 7,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200011,
+          "level": 1
+        },
+        {
+          "skill_id": 200042,
+          "level": 1
+        },
+        {
+          "skill_id": 200132,
+          "level": 1
+        },
+        {
+          "skill_id": 200152,
+          "level": 1
+        },
+        {
+          "skill_id": 200222,
+          "level": 1
+        },
+        {
+          "skill_id": 200292,
+          "level": 1
+        },
+        {
+          "skill_id": 200331,
+          "level": 1
+        },
+        {
+          "skill_id": 200341,
+          "level": 1
+        },
+        {
+          "skill_id": 200362,
+          "level": 1
+        },
+        {
+          "skill_id": 200382,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200602,
+          "level": 1
+        },
+        {
+          "skill_id": 200881,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201181,
+          "level": 1
+        },
+        {
+          "skill_id": 201541,
+          "level": 1
+        },
+        {
+          "skill_id": 201591,
+          "level": 1
+        },
+        {
+          "skill_id": 201611,
+          "level": 1
+        },
+        {
+          "skill_id": 201631,
+          "level": 1
+        },
+        {
+          "skill_id": 201662,
+          "level": 1
+        },
+        {
+          "skill_id": 201692,
+          "level": 1
+        },
+        {
+          "skill_id": 201702,
+          "level": 1
+        },
+        {
+          "skill_id": 201902,
+          "level": 1
+        },
+        {
+          "skill_id": 202152,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210071,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 10071,
+      "single_mode_chara_id": 7420,
+      "card_id": 100601,
+      "speed": 1220,
+      "stamina": 631,
+      "power": 805,
+      "wiz": 845,
+      "guts": 560,
+      "rank_score": 17516,
+      "rank": 17,
+      "scenario_id": 3,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 7,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200041,
+          "level": 1
+        },
+        {
+          "skill_id": 200152,
+          "level": 1
+        },
+        {
+          "skill_id": 200172,
+          "level": 1
+        },
+        {
+          "skill_id": 200221,
+          "level": 1
+        },
+        {
+          "skill_id": 200341,
+          "level": 1
+        },
+        {
+          "skill_id": 200362,
+          "level": 1
+        },
+        {
+          "skill_id": 200432,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200502,
+          "level": 1
+        },
+        {
+          "skill_id": 200592,
+          "level": 1
+        },
+        {
+          "skill_id": 200602,
+          "level": 1
+        },
+        {
+          "skill_id": 200762,
+          "level": 1
+        },
+        {
+          "skill_id": 201072,
+          "level": 1
+        },
+        {
+          "skill_id": 201122,
+          "level": 1
+        },
+        {
+          "skill_id": 201391,
+          "level": 1
+        },
+        {
+          "skill_id": 201611,
+          "level": 1
+        },
+        {
+          "skill_id": 201631,
+          "level": 1
+        },
+        {
+          "skill_id": 201662,
+          "level": 1
+        },
+        {
+          "skill_id": 201692,
+          "level": 1
+        },
+        {
+          "skill_id": 202152,
+          "level": 1
+        },
+        {
+          "skill_id": 202371,
+          "level": 1
+        },
+        {
+          "skill_id": 210012,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210071,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 10072,
+      "single_mode_chara_id": 7421,
+      "card_id": 100601,
+      "speed": 1210,
+      "stamina": 630,
+      "power": 879,
+      "wiz": 752,
+      "guts": 576,
+      "rank_score": 17531,
+      "rank": 17,
+      "scenario_id": 3,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 7,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200042,
+          "level": 1
+        },
+        {
+          "skill_id": 200152,
+          "level": 1
+        },
+        {
+          "skill_id": 200161,
+          "level": 1
+        },
+        {
+          "skill_id": 200221,
+          "level": 1
+        },
+        {
+          "skill_id": 200331,
+          "level": 1
+        },
+        {
+          "skill_id": 200341,
+          "level": 1
+        },
+        {
+          "skill_id": 200352,
+          "level": 1
+        },
+        {
+          "skill_id": 200362,
+          "level": 1
+        },
+        {
+          "skill_id": 200432,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200502,
+          "level": 1
+        },
+        {
+          "skill_id": 200771,
+          "level": 1
+        },
+        {
+          "skill_id": 200881,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201181,
+          "level": 1
+        },
+        {
+          "skill_id": 201322,
+          "level": 1
+        },
+        {
+          "skill_id": 201381,
+          "level": 1
+        },
+        {
+          "skill_id": 201391,
+          "level": 1
+        },
+        {
+          "skill_id": 201631,
+          "level": 1
+        },
+        {
+          "skill_id": 201662,
+          "level": 1
+        },
+        {
+          "skill_id": 202152,
+          "level": 1
+        },
+        {
+          "skill_id": 210012,
+          "level": 1
+        },
+        {
+          "skill_id": 210032,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210071,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 10073,
+      "single_mode_chara_id": 7422,
+      "card_id": 100601,
+      "speed": 1203,
+      "stamina": 635,
+      "power": 851,
+      "wiz": 834,
+      "guts": 530,
+      "rank_score": 17535,
+      "rank": 17,
+      "scenario_id": 3,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 7,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 7,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200011,
+          "level": 1
+        },
+        {
+          "skill_id": 200161,
+          "level": 1
+        },
+        {
+          "skill_id": 200221,
+          "level": 1
+        },
+        {
+          "skill_id": 200261,
+          "level": 1
+        },
+        {
+          "skill_id": 200331,
+          "level": 1
+        },
+        {
+          "skill_id": 200342,
+          "level": 1
+        },
+        {
+          "skill_id": 200362,
+          "level": 1
+        },
+        {
+          "skill_id": 200382,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200591,
+          "level": 1
+        },
+        {
+          "skill_id": 200602,
+          "level": 1
+        },
+        {
+          "skill_id": 200781,
+          "level": 1
+        },
+        {
+          "skill_id": 200851,
+          "level": 1
+        },
+        {
+          "skill_id": 200881,
+          "level": 1
+        },
+        {
+          "skill_id": 201032,
+          "level": 1
+        },
+        {
+          "skill_id": 201102,
+          "level": 1
+        },
+        {
+          "skill_id": 201541,
+          "level": 1
+        },
+        {
+          "skill_id": 201662,
+          "level": 1
+        },
+        {
+          "skill_id": 202012,
+          "level": 1
+        },
+        {
+          "skill_id": 202152,
+          "level": 1
+        },
+        {
+          "skill_id": 210022,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210071,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "trained_chara_id": 10074,
+      "single_mode_chara_id": 7423,
+      "card_id": 100601,
+      "speed": 1223,
+      "stamina": 560,
+      "power": 839,
+      "wiz": 815,
+      "guts": 501,
+      "rank_score": 17516,
+      "rank": 17,
+      "scenario_id": 3,
+      "proper_ground_turf": 7,
+      "proper_ground_dirt": 8,
+      "proper_running_style_nige": 2,
+      "proper_running_style_senko": 7,
+      "proper_running_style_sashi": 7,
+      "proper_running_style_oikomi": 4,
+      "proper_distance_short": 3,
+      "proper_distance_mile": 7,
+      "proper_distance_middle": 7,
+      "proper_distance_long": 7,
+      "talent_level": 5,
+      "skill_array": [
+        {
+          "skill_id": 100061,
+          "level": 5
+        },
+        {
+          "skill_id": 200011,
+          "level": 1
+        },
+        {
+          "skill_id": 200042,
+          "level": 1
+        },
+        {
+          "skill_id": 200142,
+          "level": 1
+        },
+        {
+          "skill_id": 200161,
+          "level": 1
+        },
+        {
+          "skill_id": 200222,
+          "level": 1
+        },
+        {
+          "skill_id": 200332,
+          "level": 1
+        },
+        {
+          "skill_id": 200341,
+          "level": 1
+        },
+        {
+          "skill_id": 200352,
+          "level": 1
+        },
+        {
+          "skill_id": 200382,
+          "level": 1
+        },
+        {
+          "skill_id": 200452,
+          "level": 1
+        },
+        {
+          "skill_id": 200462,
+          "level": 1
+        },
+        {
+          "skill_id": 200492,
+          "level": 1
+        },
+        {
+          "skill_id": 200512,
+          "level": 1
+        },
+        {
+          "skill_id": 200602,
+          "level": 1
+        },
+        {
+          "skill_id": 200752,
+          "level": 1
+        },
+        {
+          "skill_id": 200851,
+          "level": 1
+        },
+        {
+          "skill_id": 200881,
+          "level": 1
+        },
+        {
+          "skill_id": 201102,
+          "level": 1
+        },
+        {
+          "skill_id": 201112,
+          "level": 1
+        },
+        {
+          "skill_id": 201212,
+          "level": 1
+        },
+        {
+          "skill_id": 201662,
+          "level": 1
+        },
+        {
+          "skill_id": 201701,
+          "level": 1
+        },
+        {
+          "skill_id": 201902,
+          "level": 1
+        },
+        {
+          "skill_id": 202012,
+          "level": 1
+        },
+        {
+          "skill_id": 202152,
+          "level": 1
+        },
+        {
+          "skill_id": 210042,
+          "level": 1
+        },
+        {
+          "skill_id": 210071,
+          "level": 1
+        }
+      ]
+    }
+  ]
+}

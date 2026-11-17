@@ -28,7 +28,6 @@ HIGH_RANKS = ((19600, 400, 23900, 'UG'), (23900, 500, 28800, 'UF'),
               (55200, 800, math.inf, 'UA'))
 APTITUDES = tuple((f'{prefix}=={i}', field) for prefix, fields in (
     ('distance_type', ('proper_distance_short', 'proper_distance_mile', 'proper_distance_middle', 'proper_distance_long')),
-    ('ground_type', ('proper_ground_turf', 'proper_ground_dirt')),
     ('running_style', tuple(sim.STYLE_APTITUDES.values())),
 ) for i, field in enumerate(fields, 1))
 
@@ -48,6 +47,8 @@ def catalog_row(catalog, sid):
 
 
 def skill_rating(row, chara):
+    # Terrain eligibility does not scale rating; terrain-only skills use the
+    # master base value regardless of the runner's Turf/Dirt aptitude.
     multiplier = 1.0
     for token, field in APTITUDES:
         if token in str(row.get('condition_1') or ''):
