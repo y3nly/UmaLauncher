@@ -384,6 +384,8 @@ class Preset():
 
         if self.settings.fans_enabled.value:
             html_elements.append(self.generate_fans(main_info))
+
+        html_elements.append(self.generate_unique_skill_warning(main_info))
         
         if self.settings.schedule_enabled.value:
             html_elements.append(self.generate_schedule(main_info))
@@ -815,16 +817,20 @@ class Preset():
                 f'{"".join(g1_race_items)}</div></section>'
             )
 
+        unique_skill_warning_html = self.generate_unique_skill_warning(
+            main_info, modern=True
+        )
+
         gl_panel_html = (
             self.generate_modern_gl_panel(main_info)
             if self.settings.scenario_specific_enabled.value else ""
         )
         lower_side_html = ""
-        if g1_panel_html or gl_panel_html:
+        if unique_skill_warning_html or g1_panel_html or gl_panel_html:
             lower_side_html = (
                 '<aside class="modern-lower-side" '
                 'aria-label="Current training context">'
-                f'{g1_panel_html}{gl_panel_html}</aside>'
+                f'{unique_skill_warning_html}{g1_panel_html}{gl_panel_html}</aside>'
             )
 
         lower_stage_html = ""
@@ -1082,7 +1088,45 @@ class Preset():
             '<div class="modern-gl-tokens">'
             f'{"".join(token_rows)}</div></section>'
         )
-    
+
+    def generate_unique_skill_warning(self, main_info, modern=False):
+        warning = main_info.get("unique_skill_warning")
+        if not warning:
+            return ""
+
+        turns_left = warning["turns_left"]
+        fan_missing = warning["fan_missing"]
+        bond_required = warning["director_bond_required"]
+        bond_text = ""
+        if bond_required and warning["director_bond"] < bond_required:
+            bond_text = f'Bond {warning["director_bond"]}/{bond_required}'
+
+        if modern:
+            label = ". ".join(filter(None, (
+                f"Unique skill warning in {turns_left} turns",
+                bond_text,
+                f"{fan_missing:,} more fans needed" if fan_missing else "",
+            )))
+            bond_html = f"<span>{bond_text}</span>" if bond_text else ""
+            fans_html = f"<span>Fans +{fan_missing:,}</span>" if fan_missing else ""
+            return (
+                f'<section class="modern-unique-skill-warning" aria-label="{label}">'
+                '<strong>Unique Skill</strong>'
+                f'<span>{turns_left} turn{"" if turns_left == 1 else "s"}</span>'
+                f'{bond_html}{fans_html}</section>'
+            )
+
+        details = []
+        if bond_text:
+            details.append(f"Director {bond_text.lower()}")
+        if fan_missing:
+            details.append(f"{fan_missing:,} more fans needed")
+        return (
+            '<div id="unique-skill-warning" style="color:orange;text-align:center;">'
+            f'<b>Unique Skill in {turns_left} turn{"" if turns_left == 1 else "s"}</b>'
+            f'<div>{"; ".join(details)}</div></div>'
+        )
+
     def generate_schedule(self, main_info):
         cur_turn = main_info['turn']
         next_race = None
