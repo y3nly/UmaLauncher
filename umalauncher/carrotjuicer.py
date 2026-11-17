@@ -1544,17 +1544,20 @@ class CarrotJuicer:
                     const owned = node => Array.from(
                         node?.querySelectorAll?.('span[class^="utils_linkcolor"]') || []
                     ).some(element => ownedStatuses.includes(clean(element.textContent)));
+                    const highlights = node => Array.from(
+                        node?.querySelectorAll?.('a, span[class^="utils_linkcolor"]') || []
+                    ).map(element => clean(element.textContent)).filter(Boolean);
                     const lineValues = node => {
                         const childLines = Array.from(node?.children || [])
                             .filter(child => child.tagName !== "BR")
                             .map(child => ({
                                 text: clean(child.textContent),
-                                owned: owned(child)
+                                owned: owned(child), highlights: highlights(child)
                             }))
                             .filter(line => line.text);
                         if (childLines.length) return childLines;
                         const text = clean(node?.textContent);
-                        return text ? [{text, owned: owned(node)}] : [];
+                        return text ? [{text, owned: owned(node), highlights: highlights(node)}] : [];
                     };
                     const outcomes = Array.from(outcomeList.children || [])
                         .map(group => {

@@ -374,7 +374,10 @@
       margin-top: 2px;
     }
 
-    .gametora-reward-line.is-owned {
+    .gametora-reward-line.is-owned,
+    .gametora-reward-line.is-owned .semantic-value,
+    .gametora-reward-line.is-owned .semantic-gain,
+    .gametora-reward-line.is-owned .semantic-skill {
       color: #7d8594;
     }
 
@@ -926,7 +929,7 @@
       }
 
       function appendSemanticTokens(parent, text) {
-        const semanticTokenPattern = /([+-]\d+(?:\.\d+)?%?|\bgains?\b)/gi;
+        const semanticTokenPattern = /([+\-−]\s*\d+(?:\.\d+)?%?|\bgains?\b)/gi;
         let cursor = 0;
         let match;
         let hasSignedValue = false;
@@ -934,9 +937,9 @@
           if (match.index > cursor) {
             parent.appendChild(document.createTextNode(text.slice(cursor, match.index)));
           }
-          if (match[0].startsWith("+") || match[0].startsWith("-")) {
+          if (match[0].startsWith("+") || (match[0].startsWith("-") || match[0].startsWith("−"))) {
             hasSignedValue = true;
-            const valueTone = match[0].startsWith("-") ? "negative" : "positive";
+            const valueTone = (match[0].startsWith("-") || match[0].startsWith("−")) ? "negative" : "positive";
             appendTextElement(
               parent,
               "span",
@@ -1042,7 +1045,7 @@
             if (isSupportChainEndText(lineData.text)) {
               rewardLine.classList.add("is-chain-end");
             }
-            appendSemanticText(rewardLine, lineData.text);
+            appendSemanticText(rewardLine, lineData.text, "neutral", lineData.highlights);
             rewardLines.appendChild(rewardLine);
           });
           card.appendChild(rewardLines);

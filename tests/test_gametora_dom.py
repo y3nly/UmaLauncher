@@ -30,10 +30,12 @@ class GameToraDOMTests(unittest.TestCase):
         extraction = focus.split("state.extract = () =>", 1)[1].split("state.ensureOpen =", 1)[0]
         search = next(script for script in scripts if "const eventEntries =" in script)
         configure = next(script for script in scripts if "const hiddenSources =" in script)
+        helper = (ROOT / "umalauncher/_assets/training_helper/index.html").read_text(encoding="utf-8")
+        tokenizer = helper.split("function appendSemanticTokens", 1)[1].split("function appendSemanticText", 1)[0]
         result = subprocess.run(
             ["node", str(ROOT / "tests/gametora_dom.cjs")],
             input=json.dumps({"extraction": extraction, "search": search,
-                              "configure": configure}),
+                              "configure": configure, "tokenizer": tokenizer}),
             text=True, capture_output=True, encoding="utf-8",
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

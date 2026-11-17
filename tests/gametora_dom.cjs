@@ -58,5 +58,17 @@ assert.equal(race.checked, false);
 w.UL_EVENT_SEARCH_QUERY = '';
 w.UL_APPLY_EVENT_SEARCH();
 assert.equal(d.querySelectorAll('section.ul-event-search-hidden').length, 0);
+// Execute the shipped formatter, not a copy of its regular expression.
+w.eval(`function appendTextElement(parent, tag, classes, text) {
+    const node = document.createElement(tag); node.className = classes;
+    node.textContent = text; parent.appendChild(node); return node;
+}
+function appendSemanticTokens${scripts.tokenizer}`);
+const colored = d.createElement('div');
+w.appendSemanticTokens(colored, 'Speed +10 Energy -5 Mood −1 Gain + 2');
+assert.equal(colored.querySelectorAll('.semantic-value.is-positive').length, 2);
+assert.equal(colored.querySelectorAll('.semantic-value.is-negative').length, 2);
+assert.equal(colored.querySelectorAll('.semantic-gain').length, 1);
+assert.equal(colored.textContent, 'Speed +10 Energy -5 Mood −1 Gain + 2');
 dom.window.close();
 console.log('GameTora DOM regressions passed');
