@@ -132,8 +132,16 @@ def build_evaluation(chara, available, cm, course, style, metadata, prerequisite
         return GRADES[value - 1]
 
     fixed_pool = cm.get('kind') == 'cm_pool'
-    pooled = cm.get('kind') in ('tt', 'cm_pool')
-    pool = copy.deepcopy(cm['racePool']) if pooled else None
+    pool = copy.deepcopy(cm.get('racePool'))
+    if cm.get('conditionDistribution'):
+        pool = {
+            'courses': [dict(location=cm['location'], course=cm['course'],
+                             condition=cm['ground_condition'], gateCount=cm['runnerCount'])],
+            'conditions': cm['conditionDistribution'],
+            'fixedSeason': cm['season'],
+            'time': cm.get('time') or cm['evaluationContexts'][style]['baseSetting']['time'],
+        }
+    pooled = pool is not None
     if fixed_pool:
         for scenario in pool['scenarios']:
             track = scenario['track']
@@ -197,7 +205,7 @@ def build_evaluation(chara, available, cm, course, style, metadata, prerequisite
             "umaStatus": status,
             "track": initial['track'] if fixed_pool else pool['courses'][0] if pooled else {"location": cm["location"], "course": cm["course"],
                       "condition": cm["ground_condition"], "gateCount": 9},
-            "season": initial.get('season', 0) if pooled else cm["season"],
+            "season": initial.get('season', pool.get('fixedSeason', 0)) if pooled else cm["season"],
             "weather": initial.get('weather', 1) if pooled else cm["weather"], "positionKeepMode": "NONE",
         },
         "acquiredSkillIds": sorted(learned),
@@ -209,5 +217,5 @@ def build_evaluation(chara, available, cm, course, style, metadata, prerequisite
     if pooled:
         payload['racePool'] = pool
         payload['poolWeightingPolicy'] = cm['weightingPolicy']
-        payload['baseSetting']['time'] = 2
+        payload['baseSetting']['time'] = pool.get('time', 2)
     return payload, rows, definitions
