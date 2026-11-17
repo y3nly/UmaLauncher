@@ -1526,9 +1526,17 @@ class CarrotJuicer:
                     const outcome = state.activeOutcome || state.install?.();
                     if (!outcome) return null;
                     const content = outcome.querySelector(".tippy-content");
-                    const card = content?.firstElementChild?.firstElementChild;
-                    const header = card?.firstElementChild;
-                    const outcomeList = header?.nextElementSibling;
+                    // Current GameTora cards use a semantic section and h3,
+                    // with condition/filter blocks before the reward wrapper.
+                    // Keep the old div layout for cached/older pages.
+                    const section = content?.querySelector("section:has(h3)");
+                    const card = section || content?.firstElementChild?.firstElementChild;
+                    const heading = section?.querySelector("h3");
+                    const header = heading?.parentElement || card?.firstElementChild;
+                    const body = header?.nextElementSibling;
+                    const outcomeList = section
+                        ? body?.lastElementChild?.firstElementChild
+                        : body;
                     if (!card || !outcomeList) return null;
 
                     const clean = value => String(value || "")
@@ -1564,7 +1572,8 @@ class CarrotJuicer:
                         .filter(item => item.lines.length);
                     if (!outcomes.length) return null;
                     return {
-                        title: clean(header.textContent) || clean(state.anchor?.textContent),
+                        title: clean(heading?.textContent || header.textContent)
+                            || clean(state.anchor?.textContent),
                         outcomes
                     };
                 };
@@ -2945,6 +2954,13 @@ def setup_gametora_event_frame(browser, gametora_url, timeout=8):
                 if (!allAtOnce.checked) allAtOnce.click();
                 if (expandEvents.checked) expandEvents.click();
                 const viewer = document.getElementById("viewer-box-main");
+                // GameTora now hides common and race events per source.
+                // Enable source filters, never the choices inside event cards.
+                const hiddenSources = [...(viewer?.querySelectorAll(
+                    "div[id^='event-viewer-'] input[type='checkbox']"
+                ) || [])].filter(input => !input.closest("section") && !input.checked);
+                hiddenSources.forEach(input => input.click());
+                if (hiddenSources.length) return false;
                 const eventButtons = viewer?.querySelectorAll(
                     "button[aria-expanded], button[class^='sc-']"
                 ).length || 0;
@@ -3202,6 +3218,11 @@ def setup_event_window(browser: horsium.BrowserWindow, timeout=8):
                         expandEvents.click();
                     }
                     if (onlyChoices?.checked) onlyChoices.click();
+                    document.querySelectorAll(
+                        "#viewer-box-main div[id^='event-viewer-'] input[type='checkbox']"
+                    ).forEach(input => {
+                        if (!input.closest("section") && !input.checked) input.click();
+                    });
                 };
 
                 const ensureToolbar = () => {
@@ -3281,6 +3302,12 @@ def setup_event_window(browser: horsium.BrowserWindow, timeout=8):
                 };
 
                 const validEventEntry = entry => {
+                    // Expanded cards now have one wrapper child, rather than
+                    // a title and rewards directly under the card.
+                    if (entry?.matches("section") && entry.querySelector("h3")) {
+                        const header = entry.querySelector("h3").parentElement;
+                        return Boolean(collectText(header.nextElementSibling));
+                    }
                     const children = Array.from(entry?.children || []);
                     if (children.length < 2) return false;
                     return Boolean(

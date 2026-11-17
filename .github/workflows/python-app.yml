@@ -34,7 +34,14 @@ jobs:
         pip install -r requirements.txt
     - name: Compile Python sources
       run: ./venv/Scripts/python.exe -m compileall -q umalauncher scripts tests
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "24"
+    - name: Install DOM test dependency
+      run: npm install --prefix venv/dom-tests --no-package-lock jsdom@31.0.1
     - name: Run functional tests
+      env:
+        NODE_PATH: ${{ github.workspace }}/venv/dom-tests/node_modules
       run: ./venv/Scripts/python.exe -m unittest discover -s tests -v
     - name: Check public source boundary
       run: ./venv/Scripts/python.exe scripts/check_public_boundary.py
