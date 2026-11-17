@@ -619,6 +619,7 @@
         eventSourceAvailable: false,
         generation: -1,
         payload: null,
+        gameRewards: null,
         eventChain: null,
         chainNavigationPending: false,
         eventOverlayClearance: 0,
@@ -1064,7 +1065,7 @@
             if (isSupportChainEndText(lineData.text)) {
               rewardLine.classList.add("is-chain-end");
             }
-            appendSemanticText(rewardLine, lineData.text, "neutral", lineData.highlights);
+            appendSemanticText(rewardLine, lineData.text, lineData.tone || "neutral", lineData.highlights);
             rewardLines.appendChild(rewardLine);
           });
           card.appendChild(rewardLines);
@@ -1076,6 +1077,15 @@
       function renderFallback() {
         fallback.replaceChildren();
         const payload = state.payload && typeof state.payload === "object" ? state.payload : {};
+        const currentEvent = !state.eventChain || state.eventChain.index === state.eventChain.packetIndex;
+        if (currentEvent && state.gameRewards) {
+          const catalog = payload.gametoraEvent?.outcomes || [];
+          const game = state.gameRewards.outcomes || [];
+          const outcomes = Array.from({length: Math.max(catalog.length, game.length)},
+            (_, index) => game[index] || catalog[index]);
+          appendGametoraEvent(fallback, {outcomes});
+          return;
+        }
         if (payload.gametoraEvent && Array.isArray(payload.gametoraEvent.outcomes)) {
           appendGametoraEvent(fallback, payload.gametoraEvent);
           return;
@@ -1172,6 +1182,7 @@
         return {
           title: safeText(source.title || fallbackTitle || "Event"),
           index,
+          packetIndex: Number.isSafeInteger(Number(source.packetIndex)) ? Number(source.packetIndex) : index,
           total
         };
       }
@@ -1292,6 +1303,7 @@
         state.eventActive = true;
         state.payload = payload && typeof payload === "object" ? payload : {};
         if (isNewGeneration) {
+          state.gameRewards = null;
           state.eventSourceAvailable = false;
         }
         if (Object.prototype.hasOwnProperty.call(state.payload, "eventSourceAvailable")) {
@@ -1313,10 +1325,21 @@
         }
         state.eventActive = false;
         state.payload = null;
+        state.gameRewards = null;
         state.eventChain = null;
         state.chainNavigationPending = false;
         state.eventSourceAvailable = false;
         setDrawerExpanded(false);
+        return true;
+      };
+
+      window.UL_SET_GAME_REWARDS = function UL_SET_GAME_REWARDS(event, generation) {
+        if (!state.eventActive || !generationMatches(generation) || !Array.isArray(event?.outcomes)
+            || !event.outcomes.some(outcome => Array.isArray(outcome?.lines) && outcome.lines.length)) {
+          return false;
+        }
+        state.gameRewards = event;
+        renderFallback();
         return true;
       };
 

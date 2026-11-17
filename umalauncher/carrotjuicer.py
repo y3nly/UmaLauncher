@@ -828,7 +828,10 @@ class CarrotJuicer:
                     text = clean_text(raw_line, 500)
                     owned = False
                 if text:
-                    lines.append({"text": text, "owned": owned})
+                    line = {"text": text, "owned": owned}
+                    if isinstance(raw_line, dict) and isinstance(raw_line.get("highlights"), list):
+                        line["highlights"] = [clean_text(value, 120) for value in raw_line["highlights"][:8]]
+                    lines.append(line)
             if lines:
                 outcomes.append({
                     "label": clean_text(raw_outcome.get("label"), 80),
