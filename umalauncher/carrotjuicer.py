@@ -7,6 +7,8 @@ import time
 import traceback
 import json
 import threading
+import tempfile
+from contextlib import nullcontext
 from collections import Counter
 from datetime import datetime
 
@@ -175,7 +177,7 @@ class CarrotJuicer:
         # queued requests down to the newest payload.
         self._skill_sim_condition = threading.Condition()
         self._skill_sim_pending = None
-        self._skill_sim_completion = None
+        self._skill_sim_update = None
         self._skill_window_selection = None
         self._skill_window_data_key = None
         self._skill_window_prepared = None
@@ -209,7 +211,7 @@ class CarrotJuicer:
     def _invalidate_skill_simulation_locked(self):
         self._skill_sim_generation += 1
         self._skill_sim_pending = None
-        self._skill_sim_completion = None
+        self._skill_sim_update = None
         process = self._skill_sim_process
         if process is not None and process.poll() is None:
             try:
@@ -225,10 +227,19 @@ class CarrotJuicer:
         """Queue a complete evaluation without interrupting an active run."""
         request_key = self._skill_simulation_key(payload)
         with self._skill_sim_condition:
+            self._skill_sim_generation += 1
+            self._skill_sim_update = None
             generation = self._skill_sim_generation
             self._skill_sim_pending = (generation, request_key, payload, skill_data_path)
             self._skill_sim_condition.notify()
         return request_key
+
+    def _publish_skill_progress(self, generation, request_key, progress):
+        # The browser-owning thread takes the latest update on its next tick.
+        with self._skill_sim_condition:
+            if (generation == self._skill_sim_generation and not self._skill_sim_stop
+                    and not self._skill_sim_cancel_requested):
+                self._skill_sim_update = (generation, request_key, progress)
 
     def _skill_simulation_worker(self):
         while True:
@@ -252,6 +263,7 @@ class CarrotJuicer:
                 result = self.run_simulation(
                     util.get_asset("_assets/umasim-cli.exe"), payload,
                     expected_generation=generation, skill_data_path=snapshot_path,
+                    on_progress=functools.partial(self._publish_skill_progress, generation, request_key),
                 )
                 logger.debug(
                     f"Skill simulation: {len(payload['unacquiredSkillIds'])} candidates, "
@@ -264,18 +276,38 @@ class CarrotJuicer:
                 with self._skill_sim_condition:
                     self._skill_sim_active_generation = None
                     if not self._skill_sim_stop and generation == self._skill_sim_generation:
-                        self._skill_sim_completion = (generation, request_key, result)
+                        self._skill_sim_update = (generation, request_key, result)
 
     def _skill_window_state_key(self):
         chara_info = (self.last_helper_data or {}).get("chara_info")
         # Ratings update cheaply; only new skill/hint identities trigger Ace.
         return skill_planner.trainee_key(chara_info, self.skill_data) if chara_info else None
 
-    def _take_skill_simulation_completion(self):
+    def _take_skill_simulation_update(self):
         with self._skill_sim_condition:
-            completion = self._skill_sim_completion
-            self._skill_sim_completion = None
-            return completion
+            update = self._skill_sim_update
+            self._skill_sim_update = None
+            return update
+
+    def _show_skill_simulation_update(self, update, selection):
+        """Deliver on the browser thread. Return true if a final result was imported."""
+        generation, key, results = update
+        if generation != self._skill_sim_generation or key != self._skill_window_requested_key:
+            return False
+        submitted = self._skill_window_requested_snapshot
+        if results.get('type') == 'progress':
+            if (selection['mode'] == 'ace' and submitted['pageId'] == selection['pageId']
+                    and submitted['selectionVersion'] == selection['version']):
+                self.skill_browser.execute_script(
+                    "if (window.loadLauncherProgress) return window.loadLauncherProgress(arguments[0]);",
+                    dict(submitted, progress=results, runGeneration=generation),
+                )
+        elif results:
+            snapshot = dict(submitted, results=results, runGeneration=generation)
+            return self.skill_browser.execute_script('return window.loadLauncherData(arguments[0]);', snapshot)
+        elif not self._skill_window_rerun_requested:
+            self.set_skill_window_sim_status('error', 'Simulation failed; click Run to retry')
+        return False
 
     def request_skill_simulation_rerun(self):
         """Request an evaluation of the selected CM and running style."""
@@ -2324,15 +2356,15 @@ class CarrotJuicer:
                         f"{traceback.format_exc()}"
                     )
 
-    def update_skill_window(self, simulation_completion=None, data_completion=None):
+    def update_skill_window(self, simulation_update=None, data_completion=None):
         try:
-            self._update_bashin_skill_window(simulation_completion, data_completion)
+            self._update_bashin_skill_window(simulation_update, data_completion)
         except Exception:
             logger.error(f"Could not update the Bashin skill window:\n{traceback.format_exc()}")
             self._skill_window_rerun_requested = False
             self.set_skill_window_sim_status("error", "Skill data or Bashin visualizer unavailable; click Run to retry")
 
-    def _update_bashin_skill_window(self, simulation_completion, data_completion):
+    def _update_bashin_skill_window(self, simulation_update, data_completion):
         if self.should_stop:
             return
         chara = (self.last_helper_data or {}).get("chara_info")
@@ -2355,7 +2387,9 @@ class CarrotJuicer:
             """
             if (!['getLauncherSelection', 'updateLauncherRating', 'loadLauncherData']
                 .every(name => typeof window[name] === 'function')) return null;
-            return window.getLauncherSelection(arguments[0], arguments[1], null, {racePools: true, raceScenarios: true, publishedProfiles: true, fixedSeasonPools: true});
+            const selection = window.getLauncherSelection(arguments[0], arguments[1], null,
+                {racePools: true, raceScenarios: true, publishedProfiles: true, fixedSeasonPools: true});
+            return selection && {...selection, streamProgress: typeof window.loadLauncherProgress === 'function'};
             """,
             skill_simulation.career_id(chara), skill_simulation.STYLES[chara['race_running_style']-1],
         ))
@@ -2381,16 +2415,7 @@ class CarrotJuicer:
         elif selection['pending'] and selection['version'] != previous_selection.get('version'):
             self._skill_window_rerun_requested = False
 
-        # A finished Ace result always belongs to its submitted trainee snapshot.
-        # The browser accepts it only for the matching source, career, CM and style.
-        if simulation_completion is not None:
-            generation, key, results = simulation_completion
-            if generation == self._skill_sim_generation and key == self._skill_window_requested_key:
-                if results:
-                    snapshot = dict(self._skill_window_requested_snapshot, results=results)
-                    self.skill_browser.execute_script('return window.loadLauncherData(arguments[0]);', snapshot)
-                elif not self._skill_window_rerun_requested:
-                    self.set_skill_window_sim_status('error', 'Simulation failed; click Run to retry')
+        imported_result = simulation_update is not None and self._show_skill_simulation_update(simulation_update, selection)
 
         # Costs/rating preparation can proceed while the independent race worker runs.
         data_selection = {key: selection[key] for key in ('cmId', 'style', 'mode', 'pageId', 'version', 'choices')}
@@ -2422,102 +2447,91 @@ class CarrotJuicer:
                     self.skill_browser.execute_script('return window.loadLauncherData(arguments[0]);', snapshot)
                 else:
                     self.skill_browser.execute_script('window.updateLauncherRating(arguments[0]);', snapshot)
-        elif simulation_completion is not None and self._skill_window_prepared and mode == 'ace':
+        elif imported_result and self._skill_window_prepared and mode == 'ace':
             # Apply latest costs/ratings after importing the older race snapshot.
             self.skill_browser.execute_script('window.updateLauncherRating(arguments[0]);',
                                              self._skill_window_prepared['snapshot'])
 
         with self._skill_sim_condition:
-            running = (self._skill_sim_pending is not None
+            running = (self._skill_sim_pending is not None or self._skill_sim_update is not None
                        or self._skill_sim_active_generation == self._skill_sim_generation)
         if not running and self._skill_window_rerun_requested and self._skill_window_prepared:
             prepared = self._skill_window_prepared
-            self._skill_window_requested_snapshot = prepared['snapshot']
-            self._skill_window_requested_key = self._queue_skill_simulation(prepared['payload'], prepared['skillDataPath'])
+            self._skill_window_requested_snapshot = dict(prepared['snapshot'], pageId=selection['pageId'])
+            payload = prepared['payload']
+            if selection.get('streamProgress'):
+                payload = dict(payload, streamProgress=True)
+            self._skill_window_requested_key = self._queue_skill_simulation(payload, prepared['skillDataPath'])
             self._skill_window_rerun_requested = False
             running = True
         if running or self._skill_window_rerun_requested:
             self.set_skill_window_sim_status('running')
-        elif not (data_completion and data_completion[2]) and (simulation_completion is None or simulation_completion[2]):
+        elif not (data_completion and data_completion[2]) and (simulation_update is None or simulation_update[2]):
             self.set_skill_window_sim_status('done')
 
-    def run_simulation(self, exe_path, payload, expected_generation=None, skill_data_path=None):
-        json_payload = json.dumps(payload)
+    def run_simulation(self, exe_path, payload, expected_generation=None, skill_data_path=None, on_progress=None):
+        command = [exe_path, json.dumps(payload)]
+        environment = os.environ.copy()
+        if skill_data_path is not None:
+            environment["UMASIM_SKILL_DATA_PATH"] = skill_data_path
+        condition = getattr(self, "_skill_sim_condition", None)
         process = None
-
         try:
-            command = [exe_path, json_payload]
-            environment = os.environ.copy()
-            if skill_data_path is not None:
-                environment["UMASIM_SKILL_DATA_PATH"] = skill_data_path
-            startup_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-
-            if hasattr(self, "_skill_sim_condition"):
-                # Atomically gate process creation against shutdown.  Holding
-                # the condition across the short Popen call closes the race
-                # where stop() could otherwise miss a just-dequeued child.
-                with self._skill_sim_condition:
-                    if (
-                        self._skill_sim_stop
-                        or (
-                            expected_generation is not None
-                            and expected_generation != self._skill_sim_generation
-                        )
-                    ):
+            # Let diagnostics drain independently even when the worker is blocked reading stdout.
+            with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as diagnostics:
+                # Gate process creation against Stop so it always observes the active child.
+                with condition or nullcontext():
+                    if condition and (self._skill_sim_stop or (expected_generation is not None
+                            and expected_generation != self._skill_sim_generation)):
                         return {}
                     process = subprocess.Popen(
-                        command,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                        encoding='utf-8', env=environment, creationflags=startup_flags,
+                        command, stdout=subprocess.PIPE, stderr=diagnostics, text=True, encoding="utf-8",
+                        env=environment, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                     )
-                    self._skill_sim_process = process
-            else:
-                process = subprocess.Popen(
-                    command,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    encoding='utf-8', env=environment, creationflags=startup_flags,
-                )
+                    if condition:
+                        self._skill_sim_process = process
 
-            # Large evaluations may take minutes. Stop and launcher shutdown
-            # terminate the subprocess explicitly; elapsed time does not.
-            stdout, stderr = process.communicate()
+                result = None
+                with process.stdout:
+                    for line in process.stdout:
+                        if not line.strip():
+                            continue
+                        message = json.loads(line)
+                        if not isinstance(message, dict) or result is not None:
+                            raise ValueError("unexpected simulator output")
+                        if message.get("type") == "progress":
+                            if on_progress:
+                                on_progress(message)
+                        elif "baselineStats" in message and "candidates" in message:
+                            result = message  # Also handles older binaries which emit only the final JSON.
+                        else:
+                            raise ValueError("unrecognized simulator response")
 
-            if expected_generation is not None:
-                with self._skill_sim_condition:
-                    if self._skill_sim_stop or expected_generation != self._skill_sim_generation:
-                        return {}  # Expected cancellation, not a simulator failure.
-            if stderr:
-                diagnostics = Counter(stderr.splitlines())
-                summary = "\n".join(
-                    f"{line} ({count} occurrences)" if count > 1 else line
-                    for line, count in diagnostics.items()
-                )
-                logger.debug(f"Sim Output: {summary}")
-            if process.returncode:
-                logger.error(f"Sim crashed with exit code {process.returncode}: {stderr}")
-                return {}
-
-            result = json.loads(stdout)
-            if "baselineStats" not in result or "candidates" not in result:
-                logger.error(f"Simulator returned an invalid result: {result}")
-                return {}
-            return result
-
-        except json.JSONDecodeError as exc:
-            logger.error("Failed to parse JSON response!")
-            logger.error(f"Sim output was not valid JSON: {exc}")
-            return {}
-
-        except OSError as exc:
-            logger.error(f"Could not run simulator {exe_path}: {exc}")
+                process.wait()
+                if expected_generation is not None:
+                    with condition:
+                        if self._skill_sim_stop or expected_generation != self._skill_sim_generation:
+                            return {}
+                diagnostics.seek(0)
+                counts = Counter(line.rstrip() for line in diagnostics)
+                summary = "\n".join(f"{line} ({count} occurrences)" if count > 1 else line
+                                    for line, count in counts.items())
+                if process.returncode or result is None:
+                    logger.error(f"Simulation failed (exit code {process.returncode}): {summary or 'missing final result'}")
+                    return {}
+                if summary:
+                    logger.debug(f"Sim Output: {summary}")
+                return result
+        except (ValueError, OSError) as exc:
+            if expected_generation is None or expected_generation == self._skill_sim_generation:
+                logger.error(f"Could not read simulator output: {exc}")
             return {}
         finally:
-            if hasattr(self, "_skill_sim_condition"):
-                with self._skill_sim_condition:
+            if process is not None and process.poll() is None:
+                process.kill()
+                process.wait()
+            if condition:
+                with condition:
                     if self._skill_sim_process is process:
                         self._skill_sim_process = None
 
@@ -2801,15 +2815,15 @@ class CarrotJuicer:
             self.open_event_window = False
             self.update_event_window()
 
-        simulation_completion = self._take_skill_simulation_completion()
+        simulation_update = self._take_skill_simulation_update()
         data_completion = self._take_skill_data_completion()
         if self._cancel_requested_skill_simulation():
             pass
         elif self.open_skill_window or (self.skill_browser and (
-                simulation_completion is not None or data_completion is not None
+                simulation_update is not None or data_completion is not None
                 or self._skill_window_last_state_key != self._skill_window_state_key())):
             self.open_skill_window = False
-            self.update_skill_window(simulation_completion=simulation_completion, data_completion=data_completion)
+            self.update_skill_window(simulation_update=simulation_update, data_completion=data_completion)
 
         if self.open_schedule_window:
             self.open_schedule_window = False
