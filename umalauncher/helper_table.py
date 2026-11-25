@@ -570,7 +570,10 @@ class HelperTable():
                 partner_count += 1
 
                 # Detect if training_partner is rainbowing
-                training_partner = eval_dict[training_partner_id]
+                training_partner = eval_dict.get(training_partner_id)
+                if training_partner is None:
+                    # The command still counts this partner, but its bond and rainbow are unknown.
+                    continue
                 partner_is_rainbow = False
                 if training_partner_id <= 6:
                     # Partner is a support card
